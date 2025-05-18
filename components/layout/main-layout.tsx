@@ -1,0 +1,18 @@
+import type React from "react"
+import { SiteHeader } from "@/components/layout/site-header"
+import { SiteFooter } from "@/components/layout/site-footer"
+
+interface MainLayoutProps {
+    children: React.ReactNode
+    showFullFooter?: boolean
+}
+
+export function MainLayout({ children, showFullFooter = true }: MainLayoutProps) {
+    return (
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-950 to-slate-900 flex flex-col">
+            <SiteHeader />
+            <main className="flex-1">{children}</main>
+            <SiteFooter fullFooter={showFullFooter} />
+        </div>
+    )
+}

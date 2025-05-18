@@ -1,103 +1,94 @@
-import Image from "next/image";
+/* eslint-disable @next/next/no-img-element */
+import Link from "next/link"
+import { ArrowRight, CreditCard, ShieldCheck, Clock } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { MainLayout } from "@/components/layout/main-layout"
+import { SectionHeading } from "@/components/ui/section-heading"
+import { FeatureCard } from "@/components/ui/feature-card"
+import { StepItem } from "@/components/ui/step-item"
 
 export default function Home() {
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <MainLayout>
+      <div className="container mx-auto px-4 py-12">
+        <section className="flex flex-col md:flex-row gap-12 items-center mb-20">
+          <div className="flex-1">
+            <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
+              Pay Your Fees{" "}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">Online</span>
+            </h2>
+            <p className="text-gray-300 text-lg mb-8">
+              A secure and convenient way to pay your tuition and other fees online. No more queues, no more waiting.
+            </p>
+            <div className="flex gap-4">
+              <Button className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8 py-6 text-lg">
+                <Link href="/login">Get Started</Link>
+              </Button>
+              <Button variant="outline" className="text-white border-white hover:bg-white/10 px-8 py-6 text-lg">
+                Learn More
+              </Button>
+            </div>
+          </div>
+          <div className="flex-1">
+            <div className="relative">
+              <div className="absolute -inset-1 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 opacity-75 blur"></div>
+              <div className="relative bg-slate-800 p-6 rounded-lg">
+                <img
+                  src="/images/students-online-payment.png"
+                  alt="Online Payment Illustration"
+                  className="w-full h-auto rounded-lg"
+                />
+              </div>
+            </div>
+          </div>
+        </section>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+        <section className="mb-20">
+          <SectionHeading title="Why Choose Our Online Payment System?" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <FeatureCard
+              icon={CreditCard}
+              title="Multiple Payment Options"
+              description="Pay using GCash, PayMaya, bank transfers, and other e-wallets for maximum convenience."
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+            <FeatureCard
+              icon={ShieldCheck}
+              title="Secure Transactions"
+              description="Advanced encryption and security measures to protect your financial information."
+            />
+            <FeatureCard
+              icon={Clock}
+              title="Real-time Updates"
+              description="Instant confirmation and real-time tracking of your payment history."
+            />
+          </div>
+        </section>
+
+        <section className="mb-20">
+          <div className="bg-gradient-to-r from-purple-900/50 to-pink-900/50 p-8 rounded-lg">
+            <SectionHeading title="How It Works" className="mb-6" />
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+              <StepItem number={1} title="Login" description="Sign in with your student credentials" />
+              <StepItem number={2} title="Select Fee" description="Choose the fee you want to pay" />
+              <StepItem number={3} title="Pay Online" description="Complete payment using your preferred method" />
+              <StepItem number={4} title="Get Receipt" description="Receive digital receipt and confirmation" isLast />
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div className="text-center mb-12">
+            <SectionHeading
+              title="Ready to Get Started?"
+              description="Join hundreds of students who are already enjoying the convenience of our online payment system."
+            />
+            <Button className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8 py-6 text-lg">
+              <Link href="/login">Login Now</Link>
+              <ArrowRight className="ml-2 h-5 w-5" />
+            </Button>
+          </div>
+        </section>
+      </div>
+    </MainLayout>
+  )
 }
