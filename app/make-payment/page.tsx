@@ -180,7 +180,7 @@ export default function MakePaymentPage() {
 
   return (
     <DashboardLayout>
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8 max-h-full">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white">Make a Payment</h1>
           <p className="text-gray-300">Pay your fees securely online via Paymongo</p>

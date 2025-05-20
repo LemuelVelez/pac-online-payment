@@ -43,8 +43,8 @@ export default function LoginPage() {
 
                     <Tabs defaultValue="login" className="w-full">
                         <TabsList className="grid w-full grid-cols-2 mb-8">
-                            <TabsTrigger value="login">Login</TabsTrigger>
-                            <TabsTrigger value="register">Register</TabsTrigger>
+                            <TabsTrigger className="cursor-pointer" value="login">Login</TabsTrigger>
+                            <TabsTrigger className="cursor-pointer" value="register">Register</TabsTrigger>
                         </TabsList>
                         <TabsContent value="login">
                             <Card className="border-purple-500/20 bg-slate-800/50 backdrop-blur-sm">
@@ -97,7 +97,7 @@ export default function LoginPage() {
                                                     id="remember"
                                                     className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                                                 />
-                                                <Label htmlFor="remember" className="text-sm text-gray-300">
+                                                <Label htmlFor="remember" className="text-sm cursor-pointer text-gray-300">
                                                     Remember me
                                                 </Label>
                                             </div>
@@ -107,7 +107,7 @@ export default function LoginPage() {
                                         </div>
                                         <Button
                                             type="submit"
-                                            className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                                            className="w-full cursor-pointer bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
                                         >
                                             Login
                                         </Button>
