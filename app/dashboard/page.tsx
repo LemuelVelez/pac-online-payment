@@ -75,10 +75,10 @@ export default function DashboardPage() {
                                         {stat.change && (
                                             <p
                                                 className={`ml-2 text-sm ${stat.changeType === "positive"
-                                                        ? "text-green-600 dark:text-green-500"
-                                                        : stat.changeType === "negative"
-                                                            ? "text-red-600 dark:text-red-500"
-                                                            : "text-gray-500 dark:text-gray-400"
+                                                    ? "text-green-600 dark:text-green-500"
+                                                    : stat.changeType === "negative"
+                                                        ? "text-red-600 dark:text-red-500"
+                                                        : "text-gray-500 dark:text-gray-400"
                                                     }`}
                                             >
                                                 {stat.change}
@@ -108,7 +108,7 @@ export default function DashboardPage() {
 
                         <Link href="/payment-history" className="card flex items-center transition-all hover:shadow-md">
                             <div className="mr-4 rounded-lg bg-secondary/10 p-3 dark:bg-secondary/5">
-                                <FileText className="size-6 text-secondary" />
+                                <FileText className="size-6 text-primary" />
                             </div>
                             <div className="flex-1">
                                 <h3 className="font-medium">Payment History</h3>

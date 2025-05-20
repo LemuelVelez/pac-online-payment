@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { CreditCard, FileText, Home, LogOut, Menu, Settings, User, X } from "lucide-react"
+import { CreditCard, FileText, Home, LogOut, Settings, User } from "lucide-react"
 import { useState, useEffect } from "react"
 
 const navigation = [
@@ -39,34 +39,6 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
 
     return (
         <>
-            {/* Mobile menu button */}
-            <button
-                type="button"
-                className="fixed right-4 top-4 z-40 rounded-md bg-gray-800 p-2 text-gray-400 lg:hidden"
-                onClick={() => {
-                    const newState = !isMobileMenuOpen
-                    setIsMobileMenuOpen(newState)
-                    if (!newState && onClose) {
-                        onClose()
-                    }
-                }}
-            >
-                <span className="sr-only">Open sidebar</span>
-                {isMobileMenuOpen ? (
-                    <X className="size-6" aria-hidden="true" />
-                ) : (
-                    <Menu className="size-6" aria-hidden="true" />
-                )}
-            </button>
-
-            {/* Mobile menu overlay */}
-            {isMobileMenuOpen && (
-                <div
-                    className="fixed inset-0 z-30 bg-gray-800/50 backdrop-blur-sm lg:hidden"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                />
-            )}
-
             {/* Sidebar for desktop */}
             <div className="hidden h-screen w-64 flex-shrink-0 border-r border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 lg:block">
                 <div className="flex h-full flex-col">
