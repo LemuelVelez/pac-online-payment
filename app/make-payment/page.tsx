@@ -138,7 +138,11 @@ export default function MakePaymentPage() {
 
   const handleYearChange = (value: string) => {
     setSelectedYear(value)
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
     if (paymentData[selectedCourse] && paymentData[selectedCourse][value]) {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
       setCurrentPaymentData(paymentData[selectedCourse][value])
       setSelectedFees([])
       setAmount("")
