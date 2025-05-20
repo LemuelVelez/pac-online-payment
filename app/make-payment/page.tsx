@@ -361,7 +361,7 @@ export default function MakePaymentPage() {
                 </CardContent>
               </Card>
 
-              <Card className="bg-slate-800/60 border-slate-700 text-white">
+              <Card className="bg-slate-800/60 lg:mb-8 border-slate-700 text-white">
                 <CardHeader>
                   <CardTitle>Payment Amount</CardTitle>
                   <CardDescription className="text-gray-300">Enter the amount you want to pay</CardDescription>
@@ -402,7 +402,7 @@ export default function MakePaymentPage() {
           </div>
 
           <div>
-            <Card className="sticky top-8 bg-slate-800/60 border-slate-700 text-white">
+            <Card className="sticky mb-8 top-8 bg-slate-800/60 border-slate-700 text-white">
               <CardHeader>
                 <CardTitle>Payment Summary</CardTitle>
               </CardHeader>

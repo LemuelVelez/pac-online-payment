@@ -18,7 +18,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     }
 
     return (
-        <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
+        <div className="flex mb-8 h-screen bg-gray-100 dark:bg-gray-900">
             <DashboardSidebar isOpen={isSidebarOpen} onClose={handleCloseSidebar} />
             <div className="flex flex-col flex-1 overflow-hidden">
                 <DashboardHeader onOpenSidebar={handleOpenSidebar} />
