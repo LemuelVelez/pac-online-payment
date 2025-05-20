@@ -42,7 +42,7 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
             {/* Sidebar for desktop */}
             <div className="hidden h-screen w-64 flex-shrink-0 border-r border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 lg:block">
                 <div className="flex h-full flex-col">
-                    <div className="flex h-16 items-center border-b border-gray-200 px-6 dark:border-gray-800">
+                    <div className="flex h-[65px] items-center border-b border-gray-200 px-6 dark:border-gray-800">
                         <Link href="/" className="flex items-center">
                             <span className="text-xl font-bold text-primary">PAC Payment</span>
                         </Link>
@@ -56,8 +56,8 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                                         key={item.name}
                                         href={item.href}
                                         className={`group flex items-center rounded-md px-3 py-2 text-sm font-medium ${isActive
-                                                ? "bg-primary/10 text-primary dark:bg-primary/5"
-                                                : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                                            ? "bg-primary/10 text-primary dark:bg-primary/5"
+                                            : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                                             }`}
                                         onClick={handleClose}
                                     >
@@ -101,8 +101,8 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                                         key={item.name}
                                         href={item.href}
                                         className={`group flex items-center rounded-md px-3 py-2 text-sm font-medium ${isActive
-                                                ? "bg-primary/10 text-primary dark:bg-primary/5"
-                                                : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                                            ? "bg-primary/10 text-primary dark:bg-primary/5"
+                                            : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                                             }`}
                                         onClick={handleClose}
                                     >
