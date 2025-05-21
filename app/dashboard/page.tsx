@@ -462,7 +462,7 @@ export default function DashboardPage() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="overflow-hidden rounded-lg border border-slate-700">
+                        <div className="overflow-hidden overflow-x-auto rounded-lg border border-slate-700">
                             <table className="w-full">
                                 <thead>
                                     <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
@@ -537,7 +537,7 @@ export default function DashboardPage() {
                         </Link>
                     </CardHeader>
                     <CardContent>
-                        <div className="overflow-hidden rounded-lg border border-slate-700">
+                        <div className="overflow-hidden overflow-x-auto rounded-lg border border-slate-700">
                             <table className="w-full">
                                 <thead>
                                     <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
