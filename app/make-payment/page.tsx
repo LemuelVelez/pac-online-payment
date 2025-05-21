@@ -256,6 +256,7 @@ export default function MakePaymentPage() {
                         id="tuition"
                         checked={selectedFees.includes("tuition")}
                         onCheckedChange={() => handleFeeSelection("tuition")}
+                        className="cursor-pointer"
                       />
                       <div className="grid gap-1.5 leading-none">
                         <label
@@ -272,6 +273,7 @@ export default function MakePaymentPage() {
                         id="laboratory"
                         checked={selectedFees.includes("laboratory")}
                         onCheckedChange={() => handleFeeSelection("laboratory")}
+                        className="cursor-pointer"
                       />
                       <div className="grid gap-1.5 leading-none">
                         <label
@@ -288,6 +290,7 @@ export default function MakePaymentPage() {
                         id="library"
                         checked={selectedFees.includes("library")}
                         onCheckedChange={() => handleFeeSelection("library")}
+                        className="cursor-pointer"
                       />
                       <div className="grid gap-1.5 leading-none">
                         <label
@@ -304,6 +307,7 @@ export default function MakePaymentPage() {
                         id="miscellaneous"
                         checked={selectedFees.includes("miscellaneous")}
                         onCheckedChange={() => handleFeeSelection("miscellaneous")}
+                        className="cursor-pointer"
                       />
                       <div className="grid gap-1.5 leading-none">
                         <label
@@ -336,7 +340,7 @@ export default function MakePaymentPage() {
 
                   <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod} className="space-y-4">
                     <div className="flex items-center space-x-2 rounded-lg border border-slate-700 p-4 hover:bg-slate-700/50">
-                      <RadioGroupItem value="credit-card" id="credit-card" />
+                      <RadioGroupItem value="credit-card" id="credit-card" className="cursor-pointer" />
                       <Label htmlFor="credit-card" className="flex items-center gap-3 cursor-pointer">
                         <CreditCard className="h-5 w-5" />
                         <div>
@@ -346,7 +350,7 @@ export default function MakePaymentPage() {
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2 rounded-lg border border-slate-700 p-4 hover:bg-slate-700/50">
-                      <RadioGroupItem value="e-wallet" id="e-wallet" />
+                      <RadioGroupItem value="e-wallet" id="e-wallet" className="cursor-pointer" />
                       <Label htmlFor="e-wallet" className="flex items-center gap-3 cursor-pointer">
                         <Wallet className="h-5 w-5" />
                         <div>
@@ -356,7 +360,7 @@ export default function MakePaymentPage() {
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2 rounded-lg border border-slate-700 p-4 hover:bg-slate-700/50">
-                      <RadioGroupItem value="online-banking" id="online-banking" />
+                      <RadioGroupItem value="online-banking" id="online-banking" className="cursor-pointer" />
                       <Label htmlFor="online-banking" className="flex items-center gap-3 cursor-pointer">
                         <Landmark className="h-5 w-5" />
                         <div>
