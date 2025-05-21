@@ -293,7 +293,7 @@ export default function ProfilePage() {
 
                                         <div>
                                             <h3 className="mb-4 text-lg font-medium">Current Term</h3>
-                                            <div className="overflow-hidden rounded-lg border border-slate-700">
+                                            <div className="overflow-hidden overflow-x-auto rounded-lg border border-slate-700">
                                                 <table className="w-full">
                                                     <thead>
                                                         <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
