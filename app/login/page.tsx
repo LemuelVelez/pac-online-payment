@@ -23,7 +23,7 @@ export default function LoginPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-950 to-slate-900 flex flex-col">
+        <div className="max-h-screen overflow-y-auto bg-gradient-to-br from-slate-900 via-purple-950 to-slate-900 flex flex-col">
             <header className="container mx-auto py-6 px-4">
                 <Link href="/" className="flex items-center gap-2 text-white hover:text-purple-300 transition-colors">
                     <ArrowLeft className="h-5 w-5" />

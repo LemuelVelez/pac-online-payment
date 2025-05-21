@@ -9,7 +9,7 @@ interface MainLayoutProps {
 
 export function MainLayout({ children, showFullFooter = true }: MainLayoutProps) {
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-950 to-slate-900 flex flex-col">
+        <div className="max-h-screen bg-gradient-to-br from-slate-900 via-purple-950 to-slate-900 flex flex-col overflow-y-auto">
             <SiteHeader />
             <main className="flex-1">{children}</main>
             <SiteFooter fullFooter={showFullFooter} />
