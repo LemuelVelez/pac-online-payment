@@ -1,9 +1,10 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 "use client"
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { CreditCard, FileText, Home, LogOut, Settings, User } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 
 const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: Home },
@@ -21,6 +22,7 @@ interface DashboardSidebarProps {
 export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
     const pathname = usePathname()
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(isOpen || false)
+    const sidebarRef = useRef<HTMLDivElement>(null)
 
     // Sync internal state with prop
     useEffect(() => {
@@ -36,6 +38,25 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
             onClose()
         }
     }
+
+    // Handle click outside to close sidebar
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (isMobileMenuOpen && sidebarRef.current && !sidebarRef.current.contains(event.target as Node)) {
+                handleClose()
+            }
+        }
+
+        // Add event listener when sidebar is open
+        if (isMobileMenuOpen) {
+            document.addEventListener("mousedown", handleClickOutside)
+        }
+
+        // Cleanup event listener
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside)
+        }
+    }, [isMobileMenuOpen])
 
     return (
         <>
@@ -56,8 +77,8 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                                         key={item.name}
                                         href={item.href}
                                         className={`group flex items-center rounded-md px-3 py-2 text-sm font-medium cursor-pointer ${isActive
-                                                ? "bg-primary/10 text-primary dark:bg-primary/5"
-                                                : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                                            ? "bg-primary/10 text-primary dark:bg-primary/5"
+                                            : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                                             }`}
                                         onClick={handleClose}
                                     >
@@ -83,6 +104,7 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
 
             {/* Sidebar for mobile */}
             <div
+                ref={sidebarRef}
                 className={`fixed inset-y-0 left-0 z-40 w-64 transform overflow-y-auto bg-white transition-transform duration-300 ease-in-out dark:bg-gray-900 lg:hidden ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
                     }`}
             >
@@ -101,8 +123,8 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                                         key={item.name}
                                         href={item.href}
                                         className={`group flex items-center rounded-md px-3 py-2 text-sm font-medium cursor-pointer ${isActive
-                                                ? "bg-primary/10 text-primary dark:bg-primary/5"
-                                                : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                                            ? "bg-primary/10 text-primary dark:bg-primary/5"
+                                            : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                                             }`}
                                         onClick={handleClose}
                                     >
