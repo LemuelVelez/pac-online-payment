@@ -300,7 +300,7 @@ export default function CashierTransactionsPage() {
           <TabsContent value="today">
             <Card className="bg-slate-800/60 border-slate-700 text-white">
               <CardHeader>
-                <CardTitle>Today's Transactions</CardTitle>
+                <CardTitle>Today&apos;s Transactions</CardTitle>
                 <CardDescription className="text-gray-300">Transactions processed today</CardDescription>
               </CardHeader>
               <CardContent>

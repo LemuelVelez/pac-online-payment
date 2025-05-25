@@ -134,7 +134,7 @@ export default function CashierDashboardPage() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card className="bg-slate-800/60 border-slate-700 text-white">
             <CardHeader>
-              <CardTitle>Today's Transaction Flow</CardTitle>
+              <CardTitle>Today&apos;s Transaction Flow</CardTitle>
               <CardDescription className="text-gray-300">Hourly transaction amounts</CardDescription>
             </CardHeader>
             <CardContent>
