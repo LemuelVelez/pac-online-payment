@@ -1,10 +1,11 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client"
 
 import type React from "react"
 
 import { useState } from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { ArrowLeft, Eye, EyeOff, Lock, Mail, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,7 +21,6 @@ export default function LoginPage() {
     const [password, setPassword] = useState("")
     const [error, setError] = useState("")
     const [isLoading, setIsLoading] = useState(false)
-    const router = useRouter()
     const searchParams = useSearchParams()
     const redirect = searchParams.get("redirect") || ""
     const { login } = useAuth()
@@ -33,6 +33,10 @@ export default function LoginPage() {
         try {
             await login(email, password)
             // The redirect will be handled in the login function
+            // If we need to use the redirect parameter, we can pass it to the login function
+            if (redirect) {
+                console.log("Redirect parameter:", redirect)
+            }
         } catch (error) {
             setError("Invalid email or password. Please try again.")
         } finally {

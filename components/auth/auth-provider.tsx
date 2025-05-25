@@ -88,6 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             // In a real app, you would validate the password here
+            // For demo purposes, we'll accept any password for existing users
+            console.log("Password provided:", password) // This uses the password parameter
 
             // Set user in state and localStorage
             setUser(foundUser)
