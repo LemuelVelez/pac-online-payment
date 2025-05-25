@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PaymentChart } from "@/components/dashboard/payment-chart"
 import { PaymentPieChart } from "@/components/dashboard/payment-pie-chart"
 import { DateRangePicker } from "@/components/admin/date-range-picker"
-import { Download, TrendingUp, Users, CreditCard, Clock } from "lucide-react"
+import { Download, TrendingUp, Users, CreditCard, Clock } from 'lucide-react'
 
 // Mock data for analytics
 const monthlyUsers = [
@@ -45,6 +45,14 @@ const monthlyTransactions = [
     { name: "Jul", value: 445 },
     { name: "Aug", value: 460 },
 ]
+
+// Helper function to transform data for PaymentChart
+const transformDataForChart = (data: { name: string; value: number }[]) => {
+    return data.map(item => ({
+        month: item.name,
+        amount: item.value
+    }))
+}
 
 export default function AdminAnalyticsPage() {
     return (
@@ -140,7 +148,7 @@ export default function AdminAnalyticsPage() {
                                 </CardHeader>
                                 <CardContent>
                                     <div className="h-80">
-                                        <PaymentChart data={monthlyUsers} />
+                                        <PaymentChart data={transformDataForChart(monthlyUsers)} />
                                     </div>
                                 </CardContent>
                             </Card>
@@ -264,7 +272,7 @@ export default function AdminAnalyticsPage() {
                                 </CardHeader>
                                 <CardContent>
                                     <div className="h-80">
-                                        <PaymentChart data={monthlyTransactions} />
+                                        <PaymentChart data={transformDataForChart(monthlyTransactions)} />
                                     </div>
                                 </CardContent>
                             </Card>

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import { useState } from "react"
@@ -86,8 +87,8 @@ export default function AdminUsersPage() {
         {
             accessorKey: "role",
             header: "Role",
-            cell: ({ row }: any) => {
-                const role = row.getValue("role")
+            cell: ({ row }: { row: any }) => {
+                const role = row.getValue("role") as string
                 const variant =
                     role === "Admin"
                         ? "destructive"
@@ -102,8 +103,8 @@ export default function AdminUsersPage() {
         {
             accessorKey: "status",
             header: "Status",
-            cell: ({ row }: any) => {
-                const status = row.getValue("status")
+            cell: ({ row }: { row: any }) => {
+                const status = row.getValue("status") as string
                 const variant = status === "Active" ? "default" : "secondary"
                 return <Badge variant={variant}>{status}</Badge>
             },
@@ -115,16 +116,24 @@ export default function AdminUsersPage() {
         {
             id: "actions",
             header: "Actions",
-            cell: ({ row }: any) => (
-                <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600">
-                        <Trash2 className="h-4 w-4" />
-                    </Button>
-                </div>
-            ),
+            cell: ({ row }: { row: any }) => {
+                const user = row.original
+                return (
+                    <div className="flex items-center gap-2">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => console.log("Edit user:", user.id)}>
+                            <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-500 hover:text-red-600"
+                            onClick={() => console.log("Delete user:", user.id)}
+                        >
+                            <Trash2 className="h-4 w-4" />
+                        </Button>
+                    </div>
+                )
+            },
         },
     ]
 

@@ -10,7 +10,7 @@ import { DateRangePicker } from "@/components/admin/date-range-picker"
 import { PaymentChart } from "@/components/dashboard/payment-chart"
 import { PaymentPieChart } from "@/components/dashboard/payment-pie-chart"
 import { Download, FileText, Filter, Search, Users } from "lucide-react"
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 // Mock data for financial reports
 const paymentReports = [
@@ -150,13 +150,13 @@ const outstandingBalances = [
     },
 ]
 
-// Chart data
+// Chart data - Fixed to match expected types
 const monthlyCollectionData = [
-    { name: "Jan", value: 125000 },
-    { name: "Feb", value: 182000 },
-    { name: "Mar", value: 158000 },
-    { name: "Apr", value: 220000 },
-    { name: "May", value: 285000 },
+    { month: "Jan", amount: 125000 },
+    { month: "Feb", amount: 182000 },
+    { month: "Mar", amount: 158000 },
+    { month: "Apr", amount: 220000 },
+    { month: "May", amount: 285000 },
 ]
 
 const paymentMethodDistribution = [
@@ -177,7 +177,6 @@ export default function AdminReportsPage() {
     const [searchTerm, setSearchTerm] = useState("")
     const [feeTypeFilter, setFeeTypeFilter] = useState("all")
     const [paymentMethodFilter, setPaymentMethodFilter] = useState("all")
-    const [dateRange, setDateRange] = useState({ from: null, to: null })
 
     // Filter payment reports based on search and filters
     const filteredPayments = paymentReports.filter((payment) => {
@@ -290,7 +289,7 @@ export default function AdminReportsPage() {
                                             <SelectTrigger className="w-[150px] bg-slate-700 border-slate-600">
                                                 <div className="flex items-center">
                                                     <Filter className="mr-2 h-4 w-4 text-gray-400" />
-                                                    <span className="truncate">Fee Type</span>
+                                                    <SelectValue placeholder="Fee Type" />
                                                 </div>
                                             </SelectTrigger>
                                             <SelectContent className="bg-slate-700 border-slate-600 text-white">
@@ -305,7 +304,7 @@ export default function AdminReportsPage() {
                                             <SelectTrigger className="w-[180px] bg-slate-700 border-slate-600">
                                                 <div className="flex items-center">
                                                     <Filter className="mr-2 h-4 w-4 text-gray-400" />
-                                                    <span className="truncate">Payment Method</span>
+                                                    <SelectValue placeholder="Payment Method" />
                                                 </div>
                                             </SelectTrigger>
                                             <SelectContent className="bg-slate-700 border-slate-600 text-white">
@@ -662,7 +661,7 @@ export default function AdminReportsPage() {
                                         <div className="h-2 w-full rounded-full bg-slate-600">
                                             <div className="h-2 rounded-full bg-blue-500" style={{ width: "32%" }}></div>
                                         </div>
-                                        <p className="text-xs text-gray-400">Target: < 0.5</p>\
+                                        <p className="text-xs text-gray-400">Target: {"< 0.5"}</p>
                                     </div>
 
                                     <div className="space-y-2">
@@ -671,7 +670,7 @@ export default function AdminReportsPage() {
                                         <div className="h-2 w-full rounded-full bg-slate-600">
                                             <div className="h-2 rounded-full bg-purple-500" style={{ width: "80%" }}></div>
                                         </div>
-                                        <p className="text-xs text-gray-400">Target: > 2.0</p>
+                                        <p className="text-xs text-gray-400">Target: {"> 2.0"}</p>
                                     </div>
 
                                     <div className="space-y-2">
@@ -680,7 +679,7 @@ export default function AdminReportsPage() {
                                         <div className="h-2 w-full rounded-full bg-slate-600">
                                             <div className="h-2 rounded-full bg-amber-500" style={{ width: "60%" }}></div>
                                         </div>
-                                        <p className="text-xs text-gray-400">Target: > 1.5</p>
+                                        <p className="text-xs text-gray-400">Target: {"> 1.5"}</p>
                                     </div>
                                 </div>
                             </CardContent>
