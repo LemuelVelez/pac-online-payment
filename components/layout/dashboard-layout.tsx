@@ -5,7 +5,6 @@ import type React from "react"
 import { useState } from "react"
 import { DashboardHeader } from "./dashboard-header"
 import { DashboardSidebar } from "./dashboard-sidebar"
-import { useAuth } from "@/components/auth/auth-provider"
 import { RoleGuard } from "@/components/auth/role-guard"
 import type { UserRole } from "@/components/auth/auth-provider"
 
@@ -16,7 +15,6 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children, allowedRoles }: DashboardLayoutProps) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-    const { user } = useAuth()
 
     const handleOpenSidebar = () => {
         setIsSidebarOpen(true)
