@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { BusinessOfficeLayout } from "@/components/layout/business-office-layout"
+import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -99,7 +99,7 @@ export default function BusinessOfficeReportsPage() {
     const [selectedDepartment, setSelectedDepartment] = useState("all")
 
     return (
-        <BusinessOfficeLayout>
+        <DashboardLayout>
             <div className="container mx-auto px-4 py-8">
                 <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
                     <div>
@@ -611,6 +611,6 @@ export default function BusinessOfficeReportsPage() {
                     </TabsContent>
                 </Tabs>
             </div>
-        </BusinessOfficeLayout>
+        </DashboardLayout>
     )
 }

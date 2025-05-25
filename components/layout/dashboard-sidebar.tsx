@@ -1,18 +1,11 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 "use client"
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { CreditCard, FileText, Home, LogOut, Settings, User } from "lucide-react"
+import { LogOut } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
-
-const navigation = [
-    { name: "Dashboard", href: "/dashboard", icon: Home },
-    { name: "Make Payment", href: "/make-payment", icon: CreditCard },
-    { name: "Payment History", href: "/payment-history", icon: FileText },
-    { name: "Profile", href: "/profile", icon: User },
-    { name: "Settings", href: "/settings", icon: Settings },
-]
+import { useAuth } from "@/components/auth/auth-provider"
+import { navigationConfig, roleDisplayNames } from "@/components/navigation/role-navigation"
 
 interface DashboardSidebarProps {
     isOpen?: boolean
@@ -23,6 +16,11 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
     const pathname = usePathname()
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(isOpen || false)
     const sidebarRef = useRef<HTMLDivElement>(null)
+    const { user, logout } = useAuth()
+
+    // Get navigation items based on user role
+    const navigation = user?.role ? navigationConfig[user.role] || [] : []
+    const displayName = user?.role ? roleDisplayNames[user.role] : "PAC Payment"
 
     // Sync internal state with prop
     useEffect(() => {
@@ -64,8 +62,11 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
             <div className="hidden h-screen w-64 flex-shrink-0 border-r border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 lg:block">
                 <div className="flex h-full flex-col">
                     <div className="flex h-[65px] items-center border-b border-gray-200 px-6 dark:border-gray-800">
-                        <Link href="/" className="flex items-center">
-                            <span className="text-xl font-bold text-primary">PAC Payment</span>
+                        <Link href={navigation[0]?.href || "/"} className="flex items-center">
+                            <div className="h-8 w-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-lg mr-2">
+                                P
+                            </div>
+                            <span className="text-xl font-bold text-primary">{displayName}</span>
                         </Link>
                     </div>
                     <div className="flex flex-1 flex-col overflow-y-auto">
@@ -77,8 +78,8 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                                         key={item.name}
                                         href={item.href}
                                         className={`group flex items-center rounded-md px-3 py-2 text-sm font-medium cursor-pointer ${isActive
-                                            ? "bg-primary/10 text-primary dark:bg-primary/5"
-                                            : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                                                ? "bg-primary/10 text-primary dark:bg-primary/5"
+                                                : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                                             }`}
                                         onClick={handleClose}
                                     >
@@ -94,7 +95,10 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                         </nav>
                     </div>
                     <div className="border-t border-gray-200 p-4 dark:border-gray-800">
-                        <button className="flex w-full items-center rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 cursor-pointer">
+                        <button
+                            className="flex w-full items-center rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 cursor-pointer"
+                            onClick={logout}
+                        >
                             <LogOut className="mr-3 size-5 text-gray-500 dark:text-gray-400" />
                             Sign out
                         </button>
@@ -110,8 +114,11 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
             >
                 <div className="flex h-full flex-col">
                     <div className="flex h-16 items-center border-b border-gray-200 px-6 dark:border-gray-800">
-                        <Link href="/" className="flex items-center">
-                            <span className="text-xl font-bold text-primary">PAC Payment</span>
+                        <Link href={navigation[0]?.href || "/"} className="flex items-center">
+                            <div className="h-8 w-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-lg mr-2">
+                                P
+                            </div>
+                            <span className="text-xl font-bold text-primary">{displayName}</span>
                         </Link>
                     </div>
                     <div className="flex flex-1 flex-col overflow-y-auto">
@@ -123,8 +130,8 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                                         key={item.name}
                                         href={item.href}
                                         className={`group flex items-center rounded-md px-3 py-2 text-sm font-medium cursor-pointer ${isActive
-                                            ? "bg-primary/10 text-primary dark:bg-primary/5"
-                                            : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                                                ? "bg-primary/10 text-primary dark:bg-primary/5"
+                                                : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                                             }`}
                                         onClick={handleClose}
                                     >
@@ -140,7 +147,10 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                         </nav>
                     </div>
                     <div className="border-t border-gray-200 p-4 dark:border-gray-800">
-                        <button className="flex w-full items-center rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 cursor-pointer">
+                        <button
+                            className="flex w-full items-center rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 cursor-pointer"
+                            onClick={logout}
+                        >
                             <LogOut className="mr-3 size-5 text-gray-500 dark:text-gray-400" />
                             Sign out
                         </button>

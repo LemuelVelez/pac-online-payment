@@ -4,22 +4,53 @@ import type React from "react"
 
 import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft, Eye, EyeOff, Lock, Mail, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useAuth } from "@/components/auth/auth-provider"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false)
+    const [email, setEmail] = useState("")
+    const [password, setPassword] = useState("")
+    const [error, setError] = useState("")
+    const [isLoading, setIsLoading] = useState(false)
     const router = useRouter()
+    const searchParams = useSearchParams()
+    const redirect = searchParams.get("redirect") || ""
+    const { login } = useAuth()
 
-    const handleLogin = (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
-        // In a real app, we would authenticate the user here
-        router.push("/dashboard")
+        setError("")
+        setIsLoading(true)
+
+        try {
+            await login(email, password)
+            // The redirect will be handled in the login function
+        } catch (error) {
+            setError("Invalid email or password. Please try again.")
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    // Demo credentials for quick login
+    const demoCredentials = [
+        { role: "Admin", email: "admin@example.com", password: "password" },
+        { role: "Cashier", email: "cashier@example.com", password: "password" },
+        { role: "Business Office", email: "business@example.com", password: "password" },
+        { role: "Student", email: "student@example.com", password: "password" },
+    ]
+
+    const loginAsDemoUser = (demoEmail: string) => {
+        setEmail(demoEmail)
+        setPassword("password")
     }
 
     return (
@@ -43,8 +74,12 @@ export default function LoginPage() {
 
                     <Tabs defaultValue="login" className="w-full">
                         <TabsList className="grid w-full grid-cols-2 mb-8">
-                            <TabsTrigger className="cursor-pointer" value="login">Login</TabsTrigger>
-                            <TabsTrigger className="cursor-pointer" value="register">Register</TabsTrigger>
+                            <TabsTrigger className="cursor-pointer" value="login">
+                                Login
+                            </TabsTrigger>
+                            <TabsTrigger className="cursor-pointer" value="register">
+                                Register
+                            </TabsTrigger>
                         </TabsList>
                         <TabsContent value="login">
                             <Card className="border-purple-500/20 bg-slate-800/50 backdrop-blur-sm">
@@ -53,18 +88,27 @@ export default function LoginPage() {
                                     <CardDescription>Enter your credentials to access the payment system</CardDescription>
                                 </CardHeader>
                                 <CardContent>
+                                    {error && (
+                                        <Alert className="mb-4 bg-red-500/20 border-red-500/50 text-red-200">
+                                            <AlertDescription>{error}</AlertDescription>
+                                        </Alert>
+                                    )}
+
                                     <form onSubmit={handleLogin} className="space-y-4">
                                         <div className="space-y-2">
                                             <Label htmlFor="email" className="text-white">
-                                                Student ID / Email
+                                                Email
                                             </Label>
                                             <div className="relative">
                                                 <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                                                 <Input
                                                     id="email"
-                                                    placeholder="Enter your student ID or email"
+                                                    type="email"
+                                                    placeholder="Enter your email"
                                                     className="pl-10 bg-slate-900/50 border-slate-700 text-white"
                                                     required
+                                                    value={email}
+                                                    onChange={(e) => setEmail(e.target.value)}
                                                 />
                                             </div>
                                         </div>
@@ -80,6 +124,8 @@ export default function LoginPage() {
                                                     placeholder="Enter your password"
                                                     className="pl-10 pr-10 bg-slate-900/50 border-slate-700 text-white"
                                                     required
+                                                    value={password}
+                                                    onChange={(e) => setPassword(e.target.value)}
                                                 />
                                                 <button
                                                     type="button"
@@ -108,10 +154,28 @@ export default function LoginPage() {
                                         <Button
                                             type="submit"
                                             className="w-full cursor-pointer bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                                            disabled={isLoading}
                                         >
-                                            Login
+                                            {isLoading ? "Logging in..." : "Login"}
                                         </Button>
                                     </form>
+
+                                    <div className="mt-6">
+                                        <p className="text-sm text-gray-400 mb-2">Demo Accounts (Click to fill):</p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {demoCredentials.map((cred) => (
+                                                <Button
+                                                    key={cred.role}
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="text-xs border-slate-700 text-gray-300 hover:bg-slate-700 hover:text-white"
+                                                    onClick={() => loginAsDemoUser(cred.email)}
+                                                >
+                                                    {cred.role}
+                                                </Button>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </CardContent>
                                 <CardFooter className="flex justify-center border-t border-slate-700 pt-6">
                                     <p className="text-sm text-gray-400">

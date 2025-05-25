@@ -1,553 +1,573 @@
 "use client"
 
 import { useState } from "react"
-import { AdminLayout } from "@/components/layout/admin-layout"
+import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { DateRangePicker } from "@/components/admin/date-range-picker"
 import { PaymentChart } from "@/components/dashboard/payment-chart"
 import { PaymentPieChart } from "@/components/dashboard/payment-pie-chart"
-import { Calendar, Download, FileText, Printer, Filter } from "lucide-react"
-import { DateRangePicker } from "@/components/admin/date-range-picker"
-import { ReportTable } from "@/components/admin/report-table"
+import { Download, FileText, Filter, Search, Users } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 
-// Mock data for reports
-const collectionData = [
-    { month: "Jan", amount: 120000 },
-    { month: "Feb", amount: 145000 },
-    { month: "Mar", amount: 135000 },
-    { month: "Apr", amount: 150000 },
-    { month: "May", amount: 180000 },
-    { month: "Jun", amount: 170000 },
-    { month: "Jul", amount: 190000 },
-    { month: "Aug", amount: 210000 },
-    { month: "Sep", amount: 0 },
-    { month: "Oct", amount: 0 },
-    { month: "Nov", amount: 0 },
-    { month: "Dec", amount: 0 },
-]
-
-const feeDistribution = [
-    { name: "Tuition", value: 650000 },
-    { name: "Laboratory", value: 180000 },
-    { name: "Library", value: 45000 },
-    { name: "Miscellaneous", value: 120000 },
-]
-
-const courseDistribution = [
-    { name: "BS Computer Science", value: 350000 },
-    { name: "BS Information Technology", value: 280000 },
-    { name: "BS Electronics Engineering", value: 220000 },
-    { name: "BS Business Administration", value: 180000 },
-    { name: "BS Education", value: 150000 },
-]
-
-const collectionReportData = [
+// Mock data for financial reports
+const paymentReports = [
     {
-        id: "COL-1001",
-        date: "2023-08-31",
-        paymentMethod: "Credit Card",
-        amount: 15000,
-        feeType: "Tuition",
-        course: "BS Computer Science",
+        id: "p1",
         studentId: "2023-0001",
         studentName: "John Smith",
-        cashier: "Maria Garcia",
-    },
-    {
-        id: "COL-1002",
-        date: "2023-08-30",
-        paymentMethod: "E-Wallet",
         amount: 5000,
-        feeType: "Laboratory",
-        course: "BS Information Technology",
-        studentId: "2023-0002",
-        studentName: "Sarah Williams",
-        cashier: "Maria Garcia",
-    },
-    {
-        id: "COL-1003",
-        date: "2023-08-29",
-        paymentMethod: "Bank Transfer",
-        amount: 12000,
         feeType: "Tuition",
-        course: "BS Electronics Engineering",
-        studentId: "2023-0003",
-        studentName: "David Brown",
-        cashier: "Elizabeth Wilson",
-    },
-    {
-        id: "COL-1004",
-        date: "2023-08-28",
         paymentMethod: "Credit Card",
-        amount: 8000,
-        feeType: "Tuition",
-        course: "BS Business Administration",
-        studentId: "2023-0004",
-        studentName: "Michael Miller",
-        cashier: "Elizabeth Wilson",
+        date: "2023-05-15T10:30:00",
+        status: "Completed",
     },
     {
-        id: "COL-1005",
-        date: "2023-08-27",
-        paymentMethod: "E-Wallet",
+        id: "p2",
+        studentId: "2023-0002",
+        studentName: "Maria Garcia",
         amount: 1500,
         feeType: "Library",
-        course: "BS Education",
+        paymentMethod: "Cash",
+        date: "2023-05-14T14:20:00",
+        status: "Completed",
+    },
+    {
+        id: "p3",
+        studentId: "2023-0003",
+        studentName: "Ahmed Khan",
+        amount: 3000,
+        feeType: "Laboratory",
+        paymentMethod: "Bank Transfer",
+        date: "2023-05-13T09:15:00",
+        status: "Completed",
+    },
+    {
+        id: "p4",
+        studentId: "2023-0004",
+        studentName: "Sarah Johnson",
+        amount: 5000,
+        feeType: "Tuition",
+        paymentMethod: "E-Wallet",
+        date: "2023-05-12T08:45:00",
+        status: "Completed",
+    },
+    {
+        id: "p5",
         studentId: "2023-0005",
-        studentName: "Jennifer Davis",
-        cashier: "Maria Garcia",
+        studentName: "Michael Brown",
+        amount: 2500,
+        feeType: "Miscellaneous",
+        paymentMethod: "Credit Card",
+        date: "2023-05-11T16:30:00",
+        status: "Completed",
+    },
+    {
+        id: "p6",
+        studentId: "2023-0006",
+        studentName: "Emma Wilson",
+        amount: 5000,
+        feeType: "Tuition",
+        paymentMethod: "Cash",
+        date: "2023-05-10T11:20:00",
+        status: "Completed",
+    },
+    {
+        id: "p7",
+        studentId: "2023-0007",
+        studentName: "David Lee",
+        amount: 1000,
+        feeType: "Library",
+        paymentMethod: "E-Wallet",
+        date: "2023-05-09T13:45:00",
+        status: "Completed",
+    },
+    {
+        id: "p8",
+        studentId: "2023-0008",
+        studentName: "Sophia Martinez",
+        amount: 3000,
+        feeType: "Laboratory",
+        paymentMethod: "Bank Transfer",
+        date: "2023-05-08T10:00:00",
+        status: "Completed",
     },
 ]
 
-const outstandingBalanceData = [
+// Mock data for outstanding balances
+const outstandingBalances = [
     {
-        id: "BAL-1001",
-        studentId: "2023-0006",
-        studentName: "James Moore",
+        id: "b1",
+        studentId: "2023-0009",
+        studentName: "James Taylor",
         course: "BS Computer Science",
         totalFees: 35000,
         amountPaid: 15000,
         balance: 20000,
-        dueDate: "2023-09-30",
-        status: "Partial",
+        dueDate: "2023-06-15T00:00:00",
     },
     {
-        id: "BAL-1002",
-        studentId: "2023-0007",
-        studentName: "Patricia Taylor",
+        id: "b2",
+        studentId: "2023-0010",
+        studentName: "Olivia Anderson",
         course: "BS Information Technology",
         totalFees: 32000,
-        amountPaid: 0,
-        balance: 32000,
-        dueDate: "2023-09-30",
-        status: "Unpaid",
-    },
-    {
-        id: "BAL-1003",
-        studentId: "2023-0008",
-        studentName: "Robert Johnson",
-        course: "BS Electronics Engineering",
-        totalFees: 38500,
         amountPaid: 10000,
-        balance: 28500,
-        dueDate: "2023-09-30",
-        status: "Partial",
+        balance: 22000,
+        dueDate: "2023-06-15T00:00:00",
     },
     {
-        id: "BAL-1004",
-        studentId: "2023-0009",
-        studentName: "Elizabeth Wilson",
+        id: "b3",
+        studentId: "2023-0011",
+        studentName: "William Garcia",
         course: "BS Business Administration",
-        totalFees: 28500,
-        amountPaid: 5000,
-        balance: 23500,
-        dueDate: "2023-09-30",
-        status: "Partial",
+        totalFees: 28000,
+        amountPaid: 8000,
+        balance: 20000,
+        dueDate: "2023-06-15T00:00:00",
     },
     {
-        id: "BAL-1005",
-        studentId: "2023-0010",
-        studentName: "Michael Miller",
+        id: "b4",
+        studentId: "2023-0012",
+        studentName: "Ava Martinez",
         course: "BS Education",
         totalFees: 26000,
-        amountPaid: 0,
-        balance: 26000,
-        dueDate: "2023-09-30",
-        status: "Unpaid",
+        amountPaid: 6000,
+        balance: 20000,
+        dueDate: "2023-06-15T00:00:00",
+    },
+    {
+        id: "b5",
+        studentId: "2023-0013",
+        studentName: "Ethan Johnson",
+        course: "BS Computer Science",
+        totalFees: 35000,
+        amountPaid: 5000,
+        balance: 30000,
+        dueDate: "2023-06-15T00:00:00",
     },
 ]
 
+// Chart data
+const monthlyCollectionData = [
+    { name: "Jan", value: 125000 },
+    { name: "Feb", value: 182000 },
+    { name: "Mar", value: 158000 },
+    { name: "Apr", value: 220000 },
+    { name: "May", value: 285000 },
+]
+
+const paymentMethodDistribution = [
+    { name: "Credit Card", value: 45 },
+    { name: "Cash", value: 25 },
+    { name: "E-Wallet", value: 20 },
+    { name: "Bank Transfer", value: 10 },
+]
+
+const feeTypeDistribution = [
+    { name: "Tuition", value: 65 },
+    { name: "Laboratory", value: 15 },
+    { name: "Library", value: 10 },
+    { name: "Miscellaneous", value: 10 },
+]
+
 export default function AdminReportsPage() {
-    const [selectedPeriod, setSelectedPeriod] = useState("monthly")
-    const [selectedCourse, setSelectedCourse] = useState("all")
-    const [selectedFeeType, setSelectedFeeType] = useState("all")
-    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("all")
+    const [searchTerm, setSearchTerm] = useState("")
+    const [feeTypeFilter, setFeeTypeFilter] = useState("all")
+    const [paymentMethodFilter, setPaymentMethodFilter] = useState("all")
+    const [dateRange, setDateRange] = useState({ from: null, to: null })
+
+    // Filter payment reports based on search and filters
+    const filteredPayments = paymentReports.filter((payment) => {
+        const matchesSearch =
+            payment.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            payment.studentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            payment.id.toLowerCase().includes(searchTerm.toLowerCase())
+
+        const matchesFeeType = feeTypeFilter === "all" || payment.feeType.toLowerCase() === feeTypeFilter.toLowerCase()
+        const matchesPaymentMethod =
+            paymentMethodFilter === "all" ||
+            payment.paymentMethod.toLowerCase().replace(" ", "-") === paymentMethodFilter.toLowerCase()
+
+        return matchesSearch && matchesFeeType && matchesPaymentMethod
+    })
 
     return (
-        <AdminLayout>
+        <DashboardLayout allowedRoles={["admin"]}>
             <div className="container mx-auto px-4 py-8">
                 <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold text-white">Reports</h1>
-                        <p className="text-gray-300">Generate and view financial reports</p>
+                        <h1 className="text-2xl font-bold text-white">Financial Reports</h1>
+                        <p className="text-gray-300">View and analyze financial data</p>
                     </div>
                     <div className="mt-4 flex space-x-3 md:mt-0">
                         <DateRangePicker />
-                        <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
-                            <Printer className="mr-2 h-4 w-4" />
-                            Print
-                        </Button>
                         <Button className="bg-primary hover:bg-primary/90">
                             <Download className="mr-2 h-4 w-4" />
-                            Export
+                            Export Report
                         </Button>
                     </div>
                 </div>
 
-                <Tabs defaultValue="collections" className="w-full">
-                    <TabsList className="bg-slate-800 border-slate-700 mb-8 grid w-full grid-cols-3 lg:max-w-[600px]">
-                        <TabsTrigger value="collections" className="cursor-pointer">
-                            Collections
+                <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-4">
+                    <Card className="bg-slate-800/60 border-slate-700 text-white">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">₱10,500,000</div>
+                            <p className="text-xs text-gray-400 mt-1">Current Academic Year</p>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-slate-800/60 border-slate-700 text-white">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-medium">Total Transactions</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">2,345</div>
+                            <p className="text-xs text-gray-400 mt-1">Current Academic Year</p>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-slate-800/60 border-slate-700 text-white">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-medium">Outstanding Balance</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">₱850,000</div>
+                            <p className="text-xs text-gray-400 mt-1">
+                                <Users className="inline h-3 w-3 text-amber-500 mr-1" />
+                                45 students with balance
+                            </p>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-slate-800/60 border-slate-700 text-white">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-medium">Average Payment</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">₱4,478</div>
+                            <p className="text-xs text-gray-400 mt-1">Per transaction</p>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <Tabs defaultValue="payment-history" className="w-full">
+                    <TabsList className="bg-slate-800 border-slate-700 mb-8 grid w-full grid-cols-4 lg:max-w-[800px]">
+                        <TabsTrigger value="payment-history" className="cursor-pointer">
+                            Payment History
                         </TabsTrigger>
-                        <TabsTrigger value="outstanding" className="cursor-pointer">
+                        <TabsTrigger value="revenue-analysis" className="cursor-pointer">
+                            Revenue Analysis
+                        </TabsTrigger>
+                        <TabsTrigger value="outstanding-balances" className="cursor-pointer">
                             Outstanding Balances
                         </TabsTrigger>
-                        <TabsTrigger value="analytics" className="cursor-pointer">
-                            Analytics
+                        <TabsTrigger value="financial-summary" className="cursor-pointer">
+                            Financial Summary
                         </TabsTrigger>
                     </TabsList>
 
-                    <TabsContent value="collections">
-                        <Card className="bg-slate-800/60 border-slate-700 text-white mb-8">
-                            <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                <div>
-                                    <CardTitle>Collection Report</CardTitle>
-                                    <CardDescription className="text-gray-300">
-                                        Summary of all collections for the selected period
-                                    </CardDescription>
-                                </div>
-                                <div className="flex space-x-2">
-                                    <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                                        <SelectTrigger className="w-[150px] bg-slate-700 border-slate-600">
-                                            <SelectValue placeholder="Select period" />
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                            <SelectItem value="weekly">Weekly</SelectItem>
-                                            <SelectItem value="monthly">Monthly</SelectItem>
-                                            <SelectItem value="quarterly">Quarterly</SelectItem>
-                                            <SelectItem value="yearly">Yearly</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="h-80">
-                                    <PaymentChart data={collectionData} />
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-8">
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader className="pb-2">
-                                    <CardTitle>Fee Distribution</CardTitle>
-                                    <CardDescription className="text-gray-300">Breakdown of collections by fee type</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="h-80">
-                                        <PaymentPieChart data={feeDistribution} />
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader className="pb-2">
-                                    <CardTitle>Course Distribution</CardTitle>
-                                    <CardDescription className="text-gray-300">Breakdown of collections by course</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="h-80">
-                                        <PaymentPieChart data={courseDistribution} />
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        <Card className="bg-slate-800/60 border-slate-700 text-white">
-                            <CardHeader className="flex flex-row items-center justify-between">
-                                <div>
-                                    <CardTitle>Detailed Collection Report</CardTitle>
-                                    <CardDescription className="text-gray-300">Detailed list of all collections</CardDescription>
-                                </div>
-                                <div className="flex space-x-2">
-                                    <Select value={selectedCourse} onValueChange={setSelectedCourse}>
-                                        <SelectTrigger className="w-[180px] bg-slate-700 border-slate-600">
-                                            <div className="flex items-center">
-                                                <Filter className="mr-2 h-4 w-4 text-gray-400" />
-                                                <span className="truncate">Course</span>
-                                            </div>
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                            <SelectItem value="all">All Courses</SelectItem>
-                                            <SelectItem value="bscs">BS Computer Science</SelectItem>
-                                            <SelectItem value="bsit">BS Information Technology</SelectItem>
-                                            <SelectItem value="bsece">BS Electronics Engineering</SelectItem>
-                                            <SelectItem value="bsba">BS Business Administration</SelectItem>
-                                            <SelectItem value="bsed">BS Education</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    <Select value={selectedFeeType} onValueChange={setSelectedFeeType}>
-                                        <SelectTrigger className="w-[180px] bg-slate-700 border-slate-600">
-                                            <div className="flex items-center">
-                                                <Filter className="mr-2 h-4 w-4 text-gray-400" />
-                                                <span className="truncate">Fee Type</span>
-                                            </div>
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                            <SelectItem value="all">All Fee Types</SelectItem>
-                                            <SelectItem value="tuition">Tuition</SelectItem>
-                                            <SelectItem value="laboratory">Laboratory</SelectItem>
-                                            <SelectItem value="library">Library</SelectItem>
-                                            <SelectItem value="miscellaneous">Miscellaneous</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <ReportTable
-                                    data={collectionReportData}
-                                    columns={[
-                                        { header: "Reference ID", accessor: "id" },
-                                        { header: "Date", accessor: "date" },
-                                        { header: "Student ID", accessor: "studentId" },
-                                        { header: "Student Name", accessor: "studentName" },
-                                        { header: "Course", accessor: "course" },
-                                        { header: "Fee Type", accessor: "feeType" },
-                                        { header: "Payment Method", accessor: "paymentMethod" },
-                                        { header: "Amount", accessor: "amount", format: (value) => `₱${value.toLocaleString()}` },
-                                        { header: "Cashier", accessor: "cashier" },
-                                    ]}
-                                />
-                            </CardContent>
-                        </Card>
-                    </TabsContent>
-
-                    <TabsContent value="outstanding">
-                        <Card className="bg-slate-800/60 border-slate-700 text-white mb-8">
-                            <CardHeader className="flex flex-row items-center justify-between">
-                                <div>
-                                    <CardTitle>Outstanding Balances</CardTitle>
-                                    <CardDescription className="text-gray-300">
-                                        Students with unpaid or partially paid fees
-                                    </CardDescription>
-                                </div>
-                                <div className="flex space-x-2">
-                                    <Select value={selectedCourse} onValueChange={setSelectedCourse}>
-                                        <SelectTrigger className="w-[180px] bg-slate-700 border-slate-600">
-                                            <div className="flex items-center">
-                                                <Filter className="mr-2 h-4 w-4 text-gray-400" />
-                                                <span className="truncate">Course</span>
-                                            </div>
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                            <SelectItem value="all">All Courses</SelectItem>
-                                            <SelectItem value="bscs">BS Computer Science</SelectItem>
-                                            <SelectItem value="bsit">BS Information Technology</SelectItem>
-                                            <SelectItem value="bsece">BS Electronics Engineering</SelectItem>
-                                            <SelectItem value="bsba">BS Business Administration</SelectItem>
-                                            <SelectItem value="bsed">BS Education</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <ReportTable
-                                    data={outstandingBalanceData}
-                                    columns={[
-                                        { header: "Student ID", accessor: "studentId" },
-                                        { header: "Student Name", accessor: "studentName" },
-                                        { header: "Course", accessor: "course" },
-                                        { header: "Total Fees", accessor: "totalFees", format: (value) => `₱${value.toLocaleString()}` },
-                                        { header: "Amount Paid", accessor: "amountPaid", format: (value) => `₱${value.toLocaleString()}` },
-                                        { header: "Balance", accessor: "balance", format: (value) => `₱${value.toLocaleString()}` },
-                                        { header: "Due Date", accessor: "dueDate" },
-                                        {
-                                            header: "Status",
-                                            accessor: "status",
-                                            format: (value) => {
-                                                const statusClasses = {
-                                                    Unpaid: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-500",
-                                                    Partial: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-500",
-                                                    Paid: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-500",
-                                                }
-                                                return (
-                                                    <span
-                                                        className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${statusClasses[value as keyof typeof statusClasses]
-                                                            }`}
-                                                    >
-                                                        {value}
-                                                    </span>
-                                                )
-                                            },
-                                        },
-                                    ]}
-                                />
-                            </CardContent>
-                        </Card>
-
-                        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>Summary</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="space-y-4">
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-300">Total Students with Balance:</span>
-                                            <span className="font-medium">5</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-300">Total Outstanding Amount:</span>
-                                            <span className="font-medium">₱130,000.00</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-300">Fully Unpaid:</span>
-                                            <span className="font-medium">2</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-300">Partially Paid:</span>
-                                            <span className="font-medium">3</span>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="bg-slate-800/60 border-slate-700 text-white md:col-span-2">
-                                <CardHeader>
-                                    <CardTitle>Actions</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                        <Button className="bg-primary hover:bg-primary/90">
-                                            <FileText className="mr-2 h-4 w-4" />
-                                            Generate Payment Reminders
-                                        </Button>
-                                        <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
-                                            <Calendar className="mr-2 h-4 w-4" />
-                                            Schedule Follow-ups
-                                        </Button>
-                                        <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
-                                            <Download className="mr-2 h-4 w-4" />
-                                            Export to Excel
-                                        </Button>
-                                        <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
-                                            <Printer className="mr-2 h-4 w-4" />
-                                            Print Report
-                                        </Button>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-                    </TabsContent>
-
-                    <TabsContent value="analytics">
-                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-8">
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                    <div>
-                                        <CardTitle>Collection Trends</CardTitle>
-                                        <CardDescription className="text-gray-300">Monthly collection trends for the year</CardDescription>
-                                    </div>
-                                    <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                                        <SelectTrigger className="w-[150px] bg-slate-700 border-slate-600">
-                                            <SelectValue placeholder="Select period" />
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                            <SelectItem value="weekly">Weekly</SelectItem>
-                                            <SelectItem value="monthly">Monthly</SelectItem>
-                                            <SelectItem value="quarterly">Quarterly</SelectItem>
-                                            <SelectItem value="yearly">Yearly</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="h-80">
-                                        <PaymentChart data={collectionData} />
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                    <div>
-                                        <CardTitle>Payment Method Analysis</CardTitle>
-                                        <CardDescription className="text-gray-300">
-                                            Distribution of payments by payment method
-                                        </CardDescription>
-                                    </div>
-                                    <Select value={selectedPaymentMethod} onValueChange={setSelectedPaymentMethod}>
-                                        <SelectTrigger className="w-[180px] bg-slate-700 border-slate-600">
-                                            <div className="flex items-center">
-                                                <Filter className="mr-2 h-4 w-4 text-gray-400" />
-                                                <span className="truncate">Payment Method</span>
-                                            </div>
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                            <SelectItem value="all">All Methods</SelectItem>
-                                            <SelectItem value="credit-card">Credit Card</SelectItem>
-                                            <SelectItem value="e-wallet">E-Wallet</SelectItem>
-                                            <SelectItem value="bank-transfer">Bank Transfer</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="h-80">
-                                        <PaymentPieChart
-                                            data={[
-                                                { name: "Credit Card", value: 450000 },
-                                                { name: "E-Wallet", value: 320000 },
-                                                { name: "Bank Transfer", value: 230000 },
-                                            ]}
+                    <TabsContent value="payment-history">
+                        <Card className="bg-slate-800/60 border-slate-700 text-white mb-6">
+                            <CardContent className="p-6">
+                                <div className="flex flex-col space-y-4 md:flex-row md:items-center md:space-x-4 md:space-y-0">
+                                    <div className="relative flex-1">
+                                        <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                                        <Input
+                                            placeholder="Search by ID, student name..."
+                                            className="pl-10 bg-slate-700 border-slate-600"
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
                                         />
                                     </div>
-                                </CardContent>
-                            </Card>
-                        </div>
+                                    <div className="flex space-x-4">
+                                        <Select value={feeTypeFilter} onValueChange={setFeeTypeFilter}>
+                                            <SelectTrigger className="w-[150px] bg-slate-700 border-slate-600">
+                                                <div className="flex items-center">
+                                                    <Filter className="mr-2 h-4 w-4 text-gray-400" />
+                                                    <span className="truncate">Fee Type</span>
+                                                </div>
+                                            </SelectTrigger>
+                                            <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                                                <SelectItem value="all">All Fee Types</SelectItem>
+                                                <SelectItem value="tuition">Tuition</SelectItem>
+                                                <SelectItem value="laboratory">Laboratory</SelectItem>
+                                                <SelectItem value="library">Library</SelectItem>
+                                                <SelectItem value="miscellaneous">Miscellaneous</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
+                                            <SelectTrigger className="w-[180px] bg-slate-700 border-slate-600">
+                                                <div className="flex items-center">
+                                                    <Filter className="mr-2 h-4 w-4 text-gray-400" />
+                                                    <span className="truncate">Payment Method</span>
+                                                </div>
+                                            </SelectTrigger>
+                                            <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                                                <SelectItem value="all">All Methods</SelectItem>
+                                                <SelectItem value="credit-card">Credit Card</SelectItem>
+                                                <SelectItem value="e-wallet">E-Wallet</SelectItem>
+                                                <SelectItem value="bank-transfer">Bank Transfer</SelectItem>
+                                                <SelectItem value="cash">Cash</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
 
+                        <Card className="bg-slate-800/60 border-slate-700 text-white">
+                            <CardHeader>
+                                <CardTitle>Payment Transactions</CardTitle>
+                                <CardDescription className="text-gray-300">
+                                    Showing {filteredPayments.length} payment records
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="rounded-lg border border-slate-700">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                            <thead>
+                                                <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
+                                                    <th className="px-6 py-3">Transaction ID</th>
+                                                    <th className="px-6 py-3">Date</th>
+                                                    <th className="px-6 py-3">Student</th>
+                                                    <th className="px-6 py-3">Fee Type</th>
+                                                    <th className="px-6 py-3">Amount</th>
+                                                    <th className="px-6 py-3">Payment Method</th>
+                                                    <th className="px-6 py-3">Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-700">
+                                                {filteredPayments.map((payment) => (
+                                                    <tr key={payment.id} className="text-sm">
+                                                        <td className="whitespace-nowrap px-6 py-4 font-medium">{payment.id}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4">
+                                                            {new Date(payment.date).toLocaleDateString()}
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <div>
+                                                                <p className="font-medium">{payment.studentName}</p>
+                                                                <p className="text-xs text-gray-400">{payment.studentId}</p>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4">{payment.feeType}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4">₱{payment.amount.toLocaleString()}</td>
+                                                        <td className="px-6 py-4">{payment.paymentMethod}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4">
+                                                            <span className="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-500">
+                                                                {payment.status}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    <TabsContent value="revenue-analysis">
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                             <Card className="bg-slate-800/60 border-slate-700 text-white">
                                 <CardHeader>
-                                    <CardTitle>Collection Rate Analysis</CardTitle>
-                                    <CardDescription className="text-gray-300">Analysis of collection rates by course</CardDescription>
+                                    <CardTitle>Monthly Revenue</CardTitle>
+                                    <CardDescription className="text-gray-300">Revenue trend over time</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="h-80">
+                                        <PaymentChart data={monthlyCollectionData} />
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="bg-slate-800/60 border-slate-700 text-white">
+                                <CardHeader>
+                                    <CardTitle>Revenue by Payment Method</CardTitle>
+                                    <CardDescription className="text-gray-300">Distribution by payment method</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="h-80">
+                                        <PaymentPieChart data={paymentMethodDistribution} />
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+                            <Card className="bg-slate-800/60 border-slate-700 text-white">
+                                <CardHeader>
+                                    <CardTitle>Revenue by Fee Type</CardTitle>
+                                    <CardDescription className="text-gray-300">Distribution by fee category</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="h-80">
+                                        <PaymentPieChart data={feeTypeDistribution} />
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="bg-slate-800/60 border-slate-700 text-white">
+                                <CardHeader>
+                                    <CardTitle>Revenue Metrics</CardTitle>
+                                    <CardDescription className="text-gray-300">Key financial indicators</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-6">
                                         <div>
-                                            <div className="mb-1 flex justify-between">
-                                                <span>BS Computer Science</span>
-                                                <span>85%</span>
+                                            <div className="flex justify-between mb-1">
+                                                <span className="text-sm text-gray-400">Revenue Growth (YoY)</span>
+                                                <span className="text-sm font-medium text-green-500">+12.5%</span>
                                             </div>
                                             <div className="h-2 w-full rounded-full bg-slate-600">
-                                                <div className="h-2 rounded-full bg-green-500" style={{ width: "85%" }}></div>
+                                                <div className="h-2 rounded-full bg-green-500" style={{ width: "75%" }}></div>
                                             </div>
                                         </div>
+
                                         <div>
-                                            <div className="mb-1 flex justify-between">
-                                                <span>BS Information Technology</span>
-                                                <span>78%</span>
+                                            <div className="flex justify-between mb-1">
+                                                <span className="text-sm text-gray-400">Collection Rate</span>
+                                                <span className="text-sm font-medium">92.5%</span>
                                             </div>
                                             <div className="h-2 w-full rounded-full bg-slate-600">
-                                                <div className="h-2 rounded-full bg-green-500" style={{ width: "78%" }}></div>
+                                                <div className="h-2 rounded-full bg-blue-500" style={{ width: "92.5%" }}></div>
                                             </div>
                                         </div>
+
                                         <div>
-                                            <div className="mb-1 flex justify-between">
-                                                <span>BS Electronics Engineering</span>
-                                                <span>72%</span>
+                                            <div className="flex justify-between mb-1">
+                                                <span className="text-sm text-gray-400">Operating Margin</span>
+                                                <span className="text-sm font-medium">28.3%</span>
                                             </div>
                                             <div className="h-2 w-full rounded-full bg-slate-600">
-                                                <div className="h-2 rounded-full bg-green-500" style={{ width: "72%" }}></div>
+                                                <div className="h-2 rounded-full bg-purple-500" style={{ width: "28.3%" }}></div>
                                             </div>
                                         </div>
+
                                         <div>
-                                            <div className="mb-1 flex justify-between">
-                                                <span>BS Business Administration</span>
-                                                <span>65%</span>
+                                            <div className="flex justify-between mb-1">
+                                                <span className="text-sm text-gray-400">Cost per Student</span>
+                                                <span className="text-sm font-medium">₱32,450</span>
                                             </div>
                                             <div className="h-2 w-full rounded-full bg-slate-600">
                                                 <div className="h-2 rounded-full bg-amber-500" style={{ width: "65%" }}></div>
                                             </div>
                                         </div>
-                                        <div>
-                                            <div className="mb-1 flex justify-between">
-                                                <span>BS Education</span>
-                                                <span>58%</span>
-                                            </div>
-                                            <div className="h-2 w-full rounded-full bg-slate-600">
-                                                <div className="h-2 rounded-full bg-amber-500" style={{ width: "58%" }}></div>
-                                            </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="outstanding-balances">
+                        <Card className="bg-slate-800/60 border-slate-700 text-white">
+                            <CardHeader>
+                                <CardTitle>Outstanding Balances</CardTitle>
+                                <CardDescription className="text-gray-300">Students with unpaid or partially paid fees</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="rounded-lg border border-slate-700">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                            <thead>
+                                                <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
+                                                    <th className="px-6 py-3">Student ID</th>
+                                                    <th className="px-6 py-3">Student Name</th>
+                                                    <th className="px-6 py-3">Course</th>
+                                                    <th className="px-6 py-3">Total Fees</th>
+                                                    <th className="px-6 py-3">Amount Paid</th>
+                                                    <th className="px-6 py-3">Balance</th>
+                                                    <th className="px-6 py-3">Due Date</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-700">
+                                                {outstandingBalances.map((student) => (
+                                                    <tr key={student.id} className="text-sm">
+                                                        <td className="whitespace-nowrap px-6 py-4 font-medium">{student.studentId}</td>
+                                                        <td className="px-6 py-4">{student.studentName}</td>
+                                                        <td className="px-6 py-4">{student.course}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4">₱{student.totalFees.toLocaleString()}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4">₱{student.amountPaid.toLocaleString()}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 font-medium text-amber-500">
+                                                            ₱{student.balance.toLocaleString()}
+                                                        </td>
+                                                        <td className="whitespace-nowrap px-6 py-4">
+                                                            {new Date(student.dueDate).toLocaleDateString()}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+                                    <Card className="bg-slate-700/50 border-slate-600">
+                                        <CardContent className="p-4">
+                                            <p className="text-sm text-gray-400">Total Outstanding</p>
+                                            <p className="text-2xl font-bold">₱850,000</p>
+                                        </CardContent>
+                                    </Card>
+                                    <Card className="bg-slate-700/50 border-slate-600">
+                                        <CardContent className="p-4">
+                                            <p className="text-sm text-gray-400">Average Balance</p>
+                                            <p className="text-2xl font-bold">₱18,889</p>
+                                        </CardContent>
+                                    </Card>
+                                    <Card className="bg-slate-700/50 border-slate-600">
+                                        <CardContent className="p-4">
+                                            <p className="text-sm text-gray-400">Students with Balance</p>
+                                            <p className="text-2xl font-bold">45</p>
+                                        </CardContent>
+                                    </Card>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    <TabsContent value="financial-summary">
+                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                            <Card className="bg-slate-800/60 border-slate-700 text-white">
+                                <CardHeader>
+                                    <CardTitle>Financial Summary</CardTitle>
+                                    <CardDescription className="text-gray-300">Current academic year overview</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="space-y-4">
+                                        <div className="flex justify-between border-b border-slate-700 pb-2">
+                                            <span className="font-medium">Total Revenue</span>
+                                            <span>₱10,500,000</span>
+                                        </div>
+                                        <div className="flex justify-between border-b border-slate-700 pb-2">
+                                            <span className="font-medium">Total Expenses</span>
+                                            <span>₱7,350,000</span>
+                                        </div>
+                                        <div className="flex justify-between border-b border-slate-700 pb-2">
+                                            <span className="font-medium">Net Income</span>
+                                            <span className="text-green-500">₱3,150,000</span>
+                                        </div>
+                                        <div className="flex justify-between border-b border-slate-700 pb-2">
+                                            <span className="font-medium">Outstanding Balances</span>
+                                            <span className="text-amber-500">₱850,000</span>
+                                        </div>
+                                        <div className="flex justify-between border-b border-slate-700 pb-2">
+                                            <span className="font-medium">Collection Rate</span>
+                                            <span>92.5%</span>
+                                        </div>
+                                        <div className="flex justify-between border-b border-slate-700 pb-2">
+                                            <span className="font-medium">Operating Margin</span>
+                                            <span>28.3%</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="font-medium">Total Students</span>
+                                            <span>1,250</span>
                                         </div>
                                     </div>
                                 </CardContent>
@@ -555,48 +575,119 @@ export default function AdminReportsPage() {
 
                             <Card className="bg-slate-800/60 border-slate-700 text-white">
                                 <CardHeader>
-                                    <CardTitle>Key Insights</CardTitle>
-                                    <CardDescription className="text-gray-300">
-                                        Important insights from the financial data
-                                    </CardDescription>
+                                    <CardTitle>Available Reports</CardTitle>
+                                    <CardDescription className="text-gray-300">Download detailed financial reports</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-4">
-                                        <div className="rounded-lg bg-blue-500/20 p-4 text-blue-200">
-                                            <h3 className="mb-2 font-medium">Collection Growth</h3>
-                                            <p className="text-sm">
-                                                Collections have increased by 15% compared to the same period last year, with the highest growth
-                                                in BS Computer Science program.
-                                            </p>
+                                        <div className="flex items-center justify-between rounded-lg bg-slate-700/50 p-4">
+                                            <div className="flex items-center">
+                                                <FileText className="mr-3 h-5 w-5 text-blue-500" />
+                                                <div>
+                                                    <p className="font-medium">Income Statement</p>
+                                                    <p className="text-xs text-gray-400">Current Academic Year</p>
+                                                </div>
+                                            </div>
+                                            <Button size="sm" className="bg-primary hover:bg-primary/90">
+                                                <Download className="mr-2 h-4 w-4" />
+                                                Download
+                                            </Button>
                                         </div>
-                                        <div className="rounded-lg bg-green-500/20 p-4 text-green-200">
-                                            <h3 className="mb-2 font-medium">Payment Method Shift</h3>
-                                            <p className="text-sm">
-                                                E-wallet payments have increased by 25% this year, indicating a shift in student payment
-                                                preferences from traditional methods.
-                                            </p>
+
+                                        <div className="flex items-center justify-between rounded-lg bg-slate-700/50 p-4">
+                                            <div className="flex items-center">
+                                                <FileText className="mr-3 h-5 w-5 text-green-500" />
+                                                <div>
+                                                    <p className="font-medium">Balance Sheet</p>
+                                                    <p className="text-xs text-gray-400">As of May 31, 2023</p>
+                                                </div>
+                                            </div>
+                                            <Button size="sm" className="bg-primary hover:bg-primary/90">
+                                                <Download className="mr-2 h-4 w-4" />
+                                                Download
+                                            </Button>
                                         </div>
-                                        <div className="rounded-lg bg-amber-500/20 p-4 text-amber-200">
-                                            <h3 className="mb-2 font-medium">Outstanding Balance Alert</h3>
-                                            <p className="text-sm">
-                                                BS Education program has the highest percentage of outstanding balances at 42%. Consider
-                                                implementing targeted payment reminders.
-                                            </p>
+
+                                        <div className="flex items-center justify-between rounded-lg bg-slate-700/50 p-4">
+                                            <div className="flex items-center">
+                                                <FileText className="mr-3 h-5 w-5 text-purple-500" />
+                                                <div>
+                                                    <p className="font-medium">Cash Flow Statement</p>
+                                                    <p className="text-xs text-gray-400">Current Academic Year</p>
+                                                </div>
+                                            </div>
+                                            <Button size="sm" className="bg-primary hover:bg-primary/90">
+                                                <Download className="mr-2 h-4 w-4" />
+                                                Download
+                                            </Button>
                                         </div>
-                                        <div className="rounded-lg bg-purple-500/20 p-4 text-purple-200">
-                                            <h3 className="mb-2 font-medium">Collection Forecast</h3>
-                                            <p className="text-sm">
-                                                Based on current trends, we project a 10% increase in total collections by the end of the
-                                                semester.
-                                            </p>
+
+                                        <div className="flex items-center justify-between rounded-lg bg-slate-700/50 p-4">
+                                            <div className="flex items-center">
+                                                <FileText className="mr-3 h-5 w-5 text-amber-500" />
+                                                <div>
+                                                    <p className="font-medium">Accounts Receivable Aging</p>
+                                                    <p className="text-xs text-gray-400">As of May 31, 2023</p>
+                                                </div>
+                                            </div>
+                                            <Button size="sm" className="bg-primary hover:bg-primary/90">
+                                                <Download className="mr-2 h-4 w-4" />
+                                                Download
+                                            </Button>
                                         </div>
                                     </div>
                                 </CardContent>
                             </Card>
                         </div>
+
+                        <Card className="bg-slate-800/60 border-slate-700 text-white mt-6">
+                            <CardHeader>
+                                <CardTitle>Financial Metrics</CardTitle>
+                                <CardDescription className="text-gray-300">Key performance indicators</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+                                    <div className="space-y-2">
+                                        <p className="text-sm text-gray-400">Return on Investment</p>
+                                        <p className="text-2xl font-bold">18.5%</p>
+                                        <div className="h-2 w-full rounded-full bg-slate-600">
+                                            <div className="h-2 rounded-full bg-green-500" style={{ width: "75%" }}></div>
+                                        </div>
+                                        <p className="text-xs text-gray-400">Target: 15%</p>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <p className="text-sm text-gray-400">Debt-to-Equity Ratio</p>
+                                        <p className="text-2xl font-bold">0.32</p>
+                                        <div className="h-2 w-full rounded-full bg-slate-600">
+                                            <div className="h-2 rounded-full bg-blue-500" style={{ width: "32%" }}></div>
+                                        </div>
+                                        <p className="text-xs text-gray-400">Target: < 0.5</p>\
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <p className="text-sm text-gray-400">Current Ratio</p>
+                                        <p className="text-2xl font-bold">2.4</p>
+                                        <div className="h-2 w-full rounded-full bg-slate-600">
+                                            <div className="h-2 rounded-full bg-purple-500" style={{ width: "80%" }}></div>
+                                        </div>
+                                        <p className="text-xs text-gray-400">Target: > 2.0</p>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <p className="text-sm text-gray-400">Asset Turnover</p>
+                                        <p className="text-2xl font-bold">1.8</p>
+                                        <div className="h-2 w-full rounded-full bg-slate-600">
+                                            <div className="h-2 rounded-full bg-amber-500" style={{ width: "60%" }}></div>
+                                        </div>
+                                        <p className="text-xs text-gray-400">Target: > 1.5</p>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
                     </TabsContent>
                 </Tabs>
             </div>
-        </AdminLayout>
+        </DashboardLayout>
     )
 }

@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState } from "react"
-import { AdminLayout } from "@/components/layout/admin-layout"
+import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -35,7 +35,7 @@ export default function AdminSettingsPage() {
     }
 
     return (
-        <AdminLayout>
+        <DashboardLayout>
             <div className="container mx-auto px-4 py-8">
                 <div className="mb-8">
                     <h1 className="text-2xl font-bold text-white">System Settings</h1>
@@ -571,6 +571,6 @@ export default function AdminSettingsPage() {
                     </TabsContent>
                 </Tabs>
             </div>
-        </AdminLayout>
+        </DashboardLayout>
     )
 }

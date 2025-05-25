@@ -1,307 +1,330 @@
 "use client"
 
-import type React from "react"
-
 import { useState } from "react"
-import { CashierLayout } from "@/components/layout/cashier-layout"
+import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { PaymentForm } from "@/components/payment/payment-form"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { CreditCard, Wallet, Search, CheckCircle, Loader2 } from "lucide-react"
+import { Separator } from "@/components/ui/separator"
 import { PaymentReceipt } from "@/components/payment/payment-receipt"
-import { Check, Search, User, BookOpen, CreditCard, FileText } from "lucide-react"
-
-// Mock data for student information
-const studentData = {
-    id: "2023-0001",
-    name: "John Smith",
-    course: "BS Computer Science",
-    yearLevel: "Third Year",
-    balance: 35000,
-    paid: 10000,
-    remaining: 25000,
-    fees: [
-        { type: "Tuition Fee", amount: 25000, paid: 10000, remaining: 15000 },
-        { type: "Laboratory Fee", amount: 5000, paid: 0, remaining: 5000 },
-        { type: "Library Fee", amount: 1500, paid: 0, remaining: 1500 },
-        { type: "Miscellaneous Fee", amount: 3500, paid: 0, remaining: 3500 },
-    ],
-}
 
 export default function CashierPaymentsPage() {
-    const [searchQuery, setSearchQuery] = useState("")
-    const [isStudentFound, setIsStudentFound] = useState(false)
-    const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false)
-    const [isReceiptDialogOpen, setIsReceiptDialogOpen] = useState(false)
-    const [selectedFeeType, setSelectedFeeType] = useState("")
-    const [paymentAmount, setPaymentAmount] = useState("")
-    const [paymentSuccess, setPaymentSuccess] = useState(false)
+    const [studentId, setStudentId] = useState("")
+    const [studentData, setStudentData] = useState<any>(null)
+    const [paymentMethod, setPaymentMethod] = useState("cash")
+    const [selectedFees, setSelectedFees] = useState<string[]>([])
+    const [showReceipt, setShowReceipt] = useState(false)
+    const [isProcessing, setIsProcessing] = useState(false)
+    const [receiptData, setReceiptData] = useState<any>(null)
 
-    const handleSearch = (e: React.FormEvent) => {
-        e.preventDefault()
-        // In a real app, this would search for the student in the database
-        if (searchQuery.trim() !== "") {
-            setIsStudentFound(true)
+    // Mock student data
+    const mockStudentData = {
+        id: "2023-0001",
+        name: "John Smith",
+        course: "BS Computer Science",
+        year: "3rd Year",
+        email: "john.smith@example.com",
+        fees: {
+            tuition: { amount: 25000, paid: 10000, balance: 15000 },
+            laboratory: { amount: 5000, paid: 0, balance: 5000 },
+            library: { amount: 1500, paid: 0, balance: 1500 },
+            miscellaneous: { amount: 3500, paid: 0, balance: 3500 },
+        },
+        totalBalance: 25000,
+    }
+
+    const handleStudentSearch = () => {
+        // Simulate API call
+        if (studentId) {
+            setStudentData(mockStudentData)
         }
     }
 
-    const handlePaymentSubmit = () => {
-        setIsPaymentDialogOpen(true)
+    const handleProcessPayment = () => {
+        setIsProcessing(true)
+        // Simulate payment processing
+        setTimeout(() => {
+            setIsProcessing(false)
+
+            // Generate receipt data
+            const items = selectedFees.map((fee) => ({
+                description: `${fee.charAt(0).toUpperCase() + fee.slice(1)} Fee`,
+                amount: `₱${studentData.fees[fee].balance.toLocaleString()}`,
+            }))
+
+            const total = calculateTotal()
+
+            setReceiptData({
+                receiptNumber: `PAY-${Math.floor(100000 + Math.random() * 900000)}`,
+                date: new Date().toISOString().split("T")[0],
+                studentId: studentData.id,
+                studentName: studentData.name,
+                paymentMethod: paymentMethod === "cash" ? "Cash" : "Credit/Debit Card",
+                items,
+                total: `₱${total.toLocaleString()}`,
+            })
+
+            setShowReceipt(true)
+        }, 2000)
     }
 
-    const handlePaymentSuccess = () => {
-        setIsPaymentDialogOpen(false)
-        setPaymentSuccess(true)
-        setIsReceiptDialogOpen(true)
-        setTimeout(() => {
-            setPaymentSuccess(false)
-        }, 5000)
+    const calculateTotal = () => {
+        let total = 0
+        selectedFees.forEach((fee) => {
+            if (studentData?.fees[fee]) {
+                total += studentData.fees[fee].balance
+            }
+        })
+        return total
+    }
+
+    const handleNewPayment = () => {
+        setShowReceipt(false)
+        setStudentData(null)
+        setStudentId("")
+        setSelectedFees([])
+        setPaymentMethod("cash")
     }
 
     return (
-        <CashierLayout>
+        <DashboardLayout allowedRoles={["cashier"]}>
             <div className="container mx-auto px-4 py-8">
                 <div className="mb-8">
-                    <h1 className="text-2xl font-bold text-white">Process Payments</h1>
-                    <p className="text-gray-300">Search for a student and process their payment</p>
+                    <h1 className="text-2xl font-bold text-white">Process Payment</h1>
+                    <p className="text-gray-300">Accept and process student payments</p>
                 </div>
 
-                {paymentSuccess && (
-                    <Alert className="mb-6 bg-green-500/20 border-green-500/50 text-green-200">
-                        <Check className="h-4 w-4" />
-                        <AlertDescription>Payment processed successfully! Receipt has been generated.</AlertDescription>
-                    </Alert>
-                )}
-
-                <Card className="bg-slate-800/60 border-slate-700 text-white mb-8">
-                    <CardHeader>
-                        <CardTitle>Student Search</CardTitle>
-                        <CardDescription className="text-gray-300">Enter student ID or name to search</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <form
-                            onSubmit={handleSearch}
-                            className="flex flex-col space-y-4 md:flex-row md:items-end md:space-x-4 md:space-y-0"
-                        >
-                            <div className="flex-1 space-y-2">
-                                <Label htmlFor="search">Student ID or Name</Label>
-                                <Input
-                                    id="search"
-                                    placeholder="Enter student ID or name"
-                                    className="bg-slate-700 border-slate-600"
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                />
-                            </div>
-                            <Button type="submit" className="bg-primary hover:bg-primary/90">
-                                <Search className="mr-2 h-4 w-4" />
-                                Search
-                            </Button>
-                        </form>
-                    </CardContent>
-                </Card>
-
-                {isStudentFound && (
-                    <>
-                        <div className="grid grid-cols-1 gap-6 md:grid-cols-3 mb-8">
-                            <Card className="bg-slate-800/60 border-slate-700 text-white md:col-span-2">
+                {!showReceipt ? (
+                    <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+                        <div className="lg:col-span-2 space-y-6">
+                            {/* Student Search */}
+                            <Card className="bg-slate-800/60 border-slate-700 text-white">
                                 <CardHeader>
                                     <CardTitle>Student Information</CardTitle>
-                                    <CardDescription className="text-gray-300">Details of the selected student</CardDescription>
+                                    <CardDescription className="text-gray-300">Search for student by ID</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                                        <div className="space-y-4">
-                                            <div className="flex items-center">
-                                                <User className="mr-2 h-5 w-5 text-gray-400" />
-                                                <div>
-                                                    <p className="text-sm text-gray-400">Student Name</p>
-                                                    <p className="font-medium">{studentData.name}</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center">
-                                                <BookOpen className="mr-2 h-5 w-5 text-gray-400" />
-                                                <div>
-                                                    <p className="text-sm text-gray-400">Course</p>
-                                                    <p className="font-medium">{studentData.course}</p>
-                                                </div>
+                                    <div className="flex gap-4">
+                                        <div className="flex-1">
+                                            <Label htmlFor="student-search">Student ID</Label>
+                                            <div className="flex gap-2 mt-2">
+                                                <Input
+                                                    id="student-search"
+                                                    placeholder="Enter student ID"
+                                                    value={studentId}
+                                                    onChange={(e) => setStudentId(e.target.value)}
+                                                    className="bg-slate-700 border-slate-600"
+                                                />
+                                                <Button onClick={handleStudentSearch} className="bg-primary hover:bg-primary/90">
+                                                    <Search className="h-4 w-4" />
+                                                </Button>
                                             </div>
                                         </div>
-                                        <div className="space-y-4">
-                                            <div className="flex items-center">
-                                                <FileText className="mr-2 h-5 w-5 text-gray-400" />
+                                    </div>
+
+                                    {studentData && (
+                                        <div className="mt-6 space-y-4">
+                                            <Separator className="bg-slate-700" />
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <p className="text-sm text-gray-400">Name</p>
+                                                    <p className="font-medium">{studentData.name}</p>
+                                                </div>
                                                 <div>
                                                     <p className="text-sm text-gray-400">Student ID</p>
                                                     <p className="font-medium">{studentData.id}</p>
                                                 </div>
-                                            </div>
-                                            <div className="flex items-center">
-                                                <BookOpen className="mr-2 h-5 w-5 text-gray-400" />
+                                                <div>
+                                                    <p className="text-sm text-gray-400">Course</p>
+                                                    <p className="font-medium">{studentData.course}</p>
+                                                </div>
                                                 <div>
                                                     <p className="text-sm text-gray-400">Year Level</p>
-                                                    <p className="font-medium">{studentData.yearLevel}</p>
+                                                    <p className="font-medium">{studentData.year}</p>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
+                                    )}
                                 </CardContent>
                             </Card>
 
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>Balance Summary</CardTitle>
-                                    <CardDescription className="text-gray-300">Current balance information</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div>
-                                        <p className="text-sm text-gray-400">Total Fees</p>
-                                        <p className="text-2xl font-bold">₱{studentData.balance.toLocaleString()}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-sm text-gray-400">Amount Paid</p>
-                                        <p className="text-xl font-medium text-green-500">₱{studentData.paid.toLocaleString()}</p>
-                                    </div>
-                                    <div className="border-t border-slate-700 pt-4">
-                                        <p className="text-sm text-gray-400">Remaining Balance</p>
-                                        <p className="text-2xl font-bold text-amber-500">₱{studentData.remaining.toLocaleString()}</p>
-                                    </div>
-                                </CardContent>
-                            </Card>
+                            {/* Fee Selection */}
+                            {studentData && (
+                                <Card className="bg-slate-800/60 border-slate-700 text-white">
+                                    <CardHeader>
+                                        <CardTitle>Select Fees to Pay</CardTitle>
+                                        <CardDescription className="text-gray-300">
+                                            Choose which fees to include in this payment
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="space-y-4">
+                                            {Object.entries(studentData.fees).map(([key, fee]: [string, any]) => (
+                                                <div key={key} className="flex items-center justify-between p-4 bg-slate-700/30 rounded-lg">
+                                                    <div className="flex items-center gap-3">
+                                                        <input
+                                                            type="checkbox"
+                                                            id={key}
+                                                            checked={selectedFees.includes(key)}
+                                                            onChange={(e) => {
+                                                                if (e.target.checked) {
+                                                                    setSelectedFees([...selectedFees, key])
+                                                                } else {
+                                                                    setSelectedFees(selectedFees.filter((f) => f !== key))
+                                                                }
+                                                            }}
+                                                            className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                                        />
+                                                        <label htmlFor={key} className="cursor-pointer">
+                                                            <p className="font-medium capitalize">{key} Fee</p>
+                                                            <p className="text-sm text-gray-400">
+                                                                Total: ₱{fee.amount.toLocaleString()} | Paid: ₱{fee.paid.toLocaleString()}
+                                                            </p>
+                                                        </label>
+                                                    </div>
+                                                    <p className="font-medium">₱{fee.balance.toLocaleString()}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {/* Payment Method */}
+                            {studentData && selectedFees.length > 0 && (
+                                <Card className="bg-slate-800/60 border-slate-700 text-white">
+                                    <CardHeader>
+                                        <CardTitle>Payment Method</CardTitle>
+                                        <CardDescription className="text-gray-300">Select how the student will pay</CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod} className="space-y-4">
+                                            <div className="flex items-center space-x-2 rounded-lg border border-slate-700 p-4 hover:bg-slate-700/50">
+                                                <RadioGroupItem value="cash" id="cash" />
+                                                <Label htmlFor="cash" className="flex items-center gap-3 cursor-pointer flex-1">
+                                                    <Wallet className="h-5 w-5" />
+                                                    <div>
+                                                        <p className="font-medium">Cash</p>
+                                                        <p className="text-sm text-gray-400">Accept cash payment</p>
+                                                    </div>
+                                                </Label>
+                                            </div>
+                                            <div className="flex items-center space-x-2 rounded-lg border border-slate-700 p-4 hover:bg-slate-700/50">
+                                                <RadioGroupItem value="card" id="card" />
+                                                <Label htmlFor="card" className="flex items-center gap-3 cursor-pointer flex-1">
+                                                    <CreditCard className="h-5 w-5" />
+                                                    <div>
+                                                        <p className="font-medium">Credit/Debit Card</p>
+                                                        <p className="text-sm text-gray-400">Process card payment</p>
+                                                    </div>
+                                                </Label>
+                                            </div>
+                                        </RadioGroup>
+                                    </CardContent>
+                                </Card>
+                            )}
                         </div>
 
-                        <Card className="bg-slate-800/60 border-slate-700 text-white mb-8">
-                            <CardHeader>
-                                <CardTitle>Fee Breakdown</CardTitle>
-                                <CardDescription className="text-gray-300">Detailed breakdown of fees and payments</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="rounded-lg border border-slate-700">
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full">
-                                            <thead>
-                                                <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
-                                                    <th className="px-6 py-3">Fee Type</th>
-                                                    <th className="px-6 py-3">Total Amount</th>
-                                                    <th className="px-6 py-3">Amount Paid</th>
-                                                    <th className="px-6 py-3">Remaining</th>
-                                                    <th className="px-6 py-3">Status</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-700">
-                                                {studentData.fees.map((fee, index) => (
-                                                    <tr key={index} className="text-sm">
-                                                        <td className="px-6 py-4 font-medium">{fee.type}</td>
-                                                        <td className="px-6 py-4">₱{fee.amount.toLocaleString()}</td>
-                                                        <td className="px-6 py-4">₱{fee.paid.toLocaleString()}</td>
-                                                        <td className="px-6 py-4">₱{fee.remaining.toLocaleString()}</td>
-                                                        <td className="px-6 py-4">
-                                                            {fee.paid === 0 ? (
-                                                                <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-500">
-                                                                    Unpaid
-                                                                </span>
-                                                            ) : fee.remaining === 0 ? (
-                                                                <span className="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-500">
-                                                                    Paid
-                                                                </span>
-                                                            ) : (
-                                                                <span className="inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-500">
-                                                                    Partial
-                                                                </span>
-                                                            )}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
+                        {/* Payment Summary */}
+                        {studentData && selectedFees.length > 0 && (
+                            <div>
+                                <Card className="bg-slate-800/60 border-slate-700 text-white sticky top-4">
+                                    <CardHeader>
+                                        <CardTitle>Payment Summary</CardTitle>
+                                        <CardDescription className="text-gray-300">Review before processing</CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <p className="text-sm text-gray-400">Student</p>
+                                                <p className="font-medium">{studentData.name}</p>
+                                                <p className="text-xs text-gray-400">{studentData.id}</p>
+                                            </div>
 
-                        <Card className="bg-slate-800/60 border-slate-700 text-white">
-                            <CardHeader>
-                                <CardTitle>Process Payment</CardTitle>
-                                <CardDescription className="text-gray-300">Enter payment details to process</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="fee-type">Fee Type</Label>
-                                        <Select value={selectedFeeType} onValueChange={setSelectedFeeType}>
-                                            <SelectTrigger id="fee-type" className="bg-slate-700 border-slate-600">
-                                                <SelectValue placeholder="Select fee type" />
-                                            </SelectTrigger>
-                                            <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                                <SelectItem value="tuition">Tuition Fee</SelectItem>
-                                                <SelectItem value="laboratory">Laboratory Fee</SelectItem>
-                                                <SelectItem value="library">Library Fee</SelectItem>
-                                                <SelectItem value="miscellaneous">Miscellaneous Fee</SelectItem>
-                                                <SelectItem value="all">All Fees</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="amount">Amount (₱)</Label>
-                                        <Input
-                                            id="amount"
-                                            type="number"
-                                            placeholder="Enter amount"
-                                            className="bg-slate-700 border-slate-600"
-                                            value={paymentAmount}
-                                            onChange={(e) => setPaymentAmount(e.target.value)}
+                                            <Separator className="bg-slate-700" />
+
+                                            <div>
+                                                <p className="text-sm text-gray-400 mb-2">Selected Fees</p>
+                                                <div className="space-y-2">
+                                                    {selectedFees.map((fee) => (
+                                                        <div key={fee} className="flex justify-between">
+                                                            <p className="capitalize">{fee} Fee</p>
+                                                            <p>₱{studentData.fees[fee].balance.toLocaleString()}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <Separator className="bg-slate-700" />
+
+                                            <div className="flex justify-between font-bold">
+                                                <p>Total Amount</p>
+                                                <p>₱{calculateTotal().toLocaleString()}</p>
+                                            </div>
+
+                                            <div>
+                                                <p className="text-sm text-gray-400 mb-2">Payment Method</p>
+                                                <p className="capitalize">{paymentMethod === "cash" ? "Cash" : "Credit/Debit Card"}</p>
+                                            </div>
+
+                                            <Button
+                                                className="w-full bg-primary hover:bg-primary/90"
+                                                onClick={handleProcessPayment}
+                                                disabled={isProcessing || selectedFees.length === 0}
+                                            >
+                                                {isProcessing ? (
+                                                    <>
+                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                        Processing...
+                                                    </>
+                                                ) : (
+                                                    "Process Payment"
+                                                )}
+                                            </Button>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="max-w-3xl mx-auto">
+                        <Card className="bg-white text-slate-900 mb-6">
+                            <CardContent className="p-0">
+                                <div className="bg-green-500 p-6 text-white text-center">
+                                    <CheckCircle className="h-16 w-16 mx-auto mb-2" />
+                                    <h2 className="text-2xl font-bold">Payment Successful!</h2>
+                                    <p>The payment has been processed successfully.</p>
+                                </div>
+                                {receiptData && (
+                                    <div className="p-6">
+                                        <PaymentReceipt
+                                            receiptNumber={receiptData.receiptNumber}
+                                            date={receiptData.date}
+                                            studentId={receiptData.studentId}
+                                            studentName={receiptData.studentName}
+                                            paymentMethod={receiptData.paymentMethod}
+                                            items={receiptData.items}
+                                            total={receiptData.total}
                                         />
                                     </div>
-                                </div>
-                                <div className="mt-6 flex justify-end">
-                                    <Button
-                                        className="bg-primary hover:bg-primary/90"
-                                        onClick={handlePaymentSubmit}
-                                        disabled={!selectedFeeType || !paymentAmount}
-                                    >
-                                        <CreditCard className="mr-2 h-4 w-4" />
-                                        Process Payment
-                                    </Button>
-                                </div>
+                                )}
                             </CardContent>
                         </Card>
-                    </>
+                        <div className="flex justify-center gap-4">
+                            <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
+                                Print Receipt
+                            </Button>
+                            <Button className="bg-primary hover:bg-primary/90" onClick={handleNewPayment}>
+                                New Payment
+                            </Button>
+                        </div>
+                    </div>
                 )}
-
-                {/* Payment Dialog */}
-                <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
-                    <DialogContent className="bg-slate-800 border-slate-700 text-white sm:max-w-[600px]">
-                        <DialogHeader>
-                            <DialogTitle>Confirm Payment</DialogTitle>
-                            <DialogDescription className="text-gray-300">Review and confirm payment details</DialogDescription>
-                        </DialogHeader>
-                        <PaymentForm
-                            amount={`₱${paymentAmount}`}
-                            description={`${selectedFeeType} Payment for ${studentData.name}`}
-                            onSuccess={handlePaymentSuccess}
-                            onCancel={() => setIsPaymentDialogOpen(false)}
-                        />
-                    </DialogContent>
-                </Dialog>
-
-                {/* Receipt Dialog */}
-                <Dialog open={isReceiptDialogOpen} onOpenChange={setIsReceiptDialogOpen}>
-                    <DialogContent className="bg-white sm:max-w-[600px]">
-                        <PaymentReceipt
-                            receiptNumber={`REC-${Date.now()}`}
-                            date={new Date().toLocaleDateString()}
-                            studentId={studentData.id}
-                            studentName={studentData.name}
-                            paymentMethod="Credit Card"
-                            items={[{ description: selectedFeeType, amount: `₱${paymentAmount}` }]}
-                            total={`₱${paymentAmount}`}
-                        />
-                    </DialogContent>
-                </Dialog>
             </div>
-        </CashierLayout>
+        </DashboardLayout>
     )
 }

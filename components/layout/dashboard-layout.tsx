@@ -5,9 +5,18 @@ import type React from "react"
 import { useState } from "react"
 import { DashboardHeader } from "./dashboard-header"
 import { DashboardSidebar } from "./dashboard-sidebar"
+import { useAuth } from "@/components/auth/auth-provider"
+import { RoleGuard } from "@/components/auth/role-guard"
+import type { UserRole } from "@/components/auth/auth-provider"
 
-export function DashboardLayout({ children }: { children: React.ReactNode }) {
+interface DashboardLayoutProps {
+    children: React.ReactNode
+    allowedRoles?: UserRole[]
+}
+
+export function DashboardLayout({ children, allowedRoles }: DashboardLayoutProps) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+    const { user } = useAuth()
 
     const handleOpenSidebar = () => {
         setIsSidebarOpen(true)
@@ -17,7 +26,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         setIsSidebarOpen(false)
     }
 
-    return (
+    const content = (
         <div className="flex max-h-screen bg-gray-100 dark:bg-gray-900">
             <DashboardSidebar isOpen={isSidebarOpen} onClose={handleCloseSidebar} />
             <div className="flex flex-col flex-1 overflow-y-auto">
@@ -26,4 +35,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             </div>
         </div>
     )
+
+    // If allowedRoles is specified, wrap with RoleGuard
+    if (allowedRoles && allowedRoles.length > 0) {
+        return <RoleGuard allowedRoles={allowedRoles}>{content}</RoleGuard>
+    }
+
+    return content
 }
