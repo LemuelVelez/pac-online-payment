@@ -690,9 +690,8 @@ export default function BusinessOfficeCollectionsPage() {
                                         <p className="text-sm text-gray-400">Offer installment plans for students with large balances</p>
                                         <Button
                                             size="sm"
-                                            className="mt-3 w-full"
                                             variant="outline"
-                                            className="border-slate-600 text-white hover:bg-slate-700"
+                                            className="mt-3 w-full border-slate-600 text-white hover:bg-slate-700"
                                         >
                                             Create Plans
                                         </Button>
@@ -706,9 +705,8 @@ export default function BusinessOfficeCollectionsPage() {
                                         <p className="text-sm text-gray-400">Set up collection follow-up calls for high-value accounts</p>
                                         <Button
                                             size="sm"
-                                            className="mt-3 w-full"
                                             variant="outline"
-                                            className="border-slate-600 text-white hover:bg-slate-700"
+                                            className="mt-3 w-full border-slate-600 text-white hover:bg-slate-700"
                                         >
                                             Schedule Calls
                                         </Button>
