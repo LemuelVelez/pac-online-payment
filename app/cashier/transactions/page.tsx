@@ -467,7 +467,7 @@ export default function CashierTransactionsPage() {
 
         {/* Receipt Dialog */}
         <Dialog open={isReceiptDialogOpen} onOpenChange={setIsReceiptDialogOpen}>
-          <DialogContent className="bg-white sm:max-w-[600px]">
+          <DialogContent>
             {selectedTransaction && (
               <PaymentReceipt
                 receiptNumber={selectedTransaction.id}
