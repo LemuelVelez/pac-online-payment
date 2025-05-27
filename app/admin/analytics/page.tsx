@@ -74,7 +74,7 @@ export default function AdminAnalyticsPage() {
                         <h1 className="text-2xl font-bold text-white">Analytics Dashboard</h1>
                         <p className="text-gray-300">Insights and performance metrics</p>
                     </div>
-                    <div className="mt-4 flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3 md:mt-0">
+                    <div className="mt-4 flex flex-col overflow-x-auto space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3 md:mt-0">
                         <DateRangePicker />
                         <Button className="bg-primary hover:bg-primary/90">
                             <Download className="mr-2 h-4 w-4" />
@@ -160,26 +160,24 @@ export default function AdminAnalyticsPage() {
                     <div className="hidden sm:block mb-8">
                         <div className="relative">
                             <TabsList className="bg-slate-800 border-slate-700 flex h-auto p-1 w-full overflow-x-auto scrollbar-hide">
-                                <div className="flex space-x-1 min-w-max">
-                                    <TabsTrigger
-                                        value="users"
-                                        className="whitespace-nowrap px-4 py-2 text-sm data-[state=active]:bg-slate-700 data-[state=active]:text-white"
-                                    >
-                                        User Analytics
-                                    </TabsTrigger>
-                                    <TabsTrigger
-                                        value="transactions"
-                                        className="whitespace-nowrap px-4 py-2 text-sm data-[state=active]:bg-slate-700 data-[state=active]:text-white"
-                                    >
-                                        Transaction Analytics
-                                    </TabsTrigger>
-                                    <TabsTrigger
-                                        value="performance"
-                                        className="whitespace-nowrap px-4 py-2 text-sm data-[state=active]:bg-slate-700 data-[state=active]:text-white"
-                                    >
-                                        System Performance
-                                    </TabsTrigger>
-                                </div>
+                                <TabsTrigger
+                                    value="users"
+                                    className="whitespace-nowrap px-4 py-2 text-sm data-[state=active]:bg-slate-700 data-[state=active]:text-white"
+                                >
+                                    User Analytics
+                                </TabsTrigger>
+                                <TabsTrigger
+                                    value="transactions"
+                                    className="whitespace-nowrap px-4 py-2 text-sm data-[state=active]:bg-slate-700 data-[state=active]:text-white"
+                                >
+                                    Transaction Analytics
+                                </TabsTrigger>
+                                <TabsTrigger
+                                    value="performance"
+                                    className="whitespace-nowrap px-4 py-2 text-sm data-[state=active]:bg-slate-700 data-[state=active]:text-white"
+                                >
+                                    System Performance
+                                </TabsTrigger>
                             </TabsList>
                         </div>
                     </div>

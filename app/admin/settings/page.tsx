@@ -15,9 +15,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AlertCircle, Check, Database, Mail, Save, Server, Shield, Download } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
+// Tab configuration for mobile dropdown
+const tabOptions = [
+    { value: "general", label: "General" },
+    { value: "security", label: "Security" },
+    { value: "email", label: "Email" },
+    { value: "backup", label: "Backup" },
+]
+
 export default function AdminSettingsPage() {
     const [isSuccess, setIsSuccess] = useState(false)
     const [isBackupInProgress, setIsBackupInProgress] = useState(false)
+    const [activeTab, setActiveTab] = useState("general")
 
     const handleSaveSettings = (e: React.FormEvent) => {
         e.preventDefault()
@@ -49,21 +58,42 @@ export default function AdminSettingsPage() {
                     </Alert>
                 )}
 
-                <Tabs defaultValue="general" className="w-full">
-                    <TabsList className="bg-slate-800 border-slate-700 mb-8 grid w-full grid-cols-4 lg:max-w-[600px]">
-                        <TabsTrigger value="general" className="cursor-pointer">
-                            General
-                        </TabsTrigger>
-                        <TabsTrigger value="security" className="cursor-pointer">
-                            Security
-                        </TabsTrigger>
-                        <TabsTrigger value="email" className="cursor-pointer">
-                            Email
-                        </TabsTrigger>
-                        <TabsTrigger value="backup" className="cursor-pointer">
-                            Backup
-                        </TabsTrigger>
-                    </TabsList>
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                    {/* Mobile Dropdown - visible on extra small screens */}
+                    <div className="mb-6 sm:hidden">
+                        <Select value={activeTab} onValueChange={setActiveTab}>
+                            <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                                <div className="flex items-center">
+                                    <SelectValue placeholder="Select Settings" />
+                                </div>
+                            </SelectTrigger>
+                            <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                                {tabOptions.map((tab) => (
+                                    <SelectItem key={tab.value} value={tab.value} className="focus:bg-slate-700">
+                                        {tab.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Desktop Tabs - unchanged, hidden on mobile */}
+                    <div className="hidden sm:block">
+                        <TabsList className="bg-slate-800 border-slate-700 mb-8 grid w-full grid-cols-4 lg:max-w-[600px]">
+                            <TabsTrigger value="general" className="cursor-pointer">
+                                General
+                            </TabsTrigger>
+                            <TabsTrigger value="security" className="cursor-pointer">
+                                Security
+                            </TabsTrigger>
+                            <TabsTrigger value="email" className="cursor-pointer">
+                                Email
+                            </TabsTrigger>
+                            <TabsTrigger value="backup" className="cursor-pointer">
+                                Backup
+                            </TabsTrigger>
+                        </TabsList>
+                    </div>
 
                     <TabsContent value="general">
                         <Card className="bg-slate-800/60 border-slate-700 text-white">
@@ -163,7 +193,7 @@ export default function AdminSettingsPage() {
                                         <Switch id="maintenance-mode" />
                                     </div>
 
-                                    <Button type="submit" className="bg-primary hover:bg-primary/90">
+                                    <Button type="submit" className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
                                         <Save className="mr-2 h-4 w-4" />
                                         Save Settings
                                     </Button>
@@ -268,7 +298,7 @@ export default function AdminSettingsPage() {
                                         <h3 className="text-lg font-medium">API Security</h3>
                                         <div className="space-y-2">
                                             <Label htmlFor="api-key">API Key</Label>
-                                            <div className="flex space-x-2">
+                                            <div className="flex flex-col space-y-2 sm:flex-row sm:space-x-2 sm:space-y-0">
                                                 <Input
                                                     id="api-key"
                                                     value="sk_live_51KjTuRJcLsQJ8zN7XYgipnWx"
@@ -290,7 +320,7 @@ export default function AdminSettingsPage() {
                                         </div>
                                     </div>
 
-                                    <Button type="submit" className="bg-primary hover:bg-primary/90">
+                                    <Button type="submit" className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
                                         <Shield className="mr-2 h-4 w-4" />
                                         Save Security Settings
                                     </Button>
@@ -378,7 +408,7 @@ export default function AdminSettingsPage() {
                                         </div>
                                     </div>
 
-                                    <div className="flex justify-between">
+                                    <div className="flex flex-col space-y-2 sm:flex-row sm:justify-between sm:space-y-0">
                                         <Button
                                             type="button"
                                             variant="outline"
@@ -561,7 +591,7 @@ export default function AdminSettingsPage() {
                                         </div>
                                     </div>
 
-                                    <Button type="submit" className="bg-primary hover:bg-primary/90">
+                                    <Button type="submit" className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
                                         <Save className="mr-2 h-4 w-4" />
                                         Save Backup Settings
                                     </Button>
