@@ -26,6 +26,15 @@ export default function AdminUsersPage() {
     const [roleFilter, setRoleFilter] = useState("all")
     const [statusFilter, setStatusFilter] = useState("all")
 
+    // Form states for add user dialog
+    const [selectedRole, setSelectedRole] = useState("")
+    const [formData, setFormData] = useState({
+        name: "",
+        email: "",
+        password: "",
+        studentId: "",
+    })
+
     // Mock user data
     const users = [
         {
@@ -36,6 +45,7 @@ export default function AdminUsersPage() {
             status: "Active",
             lastLogin: "2024-01-15 10:30 AM",
             createdAt: "2023-08-20",
+            studentId: "STU001",
         },
         {
             id: "2",
@@ -72,6 +82,7 @@ export default function AdminUsersPage() {
             status: "Inactive",
             lastLogin: "2023-12-20 02:30 PM",
             createdAt: "2023-09-05",
+            studentId: "STU002",
         },
     ]
 
@@ -148,6 +159,31 @@ export default function AdminUsersPage() {
         return matchesSearch && matchesRole && matchesStatus
     })
 
+    const handleRoleChange = (value: string) => {
+        setSelectedRole(value)
+        // Clear student ID if role is not student
+        if (value !== "student") {
+            setFormData((prev) => ({ ...prev, studentId: "" }))
+        }
+    }
+
+    const handleInputChange = (field: string, value: string) => {
+        setFormData((prev) => ({ ...prev, [field]: value }))
+    }
+
+    const handleCreateUser = () => {
+        const userData = {
+            ...formData,
+            role: selectedRole,
+            ...(selectedRole === "student" && { studentId: formData.studentId }),
+        }
+        console.log("Creating user:", userData)
+
+        // Reset form
+        setFormData({ name: "", email: "", password: "", studentId: "" })
+        setSelectedRole("")
+    }
+
     return (
         <DashboardLayout allowedRoles={["admin"]}>
             <div className="container mx-auto px-4 py-8">
@@ -178,7 +214,13 @@ export default function AdminUsersPage() {
                                     <div className="space-y-4 py-4">
                                         <div className="space-y-2">
                                             <Label htmlFor="name">Full Name</Label>
-                                            <Input id="name" placeholder="Enter full name" className="bg-slate-700 border-slate-600" />
+                                            <Input
+                                                id="name"
+                                                placeholder="Enter full name"
+                                                className="bg-slate-700 border-slate-600"
+                                                value={formData.name}
+                                                onChange={(e) => handleInputChange("name", e.target.value)}
+                                            />
                                         </div>
                                         <div className="space-y-2">
                                             <Label htmlFor="email">Email</Label>
@@ -187,11 +229,13 @@ export default function AdminUsersPage() {
                                                 type="email"
                                                 placeholder="Enter email"
                                                 className="bg-slate-700 border-slate-600"
+                                                value={formData.email}
+                                                onChange={(e) => handleInputChange("email", e.target.value)}
                                             />
                                         </div>
                                         <div className="space-y-2">
                                             <Label htmlFor="role">Role</Label>
-                                            <Select>
+                                            <Select value={selectedRole} onValueChange={handleRoleChange}>
                                                 <SelectTrigger className="bg-slate-700 border-slate-600">
                                                     <SelectValue placeholder="Select role" />
                                                 </SelectTrigger>
@@ -203,6 +247,21 @@ export default function AdminUsersPage() {
                                                 </SelectContent>
                                             </Select>
                                         </div>
+
+                                        {/* Conditional Student ID field */}
+                                        {selectedRole === "student" && (
+                                            <div className="space-y-2">
+                                                <Label htmlFor="studentId">Student ID</Label>
+                                                <Input
+                                                    id="studentId"
+                                                    placeholder="Enter student ID"
+                                                    className="bg-slate-700 border-slate-600"
+                                                    value={formData.studentId}
+                                                    onChange={(e) => handleInputChange("studentId", e.target.value)}
+                                                />
+                                            </div>
+                                        )}
+
                                         <div className="space-y-2">
                                             <Label htmlFor="password">Password</Label>
                                             <Input
@@ -210,6 +269,8 @@ export default function AdminUsersPage() {
                                                 type="password"
                                                 placeholder="Enter password"
                                                 className="bg-slate-700 border-slate-600"
+                                                value={formData.password}
+                                                onChange={(e) => handleInputChange("password", e.target.value)}
                                             />
                                         </div>
                                     </div>
@@ -217,7 +278,9 @@ export default function AdminUsersPage() {
                                         <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
                                             Cancel
                                         </Button>
-                                        <Button className="bg-primary hover:bg-primary/90">Create User</Button>
+                                        <Button className="bg-primary hover:bg-primary/90" onClick={handleCreateUser}>
+                                            Create User
+                                        </Button>
                                     </DialogFooter>
                                 </DialogContent>
                             </Dialog>
