@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { DateRangePicker } from "@/components/admin/date-range-picker"
 import { PaymentChart } from "@/components/dashboard/payment-chart"
 import { PaymentPieChart } from "@/components/dashboard/payment-pie-chart"
-import { Download, FileText, Filter, Search, Users } from "lucide-react"
+import { Download, FileText, Filter, Search, Users, ChevronDown } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 // Mock data for financial reports
@@ -173,10 +173,19 @@ const feeTypeDistribution = [
     { name: "Miscellaneous", value: 10 },
 ]
 
+// Tab configuration for mobile dropdown
+const tabOptions = [
+    { value: "payment-history", label: "Payment History" },
+    { value: "revenue-analysis", label: "Revenue Analysis" },
+    { value: "outstanding-balances", label: "Outstanding Balances" },
+    { value: "financial-summary", label: "Financial Summary" },
+]
+
 export default function AdminReportsPage() {
     const [searchTerm, setSearchTerm] = useState("")
     const [feeTypeFilter, setFeeTypeFilter] = useState("all")
     const [paymentMethodFilter, setPaymentMethodFilter] = useState("all")
+    const [activeTab, setActiveTab] = useState("payment-history")
 
     // Filter payment reports based on search and filters
     const filteredPayments = paymentReports.filter((payment) => {
@@ -201,7 +210,7 @@ export default function AdminReportsPage() {
                         <h1 className="text-2xl font-bold text-white">Financial Reports</h1>
                         <p className="text-gray-300">View and analyze financial data</p>
                     </div>
-                    <div className="mt-4 flex space-x-3 md:mt-0">
+                    <div className="mt-4 flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3 md:mt-0">
                         <DateRangePicker />
                         <Button className="bg-primary hover:bg-primary/90">
                             <Download className="mr-2 h-4 w-4" />
@@ -210,7 +219,7 @@ export default function AdminReportsPage() {
                     </div>
                 </div>
 
-                <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-4">
+                <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
@@ -255,26 +264,64 @@ export default function AdminReportsPage() {
                     </Card>
                 </div>
 
-                <Tabs defaultValue="payment-history" className="w-full">
-                    <TabsList className="bg-slate-800 border-slate-700 mb-8 grid w-full grid-cols-4 lg:max-w-[800px]">
-                        <TabsTrigger value="payment-history" className="cursor-pointer">
-                            Payment History
-                        </TabsTrigger>
-                        <TabsTrigger value="revenue-analysis" className="cursor-pointer">
-                            Revenue Analysis
-                        </TabsTrigger>
-                        <TabsTrigger value="outstanding-balances" className="cursor-pointer">
-                            Outstanding Balances
-                        </TabsTrigger>
-                        <TabsTrigger value="financial-summary" className="cursor-pointer">
-                            Financial Summary
-                        </TabsTrigger>
-                    </TabsList>
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                    {/* Mobile Dropdown - visible on extra small screens */}
+                    <div className="mb-6 sm:hidden">
+                        <Select value={activeTab} onValueChange={setActiveTab}>
+                            <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                                <div className="flex items-center">
+                                    <SelectValue placeholder="Select Report" />
+                                    <ChevronDown className="ml-2 h-4 w-4" />
+                                </div>
+                            </SelectTrigger>
+                            <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                                {tabOptions.map((tab) => (
+                                    <SelectItem key={tab.value} value={tab.value} className="focus:bg-slate-700">
+                                        {tab.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Horizontal Scrolling Tabs - visible on small screens and up */}
+                    <div className="hidden sm:block mb-8">
+                        <div className="relative">
+                            <TabsList className="bg-slate-800 border-slate-700 flex h-auto p-1 w-full overflow-x-auto scrollbar-hide">
+                                <div className="flex space-x-1 min-w-max">
+                                    <TabsTrigger
+                                        value="payment-history"
+                                        className="whitespace-nowrap px-3 py-2 text-sm data-[state=active]:bg-slate-700 data-[state=active]:text-white"
+                                    >
+                                        Payment History
+                                    </TabsTrigger>
+                                    <TabsTrigger
+                                        value="revenue-analysis"
+                                        className="whitespace-nowrap px-3 py-2 text-sm data-[state=active]:bg-slate-700 data-[state=active]:text-white"
+                                    >
+                                        Revenue Analysis
+                                    </TabsTrigger>
+                                    <TabsTrigger
+                                        value="outstanding-balances"
+                                        className="whitespace-nowrap px-3 py-2 text-sm data-[state=active]:bg-slate-700 data-[state=active]:text-white"
+                                    >
+                                        Outstanding Balances
+                                    </TabsTrigger>
+                                    <TabsTrigger
+                                        value="financial-summary"
+                                        className="whitespace-nowrap px-3 py-2 text-sm data-[state=active]:bg-slate-700 data-[state=active]:text-white"
+                                    >
+                                        Financial Summary
+                                    </TabsTrigger>
+                                </div>
+                            </TabsList>
+                        </div>
+                    </div>
 
                     <TabsContent value="payment-history">
                         <Card className="bg-slate-800/60 border-slate-700 text-white mb-6">
                             <CardContent className="p-6">
-                                <div className="flex flex-col space-y-4 md:flex-row md:items-center md:space-x-4 md:space-y-0">
+                                <div className="flex flex-col space-y-4 lg:flex-row lg:items-center lg:space-x-4 lg:space-y-0">
                                     <div className="relative flex-1">
                                         <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                                         <Input
@@ -284,9 +331,9 @@ export default function AdminReportsPage() {
                                             onChange={(e) => setSearchTerm(e.target.value)}
                                         />
                                     </div>
-                                    <div className="flex space-x-4">
+                                    <div className="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:space-x-4">
                                         <Select value={feeTypeFilter} onValueChange={setFeeTypeFilter}>
-                                            <SelectTrigger className="w-[150px] bg-slate-700 border-slate-600">
+                                            <SelectTrigger className="w-full sm:w-[150px] bg-slate-700 border-slate-600">
                                                 <div className="flex items-center">
                                                     <Filter className="mr-2 h-4 w-4 text-gray-400" />
                                                     <SelectValue placeholder="Fee Type" />
@@ -301,7 +348,7 @@ export default function AdminReportsPage() {
                                             </SelectContent>
                                         </Select>
                                         <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
-                                            <SelectTrigger className="w-[180px] bg-slate-700 border-slate-600">
+                                            <SelectTrigger className="w-full sm:w-[180px] bg-slate-700 border-slate-600">
                                                 <div className="flex items-center">
                                                     <Filter className="mr-2 h-4 w-4 text-gray-400" />
                                                     <SelectValue placeholder="Payment Method" />
@@ -330,16 +377,16 @@ export default function AdminReportsPage() {
                             <CardContent>
                                 <div className="rounded-lg border border-slate-700">
                                     <div className="overflow-x-auto">
-                                        <table className="w-full">
+                                        <table className="w-full min-w-[800px]">
                                             <thead>
                                                 <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
-                                                    <th className="px-6 py-3">Transaction ID</th>
-                                                    <th className="px-6 py-3">Date</th>
-                                                    <th className="px-6 py-3">Student</th>
-                                                    <th className="px-6 py-3">Fee Type</th>
-                                                    <th className="px-6 py-3">Amount</th>
-                                                    <th className="px-6 py-3">Payment Method</th>
-                                                    <th className="px-6 py-3">Status</th>
+                                                    <th className="px-6 py-3 min-w-[120px]">Transaction ID</th>
+                                                    <th className="px-6 py-3 min-w-[100px]">Date</th>
+                                                    <th className="px-6 py-3 min-w-[150px]">Student</th>
+                                                    <th className="px-6 py-3 min-w-[100px]">Fee Type</th>
+                                                    <th className="px-6 py-3 min-w-[100px]">Amount</th>
+                                                    <th className="px-6 py-3 min-w-[120px]">Payment Method</th>
+                                                    <th className="px-6 py-3 min-w-[80px]">Status</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-700">
@@ -474,16 +521,16 @@ export default function AdminReportsPage() {
                             <CardContent>
                                 <div className="rounded-lg border border-slate-700">
                                     <div className="overflow-x-auto">
-                                        <table className="w-full">
+                                        <table className="w-full min-w-[900px]">
                                             <thead>
                                                 <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
-                                                    <th className="px-6 py-3">Student ID</th>
-                                                    <th className="px-6 py-3">Student Name</th>
-                                                    <th className="px-6 py-3">Course</th>
-                                                    <th className="px-6 py-3">Total Fees</th>
-                                                    <th className="px-6 py-3">Amount Paid</th>
-                                                    <th className="px-6 py-3">Balance</th>
-                                                    <th className="px-6 py-3">Due Date</th>
+                                                    <th className="px-6 py-3 min-w-[120px]">Student ID</th>
+                                                    <th className="px-6 py-3 min-w-[150px]">Student Name</th>
+                                                    <th className="px-6 py-3 min-w-[200px]">Course</th>
+                                                    <th className="px-6 py-3 min-w-[120px]">Total Fees</th>
+                                                    <th className="px-6 py-3 min-w-[120px]">Amount Paid</th>
+                                                    <th className="px-6 py-3 min-w-[100px]">Balance</th>
+                                                    <th className="px-6 py-3 min-w-[100px]">Due Date</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-700">
@@ -507,7 +554,7 @@ export default function AdminReportsPage() {
                                     </div>
                                 </div>
 
-                                <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+                                <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
                                     <Card className="bg-slate-700/50 border-slate-600">
                                         <CardContent className="p-4">
                                             <p className="text-sm text-gray-400">Total Outstanding</p>
@@ -579,7 +626,7 @@ export default function AdminReportsPage() {
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-4">
-                                        <div className="flex items-center justify-between rounded-lg bg-slate-700/50 p-4">
+                                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between rounded-lg bg-slate-700/50 p-4 space-y-3 sm:space-y-0">
                                             <div className="flex items-center">
                                                 <FileText className="mr-3 h-5 w-5 text-blue-500" />
                                                 <div>
@@ -587,13 +634,13 @@ export default function AdminReportsPage() {
                                                     <p className="text-xs text-gray-400">Current Academic Year</p>
                                                 </div>
                                             </div>
-                                            <Button size="sm" className="bg-primary hover:bg-primary/90">
+                                            <Button size="sm" className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
                                                 <Download className="mr-2 h-4 w-4" />
                                                 Download
                                             </Button>
                                         </div>
 
-                                        <div className="flex items-center justify-between rounded-lg bg-slate-700/50 p-4">
+                                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between rounded-lg bg-slate-700/50 p-4 space-y-3 sm:space-y-0">
                                             <div className="flex items-center">
                                                 <FileText className="mr-3 h-5 w-5 text-green-500" />
                                                 <div>
@@ -601,13 +648,13 @@ export default function AdminReportsPage() {
                                                     <p className="text-xs text-gray-400">As of May 31, 2023</p>
                                                 </div>
                                             </div>
-                                            <Button size="sm" className="bg-primary hover:bg-primary/90">
+                                            <Button size="sm" className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
                                                 <Download className="mr-2 h-4 w-4" />
                                                 Download
                                             </Button>
                                         </div>
 
-                                        <div className="flex items-center justify-between rounded-lg bg-slate-700/50 p-4">
+                                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between rounded-lg bg-slate-700/50 p-4 space-y-3 sm:space-y-0">
                                             <div className="flex items-center">
                                                 <FileText className="mr-3 h-5 w-5 text-purple-500" />
                                                 <div>
@@ -615,13 +662,13 @@ export default function AdminReportsPage() {
                                                     <p className="text-xs text-gray-400">Current Academic Year</p>
                                                 </div>
                                             </div>
-                                            <Button size="sm" className="bg-primary hover:bg-primary/90">
+                                            <Button size="sm" className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
                                                 <Download className="mr-2 h-4 w-4" />
                                                 Download
                                             </Button>
                                         </div>
 
-                                        <div className="flex items-center justify-between rounded-lg bg-slate-700/50 p-4">
+                                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between rounded-lg bg-slate-700/50 p-4 space-y-3 sm:space-y-0">
                                             <div className="flex items-center">
                                                 <FileText className="mr-3 h-5 w-5 text-amber-500" />
                                                 <div>
@@ -629,7 +676,7 @@ export default function AdminReportsPage() {
                                                     <p className="text-xs text-gray-400">As of May 31, 2023</p>
                                                 </div>
                                             </div>
-                                            <Button size="sm" className="bg-primary hover:bg-primary/90">
+                                            <Button size="sm" className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
                                                 <Download className="mr-2 h-4 w-4" />
                                                 Download
                                             </Button>
@@ -645,7 +692,7 @@ export default function AdminReportsPage() {
                                 <CardDescription className="text-gray-300">Key performance indicators</CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+                                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                                     <div className="space-y-2">
                                         <p className="text-sm text-gray-400">Return on Investment</p>
                                         <p className="text-2xl font-bold">18.5%</p>
