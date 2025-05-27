@@ -300,9 +300,9 @@ export default function AdminUsersPage() {
                                     />
                                 </div>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:gap-2 sm:overflow-x-auto">
                                 <Select value={roleFilter} onValueChange={setRoleFilter}>
-                                    <SelectTrigger className="w-[150px] bg-slate-700 border-slate-600">
+                                    <SelectTrigger className="w-full sm:w-[150px] bg-slate-700 border-slate-600">
                                         <SelectValue placeholder="Filter by role" />
                                     </SelectTrigger>
                                     <SelectContent className="bg-slate-700 border-slate-600 text-white">
@@ -313,8 +313,9 @@ export default function AdminUsersPage() {
                                         <SelectItem value="admin">Admin</SelectItem>
                                     </SelectContent>
                                 </Select>
+
                                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                    <SelectTrigger className="w-[150px] bg-slate-700 border-slate-600">
+                                    <SelectTrigger className="w-full sm:w-[150px] bg-slate-700 border-slate-600">
                                         <SelectValue placeholder="Filter by status" />
                                     </SelectTrigger>
                                     <SelectContent className="bg-slate-700 border-slate-600 text-white">
@@ -323,7 +324,8 @@ export default function AdminUsersPage() {
                                         <SelectItem value="inactive">Inactive</SelectItem>
                                     </SelectContent>
                                 </Select>
-                                <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
+
+                                <Button variant="outline" className="w-full sm:w-auto border-slate-600 text-white hover:bg-slate-700">
                                     <Download className="mr-2 h-4 w-4" />
                                     Export
                                 </Button>
