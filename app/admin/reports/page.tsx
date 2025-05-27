@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { DateRangePicker } from "@/components/admin/date-range-picker"
 import { PaymentChart } from "@/components/dashboard/payment-chart"
 import { PaymentPieChart } from "@/components/dashboard/payment-pie-chart"
-import { Download, FileText, Filter, Search, Users, ChevronDown } from "lucide-react"
+import { Download, FileText, Filter, Search, Users } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 // Mock data for financial reports
@@ -271,7 +271,6 @@ export default function AdminReportsPage() {
                             <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
                                 <div className="flex items-center">
                                     <SelectValue placeholder="Select Report" />
-                                    <ChevronDown className="ml-2 h-4 w-4" />
                                 </div>
                             </SelectTrigger>
                             <SelectContent className="bg-slate-800 border-slate-700 text-white">

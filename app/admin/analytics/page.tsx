@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -8,6 +9,7 @@ import { PaymentChart } from "@/components/dashboard/payment-chart"
 import { PaymentPieChart } from "@/components/dashboard/payment-pie-chart"
 import { DateRangePicker } from "@/components/admin/date-range-picker"
 import { Download, TrendingUp, Users, CreditCard, Clock } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 // Mock data for analytics
 const monthlyUsers = [
@@ -46,6 +48,13 @@ const monthlyTransactions = [
     { name: "Aug", value: 460 },
 ]
 
+// Tab configuration for mobile dropdown
+const tabOptions = [
+    { value: "users", label: "User Analytics" },
+    { value: "transactions", label: "Transaction Analytics" },
+    { value: "performance", label: "System Performance" },
+]
+
 // Helper function to transform data for PaymentChart
 const transformDataForChart = (data: { name: string; value: number }[]) => {
     return data.map(item => ({
@@ -55,6 +64,8 @@ const transformDataForChart = (data: { name: string; value: number }[]) => {
 }
 
 export default function AdminAnalyticsPage() {
+    const [activeTab, setActiveTab] = useState("users")
+
     return (
         <DashboardLayout allowedRoles={["admin"]}>
             <div className="container mx-auto px-4 py-8">
@@ -63,7 +74,7 @@ export default function AdminAnalyticsPage() {
                         <h1 className="text-2xl font-bold text-white">Analytics Dashboard</h1>
                         <p className="text-gray-300">Insights and performance metrics</p>
                     </div>
-                    <div className="mt-4 flex space-x-3 md:mt-0">
+                    <div className="mt-4 flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3 md:mt-0">
                         <DateRangePicker />
                         <Button className="bg-primary hover:bg-primary/90">
                             <Download className="mr-2 h-4 w-4" />
@@ -72,7 +83,7 @@ export default function AdminAnalyticsPage() {
                     </div>
                 </div>
 
-                <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-4">
+                <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-medium">Total Users</CardTitle>
@@ -126,18 +137,52 @@ export default function AdminAnalyticsPage() {
                     </Card>
                 </div>
 
-                <Tabs defaultValue="users" className="w-full">
-                    <TabsList className="bg-slate-800 border-slate-700 mb-8 grid w-full grid-cols-3 lg:max-w-[600px]">
-                        <TabsTrigger value="users" className="cursor-pointer">
-                            User Analytics
-                        </TabsTrigger>
-                        <TabsTrigger value="transactions" className="cursor-pointer">
-                            Transaction Analytics
-                        </TabsTrigger>
-                        <TabsTrigger value="performance" className="cursor-pointer">
-                            System Performance
-                        </TabsTrigger>
-                    </TabsList>
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                    {/* Mobile Dropdown - visible on extra small screens */}
+                    <div className="mb-6 sm:hidden">
+                        <Select value={activeTab} onValueChange={setActiveTab}>
+                            <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                                <div className="flex items-center">
+                                    <SelectValue placeholder="Select Analytics" />
+                                </div>
+                            </SelectTrigger>
+                            <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                                {tabOptions.map((tab) => (
+                                    <SelectItem key={tab.value} value={tab.value} className="focus:bg-slate-700">
+                                        {tab.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Horizontal Scrolling Tabs - visible on small screens and up */}
+                    <div className="hidden sm:block mb-8">
+                        <div className="relative">
+                            <TabsList className="bg-slate-800 border-slate-700 flex h-auto p-1 w-full overflow-x-auto scrollbar-hide">
+                                <div className="flex space-x-1 min-w-max">
+                                    <TabsTrigger
+                                        value="users"
+                                        className="whitespace-nowrap px-4 py-2 text-sm data-[state=active]:bg-slate-700 data-[state=active]:text-white"
+                                    >
+                                        User Analytics
+                                    </TabsTrigger>
+                                    <TabsTrigger
+                                        value="transactions"
+                                        className="whitespace-nowrap px-4 py-2 text-sm data-[state=active]:bg-slate-700 data-[state=active]:text-white"
+                                    >
+                                        Transaction Analytics
+                                    </TabsTrigger>
+                                    <TabsTrigger
+                                        value="performance"
+                                        className="whitespace-nowrap px-4 py-2 text-sm data-[state=active]:bg-slate-700 data-[state=active]:text-white"
+                                    >
+                                        System Performance
+                                    </TabsTrigger>
+                                </div>
+                            </TabsList>
+                        </div>
+                    </div>
 
                     <TabsContent value="users">
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -166,7 +211,7 @@ export default function AdminAnalyticsPage() {
                             </Card>
                         </div>
 
-                        <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-3">
+                        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
                             <Card className="bg-slate-800/60 border-slate-700 text-white">
                                 <CardHeader>
                                     <CardTitle>User Engagement</CardTitle>
@@ -237,25 +282,25 @@ export default function AdminAnalyticsPage() {
                                             <div className="h-2 w-full rounded-full bg-slate-600">
                                                 <div className="h-2 rounded-full bg-blue-500" style={{ width: "35%" }}></div>
                                             </div>
-                                            <span className="text-xs">18-24</span>
+                                            <span className="text-xs whitespace-nowrap">18-24</span>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <div className="h-2 w-full rounded-full bg-slate-600">
                                                 <div className="h-2 rounded-full bg-green-500" style={{ width: "45%" }}></div>
                                             </div>
-                                            <span className="text-xs">25-34</span>
+                                            <span className="text-xs whitespace-nowrap">25-34</span>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <div className="h-2 w-full rounded-full bg-slate-600">
                                                 <div className="h-2 rounded-full bg-amber-500" style={{ width: "15%" }}></div>
                                             </div>
-                                            <span className="text-xs">35-44</span>
+                                            <span className="text-xs whitespace-nowrap">35-44</span>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <div className="h-2 w-full rounded-full bg-slate-600">
                                                 <div className="h-2 rounded-full bg-red-500" style={{ width: "5%" }}></div>
                                             </div>
-                                            <span className="text-xs">45+</span>
+                                            <span className="text-xs whitespace-nowrap">45+</span>
                                         </div>
                                     </div>
                                 </CardContent>
@@ -290,7 +335,7 @@ export default function AdminAnalyticsPage() {
                             </Card>
                         </div>
 
-                        <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-3">
+                        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
                             <Card className="bg-slate-800/60 border-slate-700 text-white">
                                 <CardHeader>
                                     <CardTitle>Transaction Metrics</CardTitle>
@@ -466,7 +511,7 @@ export default function AdminAnalyticsPage() {
                                 <CardDescription className="text-gray-300">System resource usage</CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                                <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
                                     <div className="space-y-2">
                                         <p className="text-sm text-gray-400">CPU Usage</p>
                                         <div className="flex items-center justify-between">
