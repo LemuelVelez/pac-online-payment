@@ -47,6 +47,9 @@ const forecastData = [
     { month: "Feb 2024", revenue: 2600000, expenses: 1950000, enrollment: 1750, confidence: 70 },
 ]
 
+// Define the scenario type
+type ScenarioKey = "optimistic" | "realistic" | "pessimistic"
+
 const scenarios = {
     optimistic: {
         name: "Optimistic",
@@ -72,7 +75,7 @@ const scenarios = {
         costIncrease: 10,
         probability: 25,
     },
-}
+} as const
 
 const kpiForecasts = [
     {
@@ -110,7 +113,8 @@ const kpiForecasts = [
 ]
 
 export default function ForecastingPage() {
-    const [selectedScenario, setSelectedScenario] = useState("realistic")
+    // Type the state with the ScenarioKey type
+    const [selectedScenario, setSelectedScenario] = useState<ScenarioKey>("realistic")
     const [forecastPeriod, setForecastPeriod] = useState("6-months")
     const [confidenceLevel, setConfidenceLevel] = useState([80])
 
@@ -336,10 +340,10 @@ export default function ForecastingPage() {
                                             <div
                                                 key={key}
                                                 className={`rounded-lg border p-6 cursor-pointer transition-colors ${selectedScenario === key
-                                                        ? "border-primary bg-primary/10"
-                                                        : "border-slate-700 hover:border-slate-600"
+                                                    ? "border-primary bg-primary/10"
+                                                    : "border-slate-700 hover:border-slate-600"
                                                     }`}
-                                                onClick={() => setSelectedScenario(key)}
+                                                onClick={() => setSelectedScenario(key as ScenarioKey)}
                                             >
                                                 <div className="mb-4">
                                                     <h3 className="text-lg font-medium">{scenario.name}</h3>
