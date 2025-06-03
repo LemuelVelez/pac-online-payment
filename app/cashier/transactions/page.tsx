@@ -154,7 +154,7 @@ export default function CashierTransactionsPage() {
             <h1 className="text-2xl font-bold text-white">Transaction History</h1>
             <p className="text-gray-300">View and manage all payment transactions</p>
           </div>
-          <div className="mt-4 flex space-x-3 md:mt-0">
+          <div className="mt-4 flex flex-col overflow-x-auto space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3 md:mt-0">
             <DateRangePicker />
             <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
               <Download className="mr-2 h-4 w-4" />

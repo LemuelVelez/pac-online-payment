@@ -73,7 +73,7 @@ export default function SettingsPage() {
                                             <Label htmlFor="phone">Phone Number</Label>
                                             <Input id="phone" defaultValue="(123) 456-7890" className="bg-slate-700 border-slate-600" />
                                         </div>
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex lg:items-center lg:justify-between mt-4 flex-col overflow-x-auto space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3 md:mt-0">
                                             <div className="flex items-center space-x-2">
                                                 <Shield className="h-5 w-5 text-green-500" />
                                                 <span className="text-sm text-green-500">Your account is secure</span>
