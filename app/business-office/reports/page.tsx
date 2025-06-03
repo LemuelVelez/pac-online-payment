@@ -10,7 +10,10 @@ import { PaymentChart } from "@/components/dashboard/payment-chart"
 import { PaymentPieChart } from "@/components/dashboard/payment-pie-chart"
 import { DateRangePicker } from "@/components/admin/date-range-picker"
 import { ReportTable } from "@/components/admin/report-table"
-import { Download, Printer } from "lucide-react"
+import { Download, Printer, MoreVertical, Calendar } from "lucide-react"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 
 // Mock data for financial reports
 const incomeStatementData = {
@@ -94,46 +97,147 @@ const monthlyTrend = [
     { month: "Aug", revenue: 2100000, expenses: 1600000 },
 ]
 
+// Mobile Actions Component
+function MobileActions() {
+    return (
+        <div className="flex items-center gap-2 md:hidden">
+            {/* Date Range Picker - Simplified for mobile */}
+            <Sheet>
+                <SheetTrigger asChild>
+                    <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
+                        <Calendar className="h-4 w-4" />
+                    </Button>
+                </SheetTrigger>
+                <SheetContent side="bottom" className="bg-slate-800 border-slate-700">
+                    <div className="py-4">
+                        <h3 className="text-lg font-medium text-white mb-4">Select Date Range</h3>
+                        <DateRangePicker />
+                    </div>
+                </SheetContent>
+            </Sheet>
+
+            {/* Actions Menu */}
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
+                        <MoreVertical className="h-4 w-4" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700 text-white">
+                    <DropdownMenuItem className="hover:bg-slate-700">
+                        <Printer className="mr-2 h-4 w-4" />
+                        Print Report
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="hover:bg-slate-700">
+                        <Download className="mr-2 h-4 w-4" />
+                        Export All
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+    )
+}
+
+// Desktop Actions Component
+function DesktopActions() {
+    return (
+        <div className="hidden md:flex space-x-3">
+            <DateRangePicker />
+            <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
+                <Printer className="mr-2 h-4 w-4" />
+                Print
+            </Button>
+            <Button className="bg-primary hover:bg-primary/90">
+                <Download className="mr-2 h-4 w-4" />
+                Export All
+            </Button>
+        </div>
+    )
+}
+
+// Mobile Tabs Component
+function MobileTabs({ value, onValueChange }: { value: string; onValueChange: (value: string) => void }) {
+    const tabs = [
+        { value: "income-statement", label: "Income", shortLabel: "Income" },
+        { value: "balance-sheet", label: "Balance", shortLabel: "Balance" },
+        { value: "budget-variance", label: "Budget", shortLabel: "Budget" },
+        { value: "trend-analysis", label: "Trends", shortLabel: "Trends" },
+    ]
+
+    return (
+        <div className="md:hidden mb-6">
+            <ScrollArea className="w-full whitespace-nowrap">
+                <div className="flex space-x-1 p-1 bg-slate-800 rounded-lg border border-slate-700">
+                    {tabs.map((tab) => (
+                        <button
+                            key={tab.value}
+                            onClick={() => onValueChange(tab.value)}
+                            className={`
+                                flex-shrink-0 px-4 py-2 text-sm font-medium rounded-md transition-colors
+                                ${value === tab.value
+                                    ? "bg-slate-700 text-white shadow-sm"
+                                    : "text-slate-400 hover:text-white hover:bg-slate-700/50"
+                                }
+                            `}
+                        >
+                            {tab.shortLabel}
+                        </button>
+                    ))}
+                </div>
+                <ScrollBar orientation="horizontal" className="invisible" />
+            </ScrollArea>
+        </div>
+    )
+}
+
+// Desktop Tabs Component
+function DesktopTabs() {
+    return (
+        <TabsList className="hidden md:grid bg-slate-800 border-slate-700 mb-8 w-full grid-cols-4 lg:max-w-[800px]">
+            <TabsTrigger value="income-statement" className="cursor-pointer">
+                Income Statement
+            </TabsTrigger>
+            <TabsTrigger value="balance-sheet" className="cursor-pointer">
+                Balance Sheet
+            </TabsTrigger>
+            <TabsTrigger value="budget-variance" className="cursor-pointer">
+                Budget Variance
+            </TabsTrigger>
+            <TabsTrigger value="trend-analysis" className="cursor-pointer">
+                Trend Analysis
+            </TabsTrigger>
+        </TabsList>
+    )
+}
+
 export default function BusinessOfficeReportsPage() {
     const [selectedPeriod, setSelectedPeriod] = useState("monthly")
     const [selectedDepartment, setSelectedDepartment] = useState("all")
+    const [activeTab, setActiveTab] = useState("income-statement")
 
     return (
         <DashboardLayout>
             <div className="container mx-auto px-4 py-8">
-                <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
+                {/* Header Section with Mobile-Optimized Actions */}
+                <div className="mb-8 flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
                     <div>
                         <h1 className="text-2xl font-bold text-white">Financial Reports</h1>
                         <p className="text-gray-300">Comprehensive financial analysis and reporting</p>
                     </div>
-                    <div className="mt-4 flex space-x-3 md:mt-0">
-                        <DateRangePicker />
-                        <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
-                            <Printer className="mr-2 h-4 w-4" />
-                            Print
-                        </Button>
-                        <Button className="bg-primary hover:bg-primary/90">
-                            <Download className="mr-2 h-4 w-4" />
-                            Export All
-                        </Button>
-                    </div>
+
+                    {/* Mobile Actions */}
+                    <MobileActions />
+
+                    {/* Desktop Actions */}
+                    <DesktopActions />
                 </div>
 
-                <Tabs defaultValue="income-statement" className="w-full">
-                    <TabsList className="bg-slate-800 border-slate-700 mb-8 grid w-full grid-cols-4 lg:max-w-[800px]">
-                        <TabsTrigger value="income-statement" className="cursor-pointer">
-                            Income Statement
-                        </TabsTrigger>
-                        <TabsTrigger value="balance-sheet" className="cursor-pointer">
-                            Balance Sheet
-                        </TabsTrigger>
-                        <TabsTrigger value="budget-variance" className="cursor-pointer">
-                            Budget Variance
-                        </TabsTrigger>
-                        <TabsTrigger value="trend-analysis" className="cursor-pointer">
-                            Trend Analysis
-                        </TabsTrigger>
-                    </TabsList>
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                    {/* Mobile Tabs */}
+                    <MobileTabs value={activeTab} onValueChange={setActiveTab} />
+
+                    {/* Desktop Tabs */}
+                    <DesktopTabs />
 
                     <TabsContent value="income-statement">
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-8">
@@ -380,13 +484,13 @@ export default function BusinessOfficeReportsPage() {
 
                     <TabsContent value="budget-variance">
                         <Card className="bg-slate-800/60 border-slate-700 text-white mb-8">
-                            <CardHeader className="flex flex-row items-center justify-between">
+                            <CardHeader className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
                                 <div>
                                     <CardTitle>Budget vs Actual Analysis</CardTitle>
                                     <CardDescription className="text-gray-300">Department-wise budget performance</CardDescription>
                                 </div>
                                 <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-                                    <SelectTrigger className="w-[200px] bg-slate-700 border-slate-600">
+                                    <SelectTrigger className="w-full md:w-[200px] bg-slate-700 border-slate-600">
                                         <SelectValue placeholder="Select department" />
                                     </SelectTrigger>
                                     <SelectContent className="bg-slate-700 border-slate-600 text-white">
@@ -400,47 +504,49 @@ export default function BusinessOfficeReportsPage() {
                                 </Select>
                             </CardHeader>
                             <CardContent>
-                                <ReportTable
-                                    data={budgetVarianceData}
-                                    columns={[
-                                        { header: "Department", accessor: "department" },
-                                        {
-                                            header: "Budgeted",
-                                            accessor: "budgeted",
-                                            format: (value) => `₱${value.toLocaleString()}`,
-                                        },
-                                        {
-                                            header: "Actual",
-                                            accessor: "actual",
-                                            format: (value) => `₱${value.toLocaleString()}`,
-                                        },
-                                        {
-                                            header: "Variance",
-                                            accessor: "variance",
-                                            format: (value) => {
-                                                const isPositive = value >= 0
-                                                return (
-                                                    <span className={isPositive ? "text-green-500" : "text-red-500"}>
-                                                        {isPositive ? "+" : ""}₱{Math.abs(value).toLocaleString()}
-                                                    </span>
-                                                )
+                                <div className="overflow-x-auto">
+                                    <ReportTable
+                                        data={budgetVarianceData}
+                                        columns={[
+                                            { header: "Department", accessor: "department" },
+                                            {
+                                                header: "Budgeted",
+                                                accessor: "budgeted",
+                                                format: (value) => `₱${value.toLocaleString()}`,
                                             },
-                                        },
-                                        {
-                                            header: "Variance %",
-                                            accessor: "variancePercent",
-                                            format: (value) => {
-                                                const isPositive = value >= 0
-                                                return (
-                                                    <span className={isPositive ? "text-green-500" : "text-red-500"}>
-                                                        {isPositive ? "+" : ""}
-                                                        {value.toFixed(1)}%
-                                                    </span>
-                                                )
+                                            {
+                                                header: "Actual",
+                                                accessor: "actual",
+                                                format: (value) => `₱${value.toLocaleString()}`,
                                             },
-                                        },
-                                    ]}
-                                />
+                                            {
+                                                header: "Variance",
+                                                accessor: "variance",
+                                                format: (value) => {
+                                                    const isPositive = value >= 0
+                                                    return (
+                                                        <span className={isPositive ? "text-green-500" : "text-red-500"}>
+                                                            {isPositive ? "+" : ""}₱{Math.abs(value).toLocaleString()}
+                                                        </span>
+                                                    )
+                                                },
+                                            },
+                                            {
+                                                header: "Variance %",
+                                                accessor: "variancePercent",
+                                                format: (value) => {
+                                                    const isPositive = value >= 0
+                                                    return (
+                                                        <span className={isPositive ? "text-green-500" : "text-red-500"}>
+                                                            {isPositive ? "+" : ""}
+                                                            {value.toFixed(1)}%
+                                                        </span>
+                                                    )
+                                                },
+                                            },
+                                        ]}
+                                    />
+                                </div>
                             </CardContent>
                         </Card>
 
@@ -501,13 +607,13 @@ export default function BusinessOfficeReportsPage() {
 
                     <TabsContent value="trend-analysis">
                         <Card className="bg-slate-800/60 border-slate-700 text-white mb-8">
-                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardHeader className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0 pb-2">
                                 <div>
                                     <CardTitle>Revenue vs Expenses Trend</CardTitle>
                                     <CardDescription className="text-gray-300">Monthly comparison for the current year</CardDescription>
                                 </div>
                                 <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                                    <SelectTrigger className="w-[180px] bg-slate-700 border-slate-600">
+                                    <SelectTrigger className="w-full md:w-[180px] bg-slate-700 border-slate-600">
                                         <SelectValue placeholder="Select period" />
                                     </SelectTrigger>
                                     <SelectContent className="bg-slate-700 border-slate-600 text-white">
