@@ -25,8 +25,30 @@ import {
     Clock,
 } from "lucide-react"
 
+// Type definitions
+type BankTransaction = {
+    id: string
+    date: string
+    description: string
+    amount: number
+    reference: string
+    status: "matched" | "unmatched"
+    matchedPayment: string | null
+}
+
+type SystemPayment = {
+    id: string
+    date: string
+    studentId: string
+    studentName: string
+    amount: number
+    paymentMethod: string
+    status: "matched" | "unmatched"
+    matchedTransaction: string | null
+}
+
 // Mock data for reconciliation
-const bankTransactions = [
+const bankTransactions: BankTransaction[] = [
     {
         id: "BT-001",
         date: "2023-09-01",
@@ -74,7 +96,7 @@ const bankTransactions = [
     },
 ]
 
-const systemPayments = [
+const systemPayments: SystemPayment[] = [
     {
         id: "PAY-2023-001",
         date: "2023-09-01",
@@ -143,9 +165,9 @@ export default function ReconciliationPage() {
     const [selectedTab, setSelectedTab] = useState("overview")
     const [searchTerm, setSearchTerm] = useState("")
     const [statusFilter, setStatusFilter] = useState("all")
-    const [selectedTransactions, setSelectedTransactions] = useState([])
+    const [selectedTransactions, setSelectedTransactions] = useState<string[]>([])
 
-    const handleSelectTransaction = (transactionId, checked) => {
+    const handleSelectTransaction = (transactionId: string, checked: boolean) => {
         if (checked) {
             setSelectedTransactions([...selectedTransactions, transactionId])
         } else {
@@ -493,7 +515,7 @@ export default function ReconciliationPage() {
                                                             <td className="px-6 py-4">
                                                                 <Checkbox
                                                                     checked={selectedTransactions.includes(transaction.id)}
-                                                                    onCheckedChange={(checked) => handleSelectTransaction(transaction.id, checked)}
+                                                                    onCheckedChange={(checked) => handleSelectTransaction(transaction.id, !!checked)}
                                                                 />
                                                             </td>
                                                             <td className="whitespace-nowrap px-6 py-4">{transaction.date}</td>
