@@ -27,8 +27,20 @@ import {
     Save,
 } from "lucide-react"
 
+// Define the budget category type
+type BudgetCategory = {
+    id: number
+    name: string
+    allocated: number
+    spent: number
+    remaining: number
+    percentage: number
+    status: string
+    lastUpdated: string
+}
+
 // Mock data for budget management
-const budgetCategories = [
+const budgetCategories: BudgetCategory[] = [
     {
         id: 1,
         name: "Academic Programs",
@@ -103,7 +115,7 @@ const budgetDistribution = [
 export default function BudgetManagementPage() {
     const [selectedCategory, setSelectedCategory] = useState("all")
     const [isEditing, setIsEditing] = useState(false)
-    const [editingCategory, setEditingCategory] = useState(null)
+    const [editingCategory, setEditingCategory] = useState<BudgetCategory | null>(null)
 
     const totalBudget = budgetCategories.reduce((sum, cat) => sum + cat.allocated, 0)
     const totalSpent = budgetCategories.reduce((sum, cat) => sum + cat.spent, 0)
@@ -376,10 +388,10 @@ export default function BudgetManagementPage() {
                                                     <p className="text-sm text-gray-400">Utilization</p>
                                                     <p
                                                         className={`text-xl font-bold ${category.percentage > 100
-                                                                ? "text-red-500"
-                                                                : category.percentage > 80
-                                                                    ? "text-amber-500"
-                                                                    : "text-green-500"
+                                                            ? "text-red-500"
+                                                            : category.percentage > 80
+                                                                ? "text-amber-500"
+                                                                : "text-green-500"
                                                             }`}
                                                     >
                                                         {category.percentage.toFixed(1)}%
@@ -395,10 +407,10 @@ export default function BudgetManagementPage() {
                                                 <Progress
                                                     value={Math.min(category.percentage, 100)}
                                                     className={`h-3 ${category.percentage > 100
-                                                            ? "bg-red-900"
-                                                            : category.percentage > 80
-                                                                ? "bg-amber-900"
-                                                                : "bg-slate-700"
+                                                        ? "bg-red-900"
+                                                        : category.percentage > 80
+                                                            ? "bg-amber-900"
+                                                            : "bg-slate-700"
                                                         }`}
                                                 />
                                                 {category.percentage > 100 && (
@@ -411,10 +423,10 @@ export default function BudgetManagementPage() {
                                             <div className="mt-4 flex justify-between">
                                                 <span
                                                     className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${category.status === "on-track"
-                                                            ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-500"
-                                                            : category.status === "warning"
-                                                                ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-500"
-                                                                : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-500"
+                                                        ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-500"
+                                                        : category.status === "warning"
+                                                            ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-500"
+                                                            : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-500"
                                                         }`}
                                                 >
                                                     {category.status === "on-track"
