@@ -16,6 +16,7 @@ import { useAuth } from "@/components/auth/auth-provider"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function LoginPage() {
+    const [activeTab, setActiveTab] = useState("login")
     const [showPassword, setShowPassword] = useState(false)
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
@@ -57,6 +58,10 @@ export default function LoginPage() {
         setPassword("password")
     }
 
+    const switchToLoginTab = () => {
+        setActiveTab("login")
+    }
+
     return (
         <div className="max-h-screen overflow-y-auto bg-gradient-to-br from-slate-900 via-purple-950 to-slate-900 flex flex-col">
             <header className="container mx-auto py-6 px-4">
@@ -76,7 +81,7 @@ export default function LoginPage() {
                         <p className="text-gray-300">Online Payment System</p>
                     </div>
 
-                    <Tabs defaultValue="login" className="w-full">
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                         <TabsList className="grid w-full grid-cols-2 mb-8">
                             <TabsTrigger className="cursor-pointer" value="login">
                                 Login
@@ -272,23 +277,31 @@ export default function LoginPage() {
                                                 />
                                             </div>
                                         </div>
-                                        <div className="flex items-center space-x-2">
-                                            <input
-                                                type="checkbox"
-                                                id="terms"
-                                                className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                                                required
-                                            />
-                                            <Label htmlFor="terms" className="text-sm text-gray-300">
-                                                I agree to the{" "}
-                                                <a href="#" className="text-purple-400 hover:text-purple-300">
-                                                    Terms of Service
-                                                </a>{" "}
-                                                and{" "}
-                                                <a href="#" className="text-purple-400 hover:text-purple-300">
-                                                    Privacy Policy
-                                                </a>
-                                            </Label>
+                                        <div className="space-y-3">
+                                            <div className="flex items-start space-x-2">
+                                                <input
+                                                    type="checkbox"
+                                                    id="terms"
+                                                    className="h-4 w-4 mt-0.5 rounded border-gray-300 text-purple-600 focus:ring-purple-500 flex-shrink-0"
+                                                    required
+                                                />
+                                                <div className="text-sm text-gray-300 leading-relaxed">
+                                                    <Label htmlFor="terms" className="cursor-pointer">
+                                                        I agree to the{" "}
+                                                        <a href="#" className="text-purple-400 hover:text-purple-300 underline">
+                                                            Terms of Service
+                                                        </a>
+                                                    </Label>
+                                                    <div className="mt-1">
+                                                        <Label htmlFor="terms" className="cursor-pointer">
+                                                            and{" "}
+                                                            <a href="#" className="text-purple-400 hover:text-purple-300 underline">
+                                                                Privacy Policy
+                                                            </a>
+                                                        </Label>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                         <Button
                                             type="submit"
@@ -301,9 +314,12 @@ export default function LoginPage() {
                                 <CardFooter className="flex justify-center border-t border-slate-700 pt-6">
                                     <p className="text-sm text-gray-400">
                                         Already have an account?{" "}
-                                        <a href="#" className="text-purple-400 hover:text-purple-300">
+                                        <button
+                                            onClick={switchToLoginTab}
+                                            className="text-purple-400 hover:text-purple-300 underline bg-transparent border-none cursor-pointer"
+                                        >
                                             Login
-                                        </a>
+                                        </button>
                                     </p>
                                 </CardFooter>
                             </Card>
