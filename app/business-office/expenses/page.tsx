@@ -14,6 +14,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { DateRangePicker } from "@/components/admin/date-range-picker"
 import { PaymentChart } from "@/components/dashboard/payment-chart"
 import { PaymentPieChart } from "@/components/dashboard/payment-pie-chart"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import {
   Download,
   Plus,
@@ -27,6 +30,7 @@ import {
   DollarSign,
   FileText,
   Calendar,
+  MoreVertical,
 } from "lucide-react"
 
 // Mock data for expenses
@@ -171,11 +175,282 @@ const expenseDistribution = [
   { name: "Office Supplies", value: 165000 },
 ]
 
+// Mobile Actions Component
+function MobileActions({ onAddExpense }: { onAddExpense: () => void }) {
+  return (
+    <div className="flex items-center gap-2 md:hidden">
+      {/* Date Range Picker - Simplified for mobile */}
+      <Sheet>
+        <SheetTrigger asChild>
+          <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
+            <Calendar className="h-4 w-4" />
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="bottom" className="bg-slate-800 border-slate-700">
+          <div className="py-4">
+            <h3 className="text-lg font-medium text-white mb-4">Select Date Range</h3>
+            <DateRangePicker />
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Actions Menu */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700 text-white">
+          <DropdownMenuItem className="hover:bg-slate-700" onClick={onAddExpense}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Expense
+          </DropdownMenuItem>
+          <DropdownMenuItem className="hover:bg-slate-700">
+            <Download className="mr-2 h-4 w-4" />
+            Export Report
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+}
+
+// Desktop Actions Component
+function DesktopActions({ onAddExpense }: { onAddExpense: () => void }) {
+  return (
+    <div className="hidden md:flex space-x-3">
+      <DateRangePicker />
+      <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700" onClick={onAddExpense}>
+        <Plus className="mr-2 h-4 w-4" />
+        Add Expense
+      </Button>
+      <Button className="bg-primary hover:bg-primary/90">
+        <Download className="mr-2 h-4 w-4" />
+        Export Report
+      </Button>
+    </div>
+  )
+}
+
+// Mobile Tabs Component
+function MobileTabs({ value, onValueChange }: { value: string; onValueChange: (value: string) => void }) {
+  const tabs = [
+    { value: "overview", label: "Overview", shortLabel: "Overview" },
+    { value: "categories", label: "Categories", shortLabel: "Categories" },
+    { value: "expenses", label: "Expenses", shortLabel: "Expenses" },
+    { value: "analytics", label: "Analytics", shortLabel: "Analytics" },
+  ]
+
+  return (
+    <div className="md:hidden mb-8">
+      <ScrollArea className="w-full whitespace-nowrap">
+        <div className="flex space-x-1 p-1 bg-slate-800 rounded-lg border border-slate-700">
+          {tabs.map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => onValueChange(tab.value)}
+              className={`
+                flex-shrink-0 px-4 py-2 text-sm font-medium rounded-md transition-colors
+                ${
+                  value === tab.value
+                    ? "bg-slate-700 text-white shadow-sm"
+                    : "text-slate-400 hover:text-white hover:bg-slate-700/50"
+                }
+              `}
+            >
+              {tab.shortLabel}
+            </button>
+          ))}
+        </div>
+        <ScrollBar orientation="horizontal" className="invisible" />
+      </ScrollArea>
+    </div>
+  )
+}
+
+// Desktop Tabs Component
+function DesktopTabs() {
+  return (
+    <TabsList className="hidden md:grid bg-slate-800 border-slate-700 mb-8 w-full grid-cols-4 lg:max-w-[600px]">
+      <TabsTrigger value="overview" className="cursor-pointer">
+        Overview
+      </TabsTrigger>
+      <TabsTrigger value="categories" className="cursor-pointer">
+        Categories
+      </TabsTrigger>
+      <TabsTrigger value="expenses" className="cursor-pointer">
+        Expenses
+      </TabsTrigger>
+      <TabsTrigger value="analytics" className="cursor-pointer">
+        Analytics
+      </TabsTrigger>
+    </TabsList>
+  )
+}
+
+// Mobile Expense Table Component
+function MobileExpenseTable({ expenses }: { expenses: typeof recentExpenses }) {
+  return (
+    <div className="md:hidden space-y-4">
+      {expenses.map((expense) => (
+        <Card key={expense.id} className="bg-slate-800/60 border-slate-700 text-white">
+          <CardContent className="p-4">
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <p className="font-medium">{expense.id}</p>
+                <p className="text-sm text-gray-400">{expense.date}</p>
+              </div>
+              <Badge
+                variant={
+                  expense.status === "approved" ? "default" : expense.status === "pending" ? "secondary" : "destructive"
+                }
+                className={
+                  expense.status === "approved"
+                    ? "bg-green-500/20 text-green-400"
+                    : expense.status === "pending"
+                      ? "bg-amber-500/20 text-amber-400"
+                      : "bg-red-500/20 text-red-400"
+                }
+              >
+                {expense.status.charAt(0).toUpperCase() + expense.status.slice(1)}
+              </Badge>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Vendor:</span>
+                <span className="text-sm">{expense.vendor}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Category:</span>
+                <span className="text-sm">{expense.category}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Amount:</span>
+                <span className="font-medium">₱{expense.amount.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Receipt:</span>
+                {expense.receipt ? (
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                )}
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-300 mt-2">{expense.description}</p>
+
+            <div className="flex justify-end space-x-2 mt-4">
+              <Button size="sm" variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
+                <Edit className="h-4 w-4" />
+              </Button>
+              {expense.status === "pending" && (
+                <>
+                  <Button size="sm" className="bg-green-600 hover:bg-green-700">
+                    <CheckCircle className="h-4 w-4" />
+                  </Button>
+                  <Button size="sm" variant="outline" className="border-red-600 text-red-400 hover:bg-red-600/20">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  )
+}
+
+// Desktop Expense Table Component
+function DesktopExpenseTable({ expenses }: { expenses: typeof recentExpenses }) {
+  return (
+    <div className="hidden md:block rounded-lg border border-slate-700">
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
+              <th className="px-6 py-3">Expense ID</th>
+              <th className="px-6 py-3">Date</th>
+              <th className="px-6 py-3">Vendor</th>
+              <th className="px-6 py-3">Category</th>
+              <th className="px-6 py-3">Description</th>
+              <th className="px-6 py-3">Amount</th>
+              <th className="px-6 py-3">Status</th>
+              <th className="px-6 py-3">Receipt</th>
+              <th className="px-6 py-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-700">
+            {expenses.map((expense) => (
+              <tr key={expense.id} className="text-sm">
+                <td className="whitespace-nowrap px-6 py-4 font-medium">{expense.id}</td>
+                <td className="whitespace-nowrap px-6 py-4">{expense.date}</td>
+                <td className="px-6 py-4">{expense.vendor}</td>
+                <td className="px-6 py-4">{expense.category}</td>
+                <td className="px-6 py-4">{expense.description}</td>
+                <td className="whitespace-nowrap px-6 py-4">₱{expense.amount.toLocaleString()}</td>
+                <td className="whitespace-nowrap px-6 py-4">
+                  <Badge
+                    variant={
+                      expense.status === "approved"
+                        ? "default"
+                        : expense.status === "pending"
+                          ? "secondary"
+                          : "destructive"
+                    }
+                    className={
+                      expense.status === "approved"
+                        ? "bg-green-500/20 text-green-400"
+                        : expense.status === "pending"
+                          ? "bg-amber-500/20 text-amber-400"
+                          : "bg-red-500/20 text-red-400"
+                    }
+                  >
+                    {expense.status.charAt(0).toUpperCase() + expense.status.slice(1)}
+                  </Badge>
+                </td>
+                <td className="whitespace-nowrap px-6 py-4">
+                  {expense.receipt ? (
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  )}
+                </td>
+                <td className="whitespace-nowrap px-6 py-4">
+                  <div className="flex space-x-2">
+                    <Button size="sm" variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    {expense.status === "pending" && (
+                      <>
+                        <Button size="sm" className="bg-green-600 hover:bg-green-700">
+                          <CheckCircle className="h-4 w-4" />
+                        </Button>
+                        <Button size="sm" variant="outline" className="border-red-600 text-red-400 hover:bg-red-600/20">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 export default function ExpensesPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [isAddingExpense, setIsAddingExpense] = useState(false)
+  const [activeTab, setActiveTab] = useState("overview")
 
   const filteredExpenses = recentExpenses.filter((expense) => {
     const matchesSearch =
@@ -196,26 +471,18 @@ export default function ExpensesPage() {
   return (
     <DashboardLayout allowedRoles={["business-office"]}>
       <div className="container mx-auto px-4 py-8">
-        <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
+        {/* Header Section with Mobile-Optimized Actions */}
+        <div className="mb-8 flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
           <div>
             <h1 className="text-2xl font-bold text-white">Expense Management</h1>
             <p className="text-gray-300">Track and manage institutional expenses</p>
           </div>
-          <div className="mt-4 flex space-x-3 md:mt-0">
-            <DateRangePicker />
-            <Button
-              variant="outline"
-              className="border-slate-600 text-white hover:bg-slate-700"
-              onClick={() => setIsAddingExpense(true)}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Add Expense
-            </Button>
-            <Button className="bg-primary hover:bg-primary/90">
-              <Download className="mr-2 h-4 w-4" />
-              Export Report
-            </Button>
-          </div>
+
+          {/* Mobile Actions */}
+          <MobileActions onAddExpense={() => setIsAddingExpense(true)} />
+
+          {/* Desktop Actions */}
+          <DesktopActions onAddExpense={() => setIsAddingExpense(true)} />
         </div>
 
         {/* Expense Overview Cards */}
@@ -286,21 +553,12 @@ export default function ExpensesPage() {
           </Alert>
         </div>
 
-        <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="bg-slate-800 border-slate-700 mb-8 grid w-full grid-cols-4 lg:max-w-[600px]">
-            <TabsTrigger value="overview" className="cursor-pointer">
-              Overview
-            </TabsTrigger>
-            <TabsTrigger value="categories" className="cursor-pointer">
-              Categories
-            </TabsTrigger>
-            <TabsTrigger value="expenses" className="cursor-pointer">
-              Expenses
-            </TabsTrigger>
-            <TabsTrigger value="analytics" className="cursor-pointer">
-              Analytics
-            </TabsTrigger>
-          </TabsList>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          {/* Mobile Tabs */}
+          <MobileTabs value={activeTab} onValueChange={setActiveTab} />
+
+          {/* Desktop Tabs */}
+          <DesktopTabs />
 
           <TabsContent value="overview">
             <div className="space-y-6">
@@ -388,7 +646,7 @@ export default function ExpensesPage() {
 
           <TabsContent value="categories">
             <Card className="bg-slate-800/60 border-slate-700 text-white">
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
                 <div>
                   <CardTitle>Expense Categories</CardTitle>
                   <CardDescription className="text-gray-300">Manage expense categories and budgets</CardDescription>
@@ -502,9 +760,9 @@ export default function ExpensesPage() {
                       onChange={(e) => setSearchTerm(e.target.value)}
                     />
                   </div>
-                  <div className="flex space-x-4">
+                  <div className="flex flex-col space-y-4 md:flex-row md:space-x-4 md:space-y-0">
                     <Select value={statusFilter} onValueChange={setStatusFilter}>
-                      <SelectTrigger className="w-[150px] bg-slate-700 border-slate-600">
+                      <SelectTrigger className="w-full md:w-[150px] bg-slate-700 border-slate-600">
                         <div className="flex items-center">
                           <Filter className="mr-2 h-4 w-4 text-gray-400" />
                           <span className="truncate">Status</span>
@@ -518,7 +776,7 @@ export default function ExpensesPage() {
                       </SelectContent>
                     </Select>
                     <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                      <SelectTrigger className="w-[180px] bg-slate-700 border-slate-600">
+                      <SelectTrigger className="w-full md:w-[180px] bg-slate-700 border-slate-600">
                         <div className="flex items-center">
                           <Filter className="mr-2 h-4 w-4 text-gray-400" />
                           <span className="truncate">Category</span>
@@ -536,89 +794,11 @@ export default function ExpensesPage() {
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-slate-700">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
-                          <th className="px-6 py-3">Expense ID</th>
-                          <th className="px-6 py-3">Date</th>
-                          <th className="px-6 py-3">Vendor</th>
-                          <th className="px-6 py-3">Category</th>
-                          <th className="px-6 py-3">Description</th>
-                          <th className="px-6 py-3">Amount</th>
-                          <th className="px-6 py-3">Status</th>
-                          <th className="px-6 py-3">Receipt</th>
-                          <th className="px-6 py-3">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-700">
-                        {filteredExpenses.map((expense) => (
-                          <tr key={expense.id} className="text-sm">
-                            <td className="whitespace-nowrap px-6 py-4 font-medium">{expense.id}</td>
-                            <td className="whitespace-nowrap px-6 py-4">{expense.date}</td>
-                            <td className="px-6 py-4">{expense.vendor}</td>
-                            <td className="px-6 py-4">{expense.category}</td>
-                            <td className="px-6 py-4">{expense.description}</td>
-                            <td className="whitespace-nowrap px-6 py-4">₱{expense.amount.toLocaleString()}</td>
-                            <td className="whitespace-nowrap px-6 py-4">
-                              <Badge
-                                variant={
-                                  expense.status === "approved"
-                                    ? "default"
-                                    : expense.status === "pending"
-                                      ? "secondary"
-                                      : "destructive"
-                                }
-                                className={
-                                  expense.status === "approved"
-                                    ? "bg-green-500/20 text-green-400"
-                                    : expense.status === "pending"
-                                      ? "bg-amber-500/20 text-amber-400"
-                                      : "bg-red-500/20 text-red-400"
-                                }
-                              >
-                                {expense.status.charAt(0).toUpperCase() + expense.status.slice(1)}
-                              </Badge>
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4">
-                              {expense.receipt ? (
-                                <CheckCircle className="h-4 w-4 text-green-500" />
-                              ) : (
-                                <AlertTriangle className="h-4 w-4 text-amber-500" />
-                              )}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4">
-                              <div className="flex space-x-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-slate-600 text-white hover:bg-slate-700"
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                                {expense.status === "pending" && (
-                                  <>
-                                    <Button size="sm" className="bg-green-600 hover:bg-green-700">
-                                      <CheckCircle className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="border-red-600 text-red-400 hover:bg-red-600/20"
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                {/* Mobile Expense Table */}
+                <MobileExpenseTable expenses={filteredExpenses} />
+
+                {/* Desktop Expense Table */}
+                <DesktopExpenseTable expenses={filteredExpenses} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -765,8 +945,8 @@ export default function ExpensesPage() {
 
         {/* Add Expense Modal */}
         {isAddingExpense && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <Card className="bg-slate-800 border-slate-700 text-white w-full max-w-2xl mx-4">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <Card className="bg-slate-800 border-slate-700 text-white w-full max-w-2xl">
               <CardHeader>
                 <CardTitle>Add New Expense</CardTitle>
                 <CardDescription className="text-gray-300">Enter expense details</CardDescription>
@@ -812,7 +992,7 @@ export default function ExpensesPage() {
                   <Input id="receipt" type="file" className="bg-slate-700 border-slate-600" />
                 </div>
               </CardContent>
-              <div className="flex justify-end space-x-2 p-6">
+              <div className="flex flex-col space-y-2 p-6 md:flex-row md:justify-end md:space-x-2 md:space-y-0">
                 <Button
                   variant="outline"
                   className="border-slate-600 text-white hover:bg-slate-700"
