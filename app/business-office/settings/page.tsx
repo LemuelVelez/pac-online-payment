@@ -13,12 +13,69 @@ import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { Check, Info, Lock, Save, Shield, User, Building, Bell, Database, Mail } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+
+// Mobile Tabs Component
+function MobileTabs({ value, onValueChange }: { value: string; onValueChange: (value: string) => void }) {
+    const tabs = [
+        { value: "account", label: "Account", shortLabel: "Account" },
+        { value: "financial", label: "Financial", shortLabel: "Financial" },
+        { value: "notifications", label: "Notifications", shortLabel: "Notifications" },
+        { value: "system", label: "System", shortLabel: "System" },
+    ]
+
+    return (
+        <div className="md:hidden mb-8">
+            <ScrollArea className="w-full whitespace-nowrap">
+                <div className="flex space-x-1 p-1 bg-slate-800 rounded-lg border border-slate-700">
+                    {tabs.map((tab) => (
+                        <button
+                            key={tab.value}
+                            onClick={() => onValueChange(tab.value)}
+                            className={`
+                                flex-shrink-0 px-4 py-2 text-sm font-medium rounded-md transition-colors
+                                ${value === tab.value
+                                    ? "bg-slate-700 text-white shadow-sm"
+                                    : "text-slate-400 hover:text-white hover:bg-slate-700/50"
+                                }
+                            `}
+                        >
+                            {tab.shortLabel}
+                        </button>
+                    ))}
+                </div>
+                <ScrollBar orientation="horizontal" className="invisible" />
+            </ScrollArea>
+        </div>
+    )
+}
+
+// Desktop Tabs Component
+function DesktopTabs() {
+    return (
+        <TabsList className="hidden md:grid bg-slate-800 border-slate-700 mb-8 w-full grid-cols-4 lg:max-w-[800px]">
+            <TabsTrigger value="account" className="cursor-pointer">
+                Account
+            </TabsTrigger>
+            <TabsTrigger value="financial" className="cursor-pointer">
+                Financial
+            </TabsTrigger>
+            <TabsTrigger value="notifications" className="cursor-pointer">
+                Notifications
+            </TabsTrigger>
+            <TabsTrigger value="system" className="cursor-pointer">
+                System
+            </TabsTrigger>
+        </TabsList>
+    )
+}
 
 export default function BusinessOfficeSettingsPage() {
     const [passwordChanged, setPasswordChanged] = useState(false)
     const [settingsSaved, setSettingsSaved] = useState(false)
+    const [activeTab, setActiveTab] = useState("account")
 
     const handlePasswordChange = (e: React.FormEvent) => {
         e.preventDefault()
@@ -44,21 +101,12 @@ export default function BusinessOfficeSettingsPage() {
                     <p className="text-gray-300">Manage your account and business office preferences</p>
                 </div>
 
-                <Tabs defaultValue="account" className="w-full">
-                    <TabsList className="bg-slate-800 border-slate-700 mb-8 grid w-full grid-cols-4 lg:max-w-[800px]">
-                        <TabsTrigger value="account" className="cursor-pointer">
-                            Account
-                        </TabsTrigger>
-                        <TabsTrigger value="financial" className="cursor-pointer">
-                            Financial
-                        </TabsTrigger>
-                        <TabsTrigger value="notifications" className="cursor-pointer">
-                            Notifications
-                        </TabsTrigger>
-                        <TabsTrigger value="system" className="cursor-pointer">
-                            System
-                        </TabsTrigger>
-                    </TabsList>
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                    {/* Mobile Tabs */}
+                    <MobileTabs value={activeTab} onValueChange={setActiveTab} />
+
+                    {/* Desktop Tabs */}
+                    <DesktopTabs />
 
                     <TabsContent value="account">
                         <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
