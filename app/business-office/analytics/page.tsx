@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client"
 
 import { useState } from "react"
@@ -7,12 +6,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
 import { DateRangePicker } from "@/components/admin/date-range-picker"
 import { PaymentChart } from "@/components/dashboard/payment-chart"
 import { PaymentPieChart } from "@/components/dashboard/payment-pie-chart"
 import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Download, TrendingUp, AlertCircle, CheckCircle, ArrowUpRight, ArrowDownRight } from "lucide-react"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
+import {
+    Download,
+    TrendingUp,
+    AlertCircle,
+    CheckCircle,
+    ArrowUpRight,
+    ArrowDownRight,
+    Calendar,
+    Settings,
+    MoreVertical,
+    Filter,
+} from "lucide-react"
 
 // Mock data for analytics
 const revenueAnalytics = [
@@ -57,51 +71,253 @@ const cohortAnalysis = [
     { cohort: "2020 Seniors", enrolled: 450, retained: 380, retentionRate: 84.4, revenue: 3200000 },
 ]
 
+// Mobile Actions Component
+function MobileActions({
+    selectedPeriod,
+    setSelectedPeriod,
+    selectedMetric,
+    setSelectedMetric,
+}: {
+    selectedPeriod: string
+    setSelectedPeriod: (value: string) => void
+    selectedMetric: string
+    setSelectedMetric: (value: string) => void
+}) {
+    return (
+        <div className="flex items-center gap-2 md:hidden">
+            {/* Date Range Picker - Simplified for mobile */}
+            <Sheet>
+                <SheetTrigger asChild>
+                    <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
+                        <Calendar className="h-4 w-4" />
+                    </Button>
+                </SheetTrigger>
+                <SheetContent side="bottom" className="bg-slate-800 border-slate-700">
+                    <div className="py-4">
+                        <h3 className="text-lg font-medium text-white mb-4">Select Date Range</h3>
+                        <DateRangePicker />
+                    </div>
+                </SheetContent>
+            </Sheet>
+
+            {/* Analytics Settings - Mobile Sheet */}
+            <Sheet>
+                <SheetTrigger asChild>
+                    <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
+                        <Settings className="h-4 w-4" />
+                    </Button>
+                </SheetTrigger>
+                <SheetContent side="bottom" className="bg-slate-800 border-slate-700">
+                    <div className="py-4 space-y-4">
+                        <h3 className="text-lg font-medium text-white mb-4">Analytics Settings</h3>
+                        <div>
+                            <Label htmlFor="mobile-period" className="text-white">
+                                Period
+                            </Label>
+                            <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                                <SelectTrigger id="mobile-period" className="bg-slate-700 border-slate-600 text-white mt-2">
+                                    <SelectValue placeholder="Period" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                                    <SelectItem value="daily">Daily</SelectItem>
+                                    <SelectItem value="weekly">Weekly</SelectItem>
+                                    <SelectItem value="monthly">Monthly</SelectItem>
+                                    <SelectItem value="quarterly">Quarterly</SelectItem>
+                                    <SelectItem value="yearly">Yearly</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div>
+                            <Label htmlFor="mobile-metric" className="text-white">
+                                Primary Metric
+                            </Label>
+                            <Select value={selectedMetric} onValueChange={setSelectedMetric}>
+                                <SelectTrigger id="mobile-metric" className="bg-slate-700 border-slate-600 text-white mt-2">
+                                    <SelectValue placeholder="Metric" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                                    <SelectItem value="revenue">Revenue</SelectItem>
+                                    <SelectItem value="enrollment">Enrollment</SelectItem>
+                                    <SelectItem value="retention">Retention</SelectItem>
+                                    <SelectItem value="collection">Collection</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                </SheetContent>
+            </Sheet>
+
+            {/* Actions Menu */}
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
+                        <MoreVertical className="h-4 w-4" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700 text-white">
+                    <DropdownMenuItem className="hover:bg-slate-700">
+                        <Download className="mr-2 h-4 w-4" />
+                        Export Analytics
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="hover:bg-slate-700">
+                        <Filter className="mr-2 h-4 w-4" />
+                        Advanced Filters
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+    )
+}
+
+// Desktop Actions Component
+function DesktopActions({
+    selectedPeriod,
+    setSelectedPeriod,
+    selectedMetric,
+    setSelectedMetric,
+}: {
+    selectedPeriod: string
+    setSelectedPeriod: (value: string) => void
+    selectedMetric: string
+    setSelectedMetric: (value: string) => void
+}) {
+    return (
+        <div className="hidden md:flex space-x-3">
+            <DateRangePicker />
+            <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                <SelectTrigger className="w-[150px] bg-slate-700 border-slate-600 text-white">
+                    <SelectValue placeholder="Period" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="quarterly">Quarterly</SelectItem>
+                    <SelectItem value="yearly">Yearly</SelectItem>
+                </SelectContent>
+            </Select>
+            <Select value={selectedMetric} onValueChange={setSelectedMetric}>
+                <SelectTrigger className="w-[150px] bg-slate-700 border-slate-600 text-white">
+                    <SelectValue placeholder="Metric" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                    <SelectItem value="revenue">Revenue</SelectItem>
+                    <SelectItem value="enrollment">Enrollment</SelectItem>
+                    <SelectItem value="retention">Retention</SelectItem>
+                    <SelectItem value="collection">Collection</SelectItem>
+                </SelectContent>
+            </Select>
+            <Button className="bg-primary hover:bg-primary/90">
+                <Download className="mr-2 h-4 w-4" />
+                Export Analytics
+            </Button>
+        </div>
+    )
+}
+
+// Mobile Tabs Component
+function MobileTabs({ value, onValueChange }: { value: string; onValueChange: (value: string) => void }) {
+    const tabs = [
+        { value: "revenue", label: "Revenue", shortLabel: "Revenue" },
+        { value: "students", label: "Students", shortLabel: "Students" },
+        { value: "payments", label: "Payments", shortLabel: "Payments" },
+        { value: "cohorts", label: "Cohorts", shortLabel: "Cohorts" },
+        { value: "forecasting", label: "Forecasting", shortLabel: "Forecast" },
+    ]
+
+    return (
+        <div className="md:hidden mb-6">
+            <ScrollArea className="w-full whitespace-nowrap">
+                <div className="flex space-x-1 p-1 bg-slate-800 rounded-lg border border-slate-700">
+                    {tabs.map((tab) => (
+                        <button
+                            key={tab.value}
+                            onClick={() => onValueChange(tab.value)}
+                            className={`
+                                flex-shrink-0 px-4 py-2 text-sm font-medium rounded-md transition-colors
+                                ${value === tab.value
+                                    ? "bg-slate-700 text-white shadow-sm"
+                                    : "text-slate-400 hover:text-white hover:bg-slate-700/50"
+                                }
+                            `}
+                        >
+                            {tab.shortLabel}
+                        </button>
+                    ))}
+                </div>
+                <ScrollBar orientation="horizontal" className="invisible" />
+            </ScrollArea>
+        </div>
+    )
+}
+
+// Desktop Tabs Component
+function DesktopTabs() {
+    return (
+        <TabsList className="hidden md:grid bg-slate-800 border-slate-700 mb-8 w-full grid-cols-5 lg:max-w-[800px]">
+            <TabsTrigger value="revenue" className="cursor-pointer">
+                Revenue
+            </TabsTrigger>
+            <TabsTrigger value="students" className="cursor-pointer">
+                Students
+            </TabsTrigger>
+            <TabsTrigger value="payments" className="cursor-pointer">
+                Payments
+            </TabsTrigger>
+            <TabsTrigger value="cohorts" className="cursor-pointer">
+                Cohorts
+            </TabsTrigger>
+            <TabsTrigger value="forecasting" className="cursor-pointer">
+                Forecasting
+            </TabsTrigger>
+        </TabsList>
+    )
+}
+
 export default function BusinessOfficeAnalyticsPage() {
     const [selectedPeriod, setSelectedPeriod] = useState("monthly")
     const [selectedMetric, setSelectedMetric] = useState("revenue")
+    const [activeTab, setActiveTab] = useState("revenue")
 
     return (
         <DashboardLayout allowedRoles={["business-office"]}>
             <div className="container mx-auto px-4 py-8">
-                <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
+                {/* Header Section with Mobile-Optimized Actions */}
+                <div className="mb-8 flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
                     <div>
                         <h1 className="text-2xl font-bold text-white">Financial Analytics</h1>
                         <p className="text-gray-300">Advanced analytics and insights</p>
                     </div>
-                    <div className="mt-4 flex space-x-3 md:mt-0">
-                        <DateRangePicker />
-                        <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                            <SelectTrigger className="w-[150px] bg-slate-700 border-slate-600 text-white">
-                                <SelectValue placeholder="Period" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                <SelectItem value="daily">Daily</SelectItem>
-                                <SelectItem value="weekly">Weekly</SelectItem>
-                                <SelectItem value="monthly">Monthly</SelectItem>
-                                <SelectItem value="quarterly">Quarterly</SelectItem>
-                                <SelectItem value="yearly">Yearly</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <Button className="bg-primary hover:bg-primary/90">
-                            <Download className="mr-2 h-4 w-4" />
-                            Export Analytics
-                        </Button>
-                    </div>
+
+                    {/* Mobile Actions */}
+                    <MobileActions
+                        selectedPeriod={selectedPeriod}
+                        setSelectedPeriod={setSelectedPeriod}
+                        selectedMetric={selectedMetric}
+                        setSelectedMetric={setSelectedMetric}
+                    />
+
+                    {/* Desktop Actions */}
+                    <DesktopActions
+                        selectedPeriod={selectedPeriod}
+                        setSelectedPeriod={setSelectedPeriod}
+                        selectedMetric={selectedMetric}
+                        setSelectedMetric={setSelectedMetric}
+                    />
                 </div>
 
-                {/* KPI Overview */}
-                <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {/* KPI Overview - Mobile Optimized */}
+                <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {kpiData.map((kpi, index) => (
                         <Card key={index} className="bg-slate-800/60 border-slate-700 text-white">
-                            <CardContent className="p-6">
+                            <CardContent className="p-4 sm:p-6">
                                 <div className="flex items-center justify-between">
-                                    <div>
-                                        <p className="text-sm text-gray-400">{kpi.metric}</p>
-                                        <p className="text-2xl font-bold">{kpi.value}</p>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm text-gray-400 truncate">{kpi.metric}</p>
+                                        <p className="text-lg sm:text-2xl font-bold">{kpi.value}</p>
                                         <p className="text-xs text-gray-400">Target: {kpi.target}</p>
                                     </div>
-                                    <div className="flex flex-col items-end">
+                                    <div className="flex flex-col items-end ml-2">
                                         <div className={`rounded-full p-2 ${kpi.status === "above" ? "bg-green-500/20" : "bg-red-500/20"}`}>
                                             {kpi.trend === "up" ? (
                                                 <ArrowUpRight
@@ -123,24 +339,12 @@ export default function BusinessOfficeAnalyticsPage() {
                     ))}
                 </div>
 
-                <Tabs defaultValue="revenue" className="w-full">
-                    <TabsList className="bg-slate-800 border-slate-700 mb-8 grid w-full grid-cols-5 lg:max-w-[800px]">
-                        <TabsTrigger value="revenue" className="cursor-pointer">
-                            Revenue
-                        </TabsTrigger>
-                        <TabsTrigger value="students" className="cursor-pointer">
-                            Students
-                        </TabsTrigger>
-                        <TabsTrigger value="payments" className="cursor-pointer">
-                            Payments
-                        </TabsTrigger>
-                        <TabsTrigger value="cohorts" className="cursor-pointer">
-                            Cohorts
-                        </TabsTrigger>
-                        <TabsTrigger value="forecasting" className="cursor-pointer">
-                            Forecasting
-                        </TabsTrigger>
-                    </TabsList>
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                    {/* Mobile Tabs */}
+                    <MobileTabs value={activeTab} onValueChange={setActiveTab} />
+
+                    {/* Desktop Tabs */}
+                    <DesktopTabs />
 
                     <TabsContent value="revenue">
                         <div className="space-y-6">
@@ -151,7 +355,7 @@ export default function BusinessOfficeAnalyticsPage() {
                                         <CardDescription className="text-gray-300">Monthly performance tracking</CardDescription>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="h-80">
+                                        <div className="h-64 sm:h-80">
                                             <PaymentChart
                                                 data={revenueAnalytics.map((item) => ({
                                                     month: item.month,
@@ -186,7 +390,7 @@ export default function BusinessOfficeAnalyticsPage() {
                                 </Card>
                             </div>
 
-                            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                                 <Card className="bg-slate-800/60 border-slate-700 text-white">
                                     <CardHeader>
                                         <CardTitle>Revenue Breakdown</CardTitle>
@@ -291,12 +495,12 @@ export default function BusinessOfficeAnalyticsPage() {
                                         <table className="w-full">
                                             <thead>
                                                 <tr className="border-b border-slate-700 text-left text-sm font-medium text-gray-300">
-                                                    <th className="pb-3">Course</th>
-                                                    <th className="pb-3">Enrolled</th>
-                                                    <th className="pb-3">Capacity</th>
-                                                    <th className="pb-3">Utilization</th>
-                                                    <th className="pb-3">Revenue</th>
-                                                    <th className="pb-3">Avg Fee</th>
+                                                    <th className="pb-3 min-w-[200px]">Course</th>
+                                                    <th className="pb-3 min-w-[80px]">Enrolled</th>
+                                                    <th className="pb-3 min-w-[80px]">Capacity</th>
+                                                    <th className="pb-3 min-w-[120px]">Utilization</th>
+                                                    <th className="pb-3 min-w-[100px]">Revenue</th>
+                                                    <th className="pb-3 min-w-[100px]">Avg Fee</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-700">
@@ -336,8 +540,8 @@ export default function BusinessOfficeAnalyticsPage() {
                                         <CardTitle>Enrollment Distribution</CardTitle>
                                         <CardDescription className="text-gray-300">Students by course</CardDescription>
                                     </CardHeader>
-                                    <CardContent>
-                                        <div className="h-80">
+                                    <CardContent className="p-6 sm:p-8">
+                                        <div className="h-80 sm:h-96 lg:h-80">
                                             <PaymentPieChart
                                                 data={studentAnalytics.map((course) => ({
                                                     name: course.course.replace("BS ", ""),
@@ -400,12 +604,12 @@ export default function BusinessOfficeAnalyticsPage() {
                                         <table className="w-full">
                                             <thead>
                                                 <tr className="border-b border-slate-700 text-left text-sm font-medium text-gray-300">
-                                                    <th className="pb-3">Payment Method</th>
-                                                    <th className="pb-3">Transactions</th>
-                                                    <th className="pb-3">Total Amount</th>
-                                                    <th className="pb-3">Avg Transaction</th>
-                                                    <th className="pb-3">Growth Rate</th>
-                                                    <th className="pb-3">Market Share</th>
+                                                    <th className="pb-3 min-w-[120px]">Payment Method</th>
+                                                    <th className="pb-3 min-w-[100px]">Transactions</th>
+                                                    <th className="pb-3 min-w-[100px]">Total Amount</th>
+                                                    <th className="pb-3 min-w-[120px]">Avg Transaction</th>
+                                                    <th className="pb-3 min-w-[100px]">Growth Rate</th>
+                                                    <th className="pb-3 min-w-[100px]">Market Share</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-700">
@@ -436,8 +640,8 @@ export default function BusinessOfficeAnalyticsPage() {
                                         <CardTitle>Payment Method Distribution</CardTitle>
                                         <CardDescription className="text-gray-300">By transaction volume</CardDescription>
                                     </CardHeader>
-                                    <CardContent>
-                                        <div className="h-80">
+                                    <CardContent className="p-6 sm:p-8">
+                                        <div className="h-80 sm:h-96 lg:h-80">
                                             <PaymentPieChart
                                                 data={paymentMethodAnalytics.map((method) => ({
                                                     name: method.method,
@@ -487,12 +691,12 @@ export default function BusinessOfficeAnalyticsPage() {
                                         <table className="w-full">
                                             <thead>
                                                 <tr className="border-b border-slate-700 text-left text-sm font-medium text-gray-300">
-                                                    <th className="pb-3">Cohort</th>
-                                                    <th className="pb-3">Initial Enrollment</th>
-                                                    <th className="pb-3">Current Enrollment</th>
-                                                    <th className="pb-3">Retention Rate</th>
-                                                    <th className="pb-3">Total Revenue</th>
-                                                    <th className="pb-3">Revenue per Student</th>
+                                                    <th className="pb-3 min-w-[140px]">Cohort</th>
+                                                    <th className="pb-3 min-w-[120px]">Initial Enrollment</th>
+                                                    <th className="pb-3 min-w-[120px]">Current Enrollment</th>
+                                                    <th className="pb-3 min-w-[100px]">Retention Rate</th>
+                                                    <th className="pb-3 min-w-[100px]">Total Revenue</th>
+                                                    <th className="pb-3 min-w-[140px]">Revenue per Student</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-700">
@@ -502,18 +706,16 @@ export default function BusinessOfficeAnalyticsPage() {
                                                         <td className="py-3">{cohort.enrolled}</td>
                                                         <td className="py-3">{cohort.retained}</td>
                                                         <td className="py-3">
-                                                            <div className="flex items-center space-x-2">
-                                                                <span
-                                                                    className={`${cohort.retentionRate > 90
-                                                                            ? "text-green-500"
-                                                                            : cohort.retentionRate > 85
-                                                                                ? "text-amber-500"
-                                                                                : "text-red-500"
-                                                                        }`}
-                                                                >
-                                                                    {cohort.retentionRate.toFixed(1)}%
-                                                                </span>
-                                                            </div>
+                                                            <span
+                                                                className={`${cohort.retentionRate > 90
+                                                                        ? "text-green-500"
+                                                                        : cohort.retentionRate > 85
+                                                                            ? "text-amber-500"
+                                                                            : "text-red-500"
+                                                                    }`}
+                                                            >
+                                                                {cohort.retentionRate.toFixed(1)}%
+                                                            </span>
                                                         </td>
                                                         <td className="py-3">₱{(cohort.revenue / 1000000).toFixed(1)}M</td>
                                                         <td className="py-3">₱{(cohort.revenue / cohort.retained).toLocaleString()}</td>
@@ -525,7 +727,7 @@ export default function BusinessOfficeAnalyticsPage() {
                                 </CardContent>
                             </Card>
 
-                            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                                 <Card className="bg-slate-800/60 border-slate-700 text-white">
                                     <CardHeader>
                                         <CardTitle>Retention Insights</CardTitle>
@@ -613,7 +815,7 @@ export default function BusinessOfficeAnalyticsPage() {
                                         <CardDescription className="text-gray-300">Next 6 months projection</CardDescription>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="h-80">
+                                        <div className="h-64 sm:h-80">
                                             <PaymentChart
                                                 data={[
                                                     { month: "Sep", amount: 2200000 },
@@ -636,24 +838,24 @@ export default function BusinessOfficeAnalyticsPage() {
                                     <CardContent className="space-y-4">
                                         <div className="rounded-lg bg-blue-500/20 p-4">
                                             <h4 className="font-medium text-blue-400">Next Semester</h4>
-                                            <p className="text-2xl font-bold">1,680 students</p>
+                                            <p className="text-xl sm:text-2xl font-bold">1,680 students</p>
                                             <p className="text-sm text-gray-400">+5.2% growth expected</p>
                                         </div>
                                         <div className="rounded-lg bg-green-500/20 p-4">
                                             <h4 className="font-medium text-green-400">New Enrollments</h4>
-                                            <p className="text-2xl font-bold">420 students</p>
+                                            <p className="text-xl sm:text-2xl font-bold">420 students</p>
                                             <p className="text-sm text-gray-400">Freshmen intake</p>
                                         </div>
                                         <div className="rounded-lg bg-amber-500/20 p-4">
                                             <h4 className="font-medium text-amber-400">Capacity Utilization</h4>
-                                            <p className="text-2xl font-bold">89.3%</p>
+                                            <p className="text-xl sm:text-2xl font-bold">89.3%</p>
                                             <p className="text-sm text-gray-400">Near optimal capacity</p>
                                         </div>
                                     </CardContent>
                                 </Card>
                             </div>
 
-                            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                                 <Card className="bg-slate-800/60 border-slate-700 text-white">
                                     <CardHeader>
                                         <CardTitle>Financial Projections</CardTitle>
