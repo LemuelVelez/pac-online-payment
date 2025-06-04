@@ -13,6 +13,9 @@ import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { DateRangePicker } from "@/components/admin/date-range-picker"
 import { PaymentChart } from "@/components/dashboard/payment-chart"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import {
     Download,
     TrendingUp,
@@ -24,6 +27,8 @@ import {
     Calendar,
     ArrowUpRight,
     ArrowDownRight,
+    MoreVertical,
+    Settings,
 } from "lucide-react"
 
 // Mock data for forecasting
@@ -112,52 +117,200 @@ const kpiForecasts = [
     },
 ]
 
+// Mobile Actions Component
+function MobileActions({
+    forecastPeriod,
+    setForecastPeriod,
+}: {
+    forecastPeriod: string
+    setForecastPeriod: (value: string) => void
+}) {
+    return (
+        <div className="flex items-center gap-2 md:hidden">
+            {/* Date Range Picker - Simplified for mobile */}
+            <Sheet>
+                <SheetTrigger asChild>
+                    <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
+                        <Calendar className="h-4 w-4" />
+                    </Button>
+                </SheetTrigger>
+                <SheetContent side="bottom" className="bg-slate-800 border-slate-700">
+                    <div className="py-4">
+                        <h3 className="text-lg font-medium text-white mb-4">Select Date Range</h3>
+                        <DateRangePicker />
+                    </div>
+                </SheetContent>
+            </Sheet>
+
+            {/* Forecast Period - Mobile Select */}
+            <Sheet>
+                <SheetTrigger asChild>
+                    <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
+                        <Settings className="h-4 w-4" />
+                    </Button>
+                </SheetTrigger>
+                <SheetContent side="bottom" className="bg-slate-800 border-slate-700">
+                    <div className="py-4 space-y-4">
+                        <h3 className="text-lg font-medium text-white mb-4">Forecast Settings</h3>
+                        <div>
+                            <Label htmlFor="mobile-period" className="text-white">
+                                Forecast Period
+                            </Label>
+                            <Select value={forecastPeriod} onValueChange={setForecastPeriod}>
+                                <SelectTrigger id="mobile-period" className="bg-slate-700 border-slate-600 text-white mt-2">
+                                    <SelectValue placeholder="Period" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                                    <SelectItem value="3-months">3 Months</SelectItem>
+                                    <SelectItem value="6-months">6 Months</SelectItem>
+                                    <SelectItem value="12-months">12 Months</SelectItem>
+                                    <SelectItem value="24-months">24 Months</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                </SheetContent>
+            </Sheet>
+
+            {/* Actions Menu */}
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
+                        <MoreVertical className="h-4 w-4" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700 text-white">
+                    <DropdownMenuItem className="hover:bg-slate-700">
+                        <Download className="mr-2 h-4 w-4" />
+                        Export Forecast
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+    )
+}
+
+// Desktop Actions Component
+function DesktopActions({
+    forecastPeriod,
+    setForecastPeriod,
+}: {
+    forecastPeriod: string
+    setForecastPeriod: (value: string) => void
+}) {
+    return (
+        <div className="hidden md:flex space-x-3">
+            <DateRangePicker />
+            <Select value={forecastPeriod} onValueChange={setForecastPeriod}>
+                <SelectTrigger className="w-[150px] bg-slate-700 border-slate-600 text-white">
+                    <SelectValue placeholder="Period" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                    <SelectItem value="3-months">3 Months</SelectItem>
+                    <SelectItem value="6-months">6 Months</SelectItem>
+                    <SelectItem value="12-months">12 Months</SelectItem>
+                    <SelectItem value="24-months">24 Months</SelectItem>
+                </SelectContent>
+            </Select>
+            <Button className="bg-primary hover:bg-primary/90">
+                <Download className="mr-2 h-4 w-4" />
+                Export Forecast
+            </Button>
+        </div>
+    )
+}
+
+// Mobile Tabs Component
+function MobileTabs({ value, onValueChange }: { value: string; onValueChange: (value: string) => void }) {
+    const tabs = [
+        { value: "overview", label: "Overview", shortLabel: "Overview" },
+        { value: "scenarios", label: "Scenarios", shortLabel: "Scenarios" },
+        { value: "models", label: "Models", shortLabel: "Models" },
+        { value: "insights", label: "Insights", shortLabel: "Insights" },
+    ]
+
+    return (
+        <div className="md:hidden mb-6">
+            <ScrollArea className="w-full whitespace-nowrap">
+                <div className="flex space-x-1 p-1 bg-slate-800 rounded-lg border border-slate-700">
+                    {tabs.map((tab) => (
+                        <button
+                            key={tab.value}
+                            onClick={() => onValueChange(tab.value)}
+                            className={`
+                                flex-shrink-0 px-4 py-2 text-sm font-medium rounded-md transition-colors
+                                ${value === tab.value
+                                    ? "bg-slate-700 text-white shadow-sm"
+                                    : "text-slate-400 hover:text-white hover:bg-slate-700/50"
+                                }
+                            `}
+                        >
+                            {tab.shortLabel}
+                        </button>
+                    ))}
+                </div>
+                <ScrollBar orientation="horizontal" className="invisible" />
+            </ScrollArea>
+        </div>
+    )
+}
+
+// Desktop Tabs Component
+function DesktopTabs() {
+    return (
+        <TabsList className="hidden md:grid bg-slate-800 border-slate-700 mb-8 w-full grid-cols-4 lg:max-w-[600px]">
+            <TabsTrigger value="overview" className="cursor-pointer">
+                Overview
+            </TabsTrigger>
+            <TabsTrigger value="scenarios" className="cursor-pointer">
+                Scenarios
+            </TabsTrigger>
+            <TabsTrigger value="models" className="cursor-pointer">
+                Models
+            </TabsTrigger>
+            <TabsTrigger value="insights" className="cursor-pointer">
+                Insights
+            </TabsTrigger>
+        </TabsList>
+    )
+}
+
 export default function ForecastingPage() {
     // Type the state with the ScenarioKey type
     const [selectedScenario, setSelectedScenario] = useState<ScenarioKey>("realistic")
     const [forecastPeriod, setForecastPeriod] = useState("6-months")
     const [confidenceLevel, setConfidenceLevel] = useState([80])
+    const [activeTab, setActiveTab] = useState("overview")
 
     return (
         <DashboardLayout allowedRoles={["business-office"]}>
             <div className="container mx-auto px-4 py-8">
-                <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
+                {/* Header Section with Mobile-Optimized Actions */}
+                <div className="mb-8 flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
                     <div>
                         <h1 className="text-2xl font-bold text-white">Financial Forecasting</h1>
                         <p className="text-gray-300">Predict future financial performance and trends</p>
                     </div>
-                    <div className="mt-4 flex space-x-3 md:mt-0">
-                        <DateRangePicker />
-                        <Select value={forecastPeriod} onValueChange={setForecastPeriod}>
-                            <SelectTrigger className="w-[150px] bg-slate-700 border-slate-600 text-white">
-                                <SelectValue placeholder="Period" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                <SelectItem value="3-months">3 Months</SelectItem>
-                                <SelectItem value="6-months">6 Months</SelectItem>
-                                <SelectItem value="12-months">12 Months</SelectItem>
-                                <SelectItem value="24-months">24 Months</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <Button className="bg-primary hover:bg-primary/90">
-                            <Download className="mr-2 h-4 w-4" />
-                            Export Forecast
-                        </Button>
-                    </div>
+
+                    {/* Mobile Actions */}
+                    <MobileActions forecastPeriod={forecastPeriod} setForecastPeriod={setForecastPeriod} />
+
+                    {/* Desktop Actions */}
+                    <DesktopActions forecastPeriod={forecastPeriod} setForecastPeriod={setForecastPeriod} />
                 </div>
 
-                {/* KPI Forecast Cards */}
-                <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+                {/* KPI Forecast Cards - Mobile Optimized */}
+                <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     {kpiForecasts.map((kpi, index) => (
                         <Card key={index} className="bg-slate-800/60 border-slate-700 text-white">
-                            <CardContent className="p-6">
+                            <CardContent className="p-4 sm:p-6">
                                 <div className="flex items-center justify-between">
-                                    <div>
-                                        <p className="text-sm text-gray-400">{kpi.metric}</p>
-                                        <p className="text-xl font-bold">{kpi.forecast}</p>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm text-gray-400 truncate">{kpi.metric}</p>
+                                        <p className="text-lg sm:text-xl font-bold">{kpi.forecast}</p>
                                         <p className="text-xs text-gray-400">Current: {kpi.current}</p>
                                     </div>
-                                    <div className="flex flex-col items-end">
+                                    <div className="flex flex-col items-end ml-2">
                                         <div className={`rounded-full p-2 ${kpi.trend === "up" ? "bg-green-500/20" : "bg-red-500/20"}`}>
                                             {kpi.trend === "up" ? (
                                                 <ArrowUpRight className="h-4 w-4 text-green-500" />
@@ -176,21 +329,12 @@ export default function ForecastingPage() {
                     ))}
                 </div>
 
-                <Tabs defaultValue="overview" className="w-full">
-                    <TabsList className="bg-slate-800 border-slate-700 mb-8 grid w-full grid-cols-4 lg:max-w-[600px]">
-                        <TabsTrigger value="overview" className="cursor-pointer">
-                            Overview
-                        </TabsTrigger>
-                        <TabsTrigger value="scenarios" className="cursor-pointer">
-                            Scenarios
-                        </TabsTrigger>
-                        <TabsTrigger value="models" className="cursor-pointer">
-                            Models
-                        </TabsTrigger>
-                        <TabsTrigger value="insights" className="cursor-pointer">
-                            Insights
-                        </TabsTrigger>
-                    </TabsList>
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                    {/* Mobile Tabs */}
+                    <MobileTabs value={activeTab} onValueChange={setActiveTab} />
+
+                    {/* Desktop Tabs */}
+                    <DesktopTabs />
 
                     <TabsContent value="overview">
                         <div className="space-y-6">
@@ -201,7 +345,7 @@ export default function ForecastingPage() {
                                         <CardDescription className="text-gray-300">Historical data and 6-month projection</CardDescription>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="h-80">
+                                        <div className="h-64 sm:h-80">
                                             <PaymentChart
                                                 data={[...historicalData, ...forecastData].map((item) => ({
                                                     month: item.month.split(" ")[0],
@@ -218,7 +362,7 @@ export default function ForecastingPage() {
                                         <CardDescription className="text-gray-300">Student enrollment projections</CardDescription>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="h-80">
+                                        <div className="h-64 sm:h-80">
                                             <PaymentChart
                                                 data={[...historicalData, ...forecastData].map((item) => ({
                                                     month: item.month.split(" ")[0],
@@ -230,7 +374,7 @@ export default function ForecastingPage() {
                                 </Card>
                             </div>
 
-                            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                                 <Card className="bg-slate-800/60 border-slate-700 text-white">
                                     <CardHeader>
                                         <CardTitle>Forecast Accuracy</CardTitle>
@@ -335,11 +479,11 @@ export default function ForecastingPage() {
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                                    <div className="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
                                         {Object.entries(scenarios).map(([key, scenario]) => (
                                             <div
                                                 key={key}
-                                                className={`rounded-lg border p-6 cursor-pointer transition-colors ${selectedScenario === key
+                                                className={`rounded-lg border p-4 sm:p-6 cursor-pointer transition-colors ${selectedScenario === key
                                                     ? "border-primary bg-primary/10"
                                                     : "border-slate-700 hover:border-slate-600"
                                                     }`}
@@ -381,14 +525,14 @@ export default function ForecastingPage() {
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                                         <div className="space-y-4">
                                             <h3 className="text-lg font-medium">Financial Projections</h3>
                                             <div className="space-y-3">
                                                 <div className="rounded-lg bg-slate-700/50 p-4">
                                                     <div className="flex justify-between items-center">
                                                         <span className="text-gray-400">Projected Revenue</span>
-                                                        <span className="text-xl font-bold text-green-500">
+                                                        <span className="text-lg sm:text-xl font-bold text-green-500">
                                                             ₱
                                                             {((12500000 * (1 + scenarios[selectedScenario].revenueGrowth / 100)) / 1000000).toFixed(
                                                                 1,
@@ -404,7 +548,7 @@ export default function ForecastingPage() {
                                                 <div className="rounded-lg bg-slate-700/50 p-4">
                                                     <div className="flex justify-between items-center">
                                                         <span className="text-gray-400">Projected Expenses</span>
-                                                        <span className="text-xl font-bold text-red-500">
+                                                        <span className="text-lg sm:text-xl font-bold text-red-500">
                                                             ₱{((9700000 * (1 + scenarios[selectedScenario].costIncrease / 100)) / 1000000).toFixed(1)}
                                                             M
                                                         </span>
@@ -417,7 +561,7 @@ export default function ForecastingPage() {
                                                 <div className="rounded-lg bg-slate-700/50 p-4">
                                                     <div className="flex justify-between items-center">
                                                         <span className="text-gray-400">Net Profit</span>
-                                                        <span className="text-xl font-bold text-blue-500">
+                                                        <span className="text-lg sm:text-xl font-bold text-blue-500">
                                                             ₱
                                                             {(
                                                                 (12500000 * (1 + scenarios[selectedScenario].revenueGrowth / 100) -
@@ -447,7 +591,7 @@ export default function ForecastingPage() {
                                                 <div className="rounded-lg bg-slate-700/50 p-4">
                                                     <div className="flex justify-between items-center">
                                                         <span className="text-gray-400">Student Enrollment</span>
-                                                        <span className="text-xl font-bold text-purple-500">
+                                                        <span className="text-lg sm:text-xl font-bold text-purple-500">
                                                             {Math.round(1650 * (1 + scenarios[selectedScenario].enrollmentGrowth / 100))}
                                                         </span>
                                                     </div>
@@ -459,7 +603,7 @@ export default function ForecastingPage() {
                                                 <div className="rounded-lg bg-slate-700/50 p-4">
                                                     <div className="flex justify-between items-center">
                                                         <span className="text-gray-400">Revenue per Student</span>
-                                                        <span className="text-xl font-bold text-amber-500">
+                                                        <span className="text-lg sm:text-xl font-bold text-amber-500">
                                                             ₱
                                                             {Math.round(
                                                                 (12500000 * (1 + scenarios[selectedScenario].revenueGrowth / 100)) /
@@ -472,7 +616,7 @@ export default function ForecastingPage() {
                                                 <div className="rounded-lg bg-slate-700/50 p-4">
                                                     <div className="flex justify-between items-center">
                                                         <span className="text-gray-400">Capacity Utilization</span>
-                                                        <span className="text-xl font-bold text-cyan-500">
+                                                        <span className="text-lg sm:text-xl font-bold text-cyan-500">
                                                             {(
                                                                 ((1650 * (1 + scenarios[selectedScenario].enrollmentGrowth / 100)) / 1900) *
                                                                 100
@@ -614,12 +758,12 @@ export default function ForecastingPage() {
                                     </div>
 
                                     <div className="mt-6 pt-6 border-t border-slate-700">
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
                                             <div>
                                                 <h3 className="text-lg font-medium">Model Training</h3>
                                                 <p className="text-sm text-gray-400">Retrain models with latest data</p>
                                             </div>
-                                            <div className="flex space-x-2">
+                                            <div className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-2">
                                                 <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
                                                     <Calculator className="mr-2 h-4 w-4" />
                                                     Validate Models
