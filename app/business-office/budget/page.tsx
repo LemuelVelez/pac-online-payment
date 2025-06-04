@@ -14,6 +14,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { DateRangePicker } from "@/components/admin/date-range-picker"
 import { PaymentChart } from "@/components/dashboard/payment-chart"
 import { PaymentPieChart } from "@/components/dashboard/payment-pie-chart"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import {
     Download,
     Plus,
@@ -25,6 +28,8 @@ import {
     Target,
     Calendar,
     Save,
+    MoreVertical,
+    Filter,
 } from "lucide-react"
 
 // Define the budget category type
@@ -112,44 +117,322 @@ const budgetDistribution = [
     { name: "Technology", value: 1200000 },
 ]
 
+// Mobile Actions Component
+function MobileActions({
+    selectedCategory,
+    setSelectedCategory,
+}: {
+    selectedCategory: string
+    setSelectedCategory: (value: string) => void
+}) {
+    return (
+        <div className="flex items-center gap-2 md:hidden">
+            {/* Date Range Picker - Simplified for mobile */}
+            <Sheet>
+                <SheetTrigger asChild>
+                    <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
+                        <Calendar className="h-4 w-4" />
+                    </Button>
+                </SheetTrigger>
+                <SheetContent side="bottom" className="bg-slate-800 border-slate-700">
+                    <div className="py-4">
+                        <h3 className="text-lg font-medium text-white mb-4">Select Date Range</h3>
+                        <DateRangePicker />
+                    </div>
+                </SheetContent>
+            </Sheet>
+
+            {/* Category Filter - Mobile Select */}
+            <Sheet>
+                <SheetTrigger asChild>
+                    <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
+                        <Filter className="h-4 w-4" />
+                    </Button>
+                </SheetTrigger>
+                <SheetContent side="bottom" className="bg-slate-800 border-slate-700">
+                    <div className="py-4 space-y-4">
+                        <h3 className="text-lg font-medium text-white mb-4">Filter Categories</h3>
+                        <div>
+                            <Label htmlFor="mobile-category" className="text-white">
+                                Category Filter
+                            </Label>
+                            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                                <SelectTrigger id="mobile-category" className="bg-slate-700 border-slate-600 text-white mt-2">
+                                    <SelectValue placeholder="Filter by category" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                                    <SelectItem value="all">All Categories</SelectItem>
+                                    <SelectItem value="academic">Academic Programs</SelectItem>
+                                    <SelectItem value="infrastructure">Infrastructure</SelectItem>
+                                    <SelectItem value="student">Student Services</SelectItem>
+                                    <SelectItem value="admin">Administration</SelectItem>
+                                    <SelectItem value="tech">Technology</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                </SheetContent>
+            </Sheet>
+
+            {/* Actions Menu */}
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
+                        <MoreVertical className="h-4 w-4" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700 text-white">
+                    <DropdownMenuItem className="hover:bg-slate-700">
+                        <Plus className="mr-2 h-4 w-4" />
+                        New Budget
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="hover:bg-slate-700">
+                        <Download className="mr-2 h-4 w-4" />
+                        Export Report
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+    )
+}
+
+// Desktop Actions Component
+function DesktopActions({
+    selectedCategory,
+    setSelectedCategory,
+}: {
+    selectedCategory: string
+    setSelectedCategory: (value: string) => void
+}) {
+    return (
+        <div className="hidden md:flex space-x-3">
+            <DateRangePicker />
+            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="w-[200px] bg-slate-700 border-slate-600 text-white">
+                    <SelectValue placeholder="Filter by category" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                    <SelectItem value="all">All Categories</SelectItem>
+                    <SelectItem value="academic">Academic Programs</SelectItem>
+                    <SelectItem value="infrastructure">Infrastructure</SelectItem>
+                    <SelectItem value="student">Student Services</SelectItem>
+                    <SelectItem value="admin">Administration</SelectItem>
+                    <SelectItem value="tech">Technology</SelectItem>
+                </SelectContent>
+            </Select>
+            <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
+                <Plus className="mr-2 h-4 w-4" />
+                New Budget
+            </Button>
+            <Button className="bg-primary hover:bg-primary/90">
+                <Download className="mr-2 h-4 w-4" />
+                Export Report
+            </Button>
+        </div>
+    )
+}
+
+// Mobile Tabs Component
+function MobileTabs({ value, onValueChange }: { value: string; onValueChange: (value: string) => void }) {
+    const tabs = [
+        { value: "overview", label: "Overview", shortLabel: "Overview" },
+        { value: "categories", label: "Categories", shortLabel: "Categories" },
+        { value: "trends", label: "Trends", shortLabel: "Trends" },
+        { value: "planning", label: "Planning", shortLabel: "Planning" },
+    ]
+
+    return (
+        <div className="md:hidden mb-6">
+            <ScrollArea className="w-full whitespace-nowrap">
+                <div className="flex space-x-1 p-1 bg-slate-800 rounded-lg border border-slate-700">
+                    {tabs.map((tab) => (
+                        <button
+                            key={tab.value}
+                            onClick={() => onValueChange(tab.value)}
+                            className={`
+                                flex-shrink-0 px-4 py-2 text-sm font-medium rounded-md transition-colors
+                                ${value === tab.value
+                                    ? "bg-slate-700 text-white shadow-sm"
+                                    : "text-slate-400 hover:text-white hover:bg-slate-700/50"
+                                }
+                            `}
+                        >
+                            {tab.shortLabel}
+                        </button>
+                    ))}
+                </div>
+                <ScrollBar orientation="horizontal" className="invisible" />
+            </ScrollArea>
+        </div>
+    )
+}
+
+// Desktop Tabs Component
+function DesktopTabs() {
+    return (
+        <TabsList className="hidden md:grid bg-slate-800 border-slate-700 mb-8 w-full grid-cols-4 lg:max-w-[600px]">
+            <TabsTrigger value="overview" className="cursor-pointer">
+                Overview
+            </TabsTrigger>
+            <TabsTrigger value="categories" className="cursor-pointer">
+                Categories
+            </TabsTrigger>
+            <TabsTrigger value="trends" className="cursor-pointer">
+                Trends
+            </TabsTrigger>
+            <TabsTrigger value="planning" className="cursor-pointer">
+                Planning
+            </TabsTrigger>
+        </TabsList>
+    )
+}
+
+// Budget Category Card Component for Mobile
+function BudgetCategoryCard({
+    category,
+    onEdit,
+    onDelete,
+}: {
+    category: BudgetCategory
+    onEdit: (category: BudgetCategory) => void
+    onDelete: (id: number) => void
+}) {
+    return (
+        <div className="rounded-lg border border-slate-700 p-4 sm:p-6">
+            <div className="mb-4 flex items-start justify-between">
+                <div className="min-w-0 flex-1">
+                    <h3 className="text-lg font-medium truncate">{category.name}</h3>
+                    <p className="text-sm text-gray-400">Last updated: {category.lastUpdated}</p>
+                </div>
+                <div className="flex space-x-2 ml-2">
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-slate-600 text-white hover:bg-slate-700"
+                        onClick={() => onEdit(category)}
+                    >
+                        <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-red-600 text-red-400 hover:bg-red-600/20"
+                        onClick={() => onDelete(category.id)}
+                    >
+                        <Trash2 className="h-4 w-4" />
+                    </Button>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <p className="text-sm text-gray-400">Allocated</p>
+                    <p className="text-lg sm:text-xl font-bold">₱{(category.allocated / 1000000).toFixed(1)}M</p>
+                </div>
+                <div>
+                    <p className="text-sm text-gray-400">Spent</p>
+                    <p className="text-lg sm:text-xl font-bold">₱{(category.spent / 1000000).toFixed(1)}M</p>
+                </div>
+                <div>
+                    <p className="text-sm text-gray-400">Remaining</p>
+                    <p className={`text-lg sm:text-xl font-bold ${category.remaining < 0 ? "text-red-500" : "text-green-500"}`}>
+                        ₱{Math.abs(category.remaining / 1000000).toFixed(1)}M{category.remaining < 0 ? " over" : ""}
+                    </p>
+                </div>
+                <div>
+                    <p className="text-sm text-gray-400">Utilization</p>
+                    <p
+                        className={`text-lg sm:text-xl font-bold ${category.percentage > 100
+                            ? "text-red-500"
+                            : category.percentage > 80
+                                ? "text-amber-500"
+                                : "text-green-500"
+                            }`}
+                    >
+                        {category.percentage.toFixed(1)}%
+                    </p>
+                </div>
+            </div>
+
+            <div className="mb-4">
+                <div className="mb-2 flex justify-between">
+                    <span className="text-sm text-gray-400">Budget Utilization</span>
+                    <span className="text-sm">{category.percentage.toFixed(1)}%</span>
+                </div>
+                <Progress
+                    value={Math.min(category.percentage, 100)}
+                    className={`h-3 ${category.percentage > 100 ? "bg-red-900" : category.percentage > 80 ? "bg-amber-900" : "bg-slate-700"
+                        }`}
+                />
+                {category.percentage > 100 && (
+                    <div className="mt-1 text-xs text-red-400">Over budget by {(category.percentage - 100).toFixed(1)}%</div>
+                )}
+            </div>
+
+            <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
+                <span
+                    className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${category.status === "on-track"
+                        ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-500"
+                        : category.status === "warning"
+                            ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-500"
+                            : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-500"
+                        }`}
+                >
+                    {category.status === "on-track" ? "On Track" : category.status === "warning" ? "Warning" : "Over Budget"}
+                </span>
+                <Button size="sm" variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
+                    View Details
+                </Button>
+            </div>
+        </div>
+    )
+}
+
 export default function BudgetManagementPage() {
     const [selectedCategory, setSelectedCategory] = useState("all")
     const [isEditing, setIsEditing] = useState(false)
     const [editingCategory, setEditingCategory] = useState<BudgetCategory | null>(null)
+    const [activeTab, setActiveTab] = useState("overview")
 
     const totalBudget = budgetCategories.reduce((sum, cat) => sum + cat.allocated, 0)
     const totalSpent = budgetCategories.reduce((sum, cat) => sum + cat.spent, 0)
     const totalRemaining = totalBudget - totalSpent
 
+    const handleEditCategory = (category: BudgetCategory) => {
+        setEditingCategory(category)
+        setIsEditing(true)
+    }
+
+    const handleDeleteCategory = (id: number) => {
+        // Handle delete logic here
+        console.log("Delete category:", id)
+    }
+
     return (
         <DashboardLayout allowedRoles={["business-office"]}>
             <div className="container mx-auto px-4 py-8">
-                <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
+                {/* Header Section with Mobile-Optimized Actions */}
+                <div className="mb-8 flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
                     <div>
                         <h1 className="text-2xl font-bold text-white">Budget Management</h1>
                         <p className="text-gray-300">Monitor and manage institutional budgets</p>
                     </div>
-                    <div className="mt-4 flex space-x-3 md:mt-0">
-                        <DateRangePicker />
-                        <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
-                            <Plus className="mr-2 h-4 w-4" />
-                            New Budget
-                        </Button>
-                        <Button className="bg-primary hover:bg-primary/90">
-                            <Download className="mr-2 h-4 w-4" />
-                            Export Report
-                        </Button>
-                    </div>
+
+                    {/* Mobile Actions */}
+                    <MobileActions selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} />
+
+                    {/* Desktop Actions */}
+                    <DesktopActions selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} />
                 </div>
 
-                {/* Budget Overview Cards */}
-                <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-4">
+                {/* Budget Overview Cards - Mobile Optimized */}
+                <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-medium">Total Budget</CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">₱{(totalBudget / 1000000).toFixed(1)}M</div>
+                        <CardContent className="p-4 sm:p-6">
+                            <div className="text-xl sm:text-2xl font-bold">₱{(totalBudget / 1000000).toFixed(1)}M</div>
                             <p className="text-xs text-gray-400 mt-1">
                                 <Target className="inline h-3 w-3 text-blue-500 mr-1" />
                                 FY 2023-2024
@@ -161,8 +444,8 @@ export default function BudgetManagementPage() {
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-medium">Total Spent</CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">₱{(totalSpent / 1000000).toFixed(1)}M</div>
+                        <CardContent className="p-4 sm:p-6">
+                            <div className="text-xl sm:text-2xl font-bold">₱{(totalSpent / 1000000).toFixed(1)}M</div>
                             <p className="text-xs text-gray-400 mt-1">
                                 <DollarSign className="inline h-3 w-3 text-green-500 mr-1" />
                                 {((totalSpent / totalBudget) * 100).toFixed(1)}% utilized
@@ -174,8 +457,8 @@ export default function BudgetManagementPage() {
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-medium">Remaining Budget</CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">₱{(totalRemaining / 1000000).toFixed(1)}M</div>
+                        <CardContent className="p-4 sm:p-6">
+                            <div className="text-xl sm:text-2xl font-bold">₱{(totalRemaining / 1000000).toFixed(1)}M</div>
                             <p className="text-xs text-gray-400 mt-1">
                                 <Calendar className="inline h-3 w-3 text-amber-500 mr-1" />4 months remaining
                             </p>
@@ -186,8 +469,8 @@ export default function BudgetManagementPage() {
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-medium">Budget Variance</CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold text-red-500">+₱150K</div>
+                        <CardContent className="p-4 sm:p-6">
+                            <div className="text-xl sm:text-2xl font-bold text-red-500">+₱150K</div>
                             <p className="text-xs text-gray-400 mt-1">
                                 <TrendingUp className="inline h-3 w-3 text-red-500 mr-1" />
                                 1.2% over budget
@@ -196,37 +479,28 @@ export default function BudgetManagementPage() {
                     </Card>
                 </div>
 
-                {/* Budget Alerts */}
+                {/* Budget Alerts - Mobile Optimized */}
                 <div className="mb-8 space-y-4">
                     <Alert className="bg-red-500/20 border-red-500/50 text-red-200">
                         <AlertTriangle className="h-4 w-4" />
-                        <AlertDescription>
+                        <AlertDescription className="text-sm">
                             Student Services is over budget by ₱150,000 (10%). Immediate attention required.
                         </AlertDescription>
                     </Alert>
                     <Alert className="bg-amber-500/20 border-amber-500/50 text-amber-200">
                         <AlertTriangle className="h-4 w-4" />
-                        <AlertDescription>
+                        <AlertDescription className="text-sm">
                             Infrastructure budget is at 84% utilization with 4 months remaining. Monitor closely.
                         </AlertDescription>
                     </Alert>
                 </div>
 
-                <Tabs defaultValue="overview" className="w-full">
-                    <TabsList className="bg-slate-800 border-slate-700 mb-8 grid w-full grid-cols-4 lg:max-w-[600px]">
-                        <TabsTrigger value="overview" className="cursor-pointer">
-                            Overview
-                        </TabsTrigger>
-                        <TabsTrigger value="categories" className="cursor-pointer">
-                            Categories
-                        </TabsTrigger>
-                        <TabsTrigger value="trends" className="cursor-pointer">
-                            Trends
-                        </TabsTrigger>
-                        <TabsTrigger value="planning" className="cursor-pointer">
-                            Planning
-                        </TabsTrigger>
-                    </TabsList>
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                    {/* Mobile Tabs */}
+                    <MobileTabs value={activeTab} onValueChange={setActiveTab} />
+
+                    {/* Desktop Tabs */}
+                    <DesktopTabs />
 
                     <TabsContent value="overview">
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -236,7 +510,7 @@ export default function BudgetManagementPage() {
                                     <CardDescription className="text-gray-300">Allocation by category</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="h-80">
+                                    <div className="h-100 sm:h-80">
                                         <PaymentPieChart data={budgetDistribution} />
                                     </div>
                                 </CardContent>
@@ -248,7 +522,7 @@ export default function BudgetManagementPage() {
                                     <CardDescription className="text-gray-300">Monthly comparison</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="h-80">
+                                    <div className="h-64 sm:h-80">
                                         <PaymentChart
                                             data={monthlyBudgetTrend.map((item) => ({
                                                 month: item.month,
@@ -315,131 +589,37 @@ export default function BudgetManagementPage() {
 
                     <TabsContent value="categories">
                         <Card className="bg-slate-800/60 border-slate-700 text-white">
-                            <CardHeader className="flex flex-row items-center justify-between">
+                            <CardHeader className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
                                 <div>
                                     <CardTitle>Budget Categories</CardTitle>
                                     <CardDescription className="text-gray-300">Detailed breakdown by category</CardDescription>
                                 </div>
-                                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                                    <SelectTrigger className="w-[200px] bg-slate-700 border-slate-600">
-                                        <SelectValue placeholder="Filter by category" />
-                                    </SelectTrigger>
-                                    <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                        <SelectItem value="all">All Categories</SelectItem>
-                                        <SelectItem value="academic">Academic Programs</SelectItem>
-                                        <SelectItem value="infrastructure">Infrastructure</SelectItem>
-                                        <SelectItem value="student">Student Services</SelectItem>
-                                        <SelectItem value="admin">Administration</SelectItem>
-                                        <SelectItem value="tech">Technology</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                {/* Desktop filter - hidden on mobile since it's in the mobile actions */}
+                                <div className="hidden sm:block">
+                                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                                        <SelectTrigger className="w-[200px] bg-slate-700 border-slate-600">
+                                            <SelectValue placeholder="Filter by category" />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                                            <SelectItem value="all">All Categories</SelectItem>
+                                            <SelectItem value="academic">Academic Programs</SelectItem>
+                                            <SelectItem value="infrastructure">Infrastructure</SelectItem>
+                                            <SelectItem value="student">Student Services</SelectItem>
+                                            <SelectItem value="admin">Administration</SelectItem>
+                                            <SelectItem value="tech">Technology</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-6">
                                     {budgetCategories.map((category) => (
-                                        <div key={category.id} className="rounded-lg border border-slate-700 p-6">
-                                            <div className="mb-4 flex items-center justify-between">
-                                                <div>
-                                                    <h3 className="text-lg font-medium">{category.name}</h3>
-                                                    <p className="text-sm text-gray-400">Last updated: {category.lastUpdated}</p>
-                                                </div>
-                                                <div className="flex space-x-2">
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        className="border-slate-600 text-white hover:bg-slate-700"
-                                                        onClick={() => {
-                                                            setEditingCategory(category)
-                                                            setIsEditing(true)
-                                                        }}
-                                                    >
-                                                        <Edit className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        className="border-red-600 text-red-400 hover:bg-red-600/20"
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                </div>
-                                            </div>
-
-                                            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-                                                <div>
-                                                    <p className="text-sm text-gray-400">Allocated</p>
-                                                    <p className="text-xl font-bold">₱{category.allocated.toLocaleString()}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-sm text-gray-400">Spent</p>
-                                                    <p className="text-xl font-bold">₱{category.spent.toLocaleString()}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-sm text-gray-400">Remaining</p>
-                                                    <p
-                                                        className={`text-xl font-bold ${category.remaining < 0 ? "text-red-500" : "text-green-500"
-                                                            }`}
-                                                    >
-                                                        ₱{Math.abs(category.remaining).toLocaleString()}
-                                                        {category.remaining < 0 ? " over" : ""}
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-sm text-gray-400">Utilization</p>
-                                                    <p
-                                                        className={`text-xl font-bold ${category.percentage > 100
-                                                            ? "text-red-500"
-                                                            : category.percentage > 80
-                                                                ? "text-amber-500"
-                                                                : "text-green-500"
-                                                            }`}
-                                                    >
-                                                        {category.percentage.toFixed(1)}%
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            <div className="mt-4">
-                                                <div className="mb-2 flex justify-between">
-                                                    <span className="text-sm text-gray-400">Budget Utilization</span>
-                                                    <span className="text-sm">{category.percentage.toFixed(1)}%</span>
-                                                </div>
-                                                <Progress
-                                                    value={Math.min(category.percentage, 100)}
-                                                    className={`h-3 ${category.percentage > 100
-                                                        ? "bg-red-900"
-                                                        : category.percentage > 80
-                                                            ? "bg-amber-900"
-                                                            : "bg-slate-700"
-                                                        }`}
-                                                />
-                                                {category.percentage > 100 && (
-                                                    <div className="mt-1 text-xs text-red-400">
-                                                        Over budget by {(category.percentage - 100).toFixed(1)}%
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            <div className="mt-4 flex justify-between">
-                                                <span
-                                                    className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${category.status === "on-track"
-                                                        ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-500"
-                                                        : category.status === "warning"
-                                                            ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-500"
-                                                            : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-500"
-                                                        }`}
-                                                >
-                                                    {category.status === "on-track"
-                                                        ? "On Track"
-                                                        : category.status === "warning"
-                                                            ? "Warning"
-                                                            : "Over Budget"}
-                                                </span>
-                                                <Button size="sm" variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
-                                                    View Details
-                                                </Button>
-                                            </div>
-                                        </div>
+                                        <BudgetCategoryCard
+                                            key={category.id}
+                                            category={category}
+                                            onEdit={handleEditCategory}
+                                            onDelete={handleDeleteCategory}
+                                        />
                                     ))}
                                 </div>
                             </CardContent>
@@ -454,7 +634,7 @@ export default function BudgetManagementPage() {
                                     <CardDescription className="text-gray-300">Budget vs actual spending over time</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="h-96">
+                                    <div className="h-64 sm:h-96">
                                         <PaymentChart
                                             data={monthlyBudgetTrend.map((item) => ({
                                                 month: item.month,
