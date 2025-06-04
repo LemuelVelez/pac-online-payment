@@ -5,12 +5,16 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DateRangePicker } from "@/components/admin/date-range-picker"
 import { PaymentChart } from "@/components/dashboard/payment-chart"
 import { PaymentPieChart } from "@/components/dashboard/payment-pie-chart"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import {
     Download,
     TrendingUp,
@@ -23,9 +27,11 @@ import {
     CreditCard,
     Clock,
     CheckCircle,
+    MoreVertical,
+    SlidersHorizontal,
 } from "lucide-react"
 
-// Mock data for collections
+// Mock data for collections (same as before)
 const collectionsData = [
     {
         id: "COL-2023-001",
@@ -151,11 +157,302 @@ const courseCollectionDistribution = [
     { name: "BS Education", value: 500000 },
 ]
 
+// Mobile Actions Component
+function MobileActions() {
+    return (
+        <div className="flex items-center gap-2 md:hidden">
+            {/* Date Range Picker - Mobile */}
+            <Sheet>
+                <SheetTrigger asChild>
+                    <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
+                        <Calendar className="h-4 w-4" />
+                    </Button>
+                </SheetTrigger>
+                <SheetContent side="bottom" className="bg-slate-800 border-slate-700">
+                    <div className="py-4">
+                        <h3 className="text-lg font-medium text-white mb-4">Select Date Range</h3>
+                        <DateRangePicker />
+                    </div>
+                </SheetContent>
+            </Sheet>
+
+            {/* Actions Menu */}
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
+                        <MoreVertical className="h-4 w-4" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700 text-white">
+                    <DropdownMenuItem className="hover:bg-slate-700">
+                        <Download className="mr-2 h-4 w-4" />
+                        Export Report
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+    )
+}
+
+// Desktop Actions Component
+function DesktopActions() {
+    return (
+        <div className="hidden md:flex space-x-3">
+            <DateRangePicker />
+            <Button className="bg-primary hover:bg-primary/90">
+                <Download className="mr-2 h-4 w-4" />
+                Export Report
+            </Button>
+        </div>
+    )
+}
+
+// Mobile Tabs Component
+function MobileTabs({ value, onValueChange }: { value: string; onValueChange: (value: string) => void }) {
+    const tabs = [
+        { value: "collections", label: "Collections", shortLabel: "Collections" },
+        { value: "outstanding", label: "Outstanding", shortLabel: "Outstanding" },
+        { value: "trends", label: "Trends", shortLabel: "Trends" },
+        { value: "analysis", label: "Analysis", shortLabel: "Analysis" },
+    ]
+
+    return (
+        <div className="md:hidden mb-6">
+            <ScrollArea className="w-full whitespace-nowrap">
+                <div className="flex space-x-1 p-1 bg-slate-800 rounded-lg border border-slate-700">
+                    {tabs.map((tab) => (
+                        <button
+                            key={tab.value}
+                            onClick={() => onValueChange(tab.value)}
+                            className={`
+                                flex-shrink-0 px-4 py-2 text-sm font-medium rounded-md transition-colors
+                                ${value === tab.value
+                                    ? "bg-slate-700 text-white shadow-sm"
+                                    : "text-slate-400 hover:text-white hover:bg-slate-700/50"
+                                }
+                            `}
+                        >
+                            {tab.shortLabel}
+                        </button>
+                    ))}
+                </div>
+                <ScrollBar orientation="horizontal" className="invisible" />
+            </ScrollArea>
+        </div>
+    )
+}
+
+// Desktop Tabs Component
+function DesktopTabs() {
+    return (
+        <TabsList className="hidden md:grid bg-slate-800 border-slate-700 mb-8 w-full grid-cols-4 lg:max-w-[800px]">
+            <TabsTrigger value="collections" className="cursor-pointer">
+                Collections
+            </TabsTrigger>
+            <TabsTrigger value="outstanding" className="cursor-pointer">
+                Outstanding
+            </TabsTrigger>
+            <TabsTrigger value="trends" className="cursor-pointer">
+                Trends
+            </TabsTrigger>
+            <TabsTrigger value="analysis" className="cursor-pointer">
+                Analysis
+            </TabsTrigger>
+        </TabsList>
+    )
+}
+
+// Mobile Filters Component
+function MobileFilters({
+    searchTerm,
+    setSearchTerm,
+    statusFilter,
+    setStatusFilter,
+    courseFilter,
+    setCourseFilter,
+    paymentMethodFilter,
+    setPaymentMethodFilter,
+}: {
+    searchTerm: string
+    setSearchTerm: (value: string) => void
+    statusFilter: string
+    setStatusFilter: (value: string) => void
+    courseFilter: string
+    setCourseFilter: (value: string) => void
+    paymentMethodFilter: string
+    setPaymentMethodFilter: (value: string) => void
+}) {
+    return (
+        <div className="md:hidden mb-4">
+            {/* Search Bar */}
+            <div className="relative mb-4">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                    placeholder="Search by ID, student name..."
+                    className="pl-10 bg-slate-700 border-slate-600"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
+            </div>
+
+            {/* Filters Sheet */}
+            <Sheet>
+                <SheetTrigger asChild>
+                    <Button variant="outline" className="w-full border-slate-600 text-white hover:bg-slate-700">
+                        <SlidersHorizontal className="mr-2 h-4 w-4" />
+                        Filters
+                    </Button>
+                </SheetTrigger>
+                <SheetContent side="bottom" className="bg-slate-800 border-slate-700">
+                    <div className="py-4 space-y-4">
+                        <h3 className="text-lg font-medium text-white mb-4">Filter Options</h3>
+
+                        <div>
+                            <Label htmlFor="mobile-status" className="text-white">
+                                Status
+                            </Label>
+                            <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                <SelectTrigger id="mobile-status" className="bg-slate-700 border-slate-600 text-white mt-2">
+                                    <SelectValue placeholder="All Status" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                                    <SelectItem value="all">All Status</SelectItem>
+                                    <SelectItem value="collected">Collected</SelectItem>
+                                    <SelectItem value="pending">Pending</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div>
+                            <Label htmlFor="mobile-course" className="text-white">
+                                Course
+                            </Label>
+                            <Select value={courseFilter} onValueChange={setCourseFilter}>
+                                <SelectTrigger id="mobile-course" className="bg-slate-700 border-slate-600 text-white mt-2">
+                                    <SelectValue placeholder="All Courses" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                                    <SelectItem value="all">All Courses</SelectItem>
+                                    <SelectItem value="Computer Science">BS Computer Science</SelectItem>
+                                    <SelectItem value="Information Technology">BS Information Technology</SelectItem>
+                                    <SelectItem value="Electronics Engineering">BS Electronics Engineering</SelectItem>
+                                    <SelectItem value="Business Administration">BS Business Administration</SelectItem>
+                                    <SelectItem value="Education">BS Education</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div>
+                            <Label htmlFor="mobile-payment" className="text-white">
+                                Payment Method
+                            </Label>
+                            <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
+                                <SelectTrigger id="mobile-payment" className="bg-slate-700 border-slate-600 text-white mt-2">
+                                    <SelectValue placeholder="All Methods" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                                    <SelectItem value="all">All Methods</SelectItem>
+                                    <SelectItem value="credit-card">Credit Card</SelectItem>
+                                    <SelectItem value="e-wallet">E-Wallet</SelectItem>
+                                    <SelectItem value="bank-transfer">Bank Transfer</SelectItem>
+                                    <SelectItem value="cash">Cash</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                </SheetContent>
+            </Sheet>
+        </div>
+    )
+}
+
+// Desktop Filters Component
+function DesktopFilters({
+    searchTerm,
+    setSearchTerm,
+    statusFilter,
+    setStatusFilter,
+    courseFilter,
+    setCourseFilter,
+    paymentMethodFilter,
+    setPaymentMethodFilter,
+}: {
+    searchTerm: string
+    setSearchTerm: (value: string) => void
+    statusFilter: string
+    setStatusFilter: (value: string) => void
+    courseFilter: string
+    setCourseFilter: (value: string) => void
+    paymentMethodFilter: string
+    setPaymentMethodFilter: (value: string) => void
+}) {
+    return (
+        <div className="hidden md:flex flex-col space-y-4 md:flex-row md:items-center md:space-x-4 md:space-y-0">
+            <div className="relative flex-1">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                    placeholder="Search by ID, student name..."
+                    className="pl-10 bg-slate-700 border-slate-600"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
+            </div>
+            <div className="flex space-x-4">
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-[150px] bg-slate-700 border-slate-600">
+                        <div className="flex items-center">
+                            <Filter className="mr-2 h-4 w-4 text-gray-400" />
+                            <span className="truncate">Status</span>
+                        </div>
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                        <SelectItem value="all">All Status</SelectItem>
+                        <SelectItem value="collected">Collected</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                    </SelectContent>
+                </Select>
+                <Select value={courseFilter} onValueChange={setCourseFilter}>
+                    <SelectTrigger className="w-[180px] bg-slate-700 border-slate-600">
+                        <div className="flex items-center">
+                            <Filter className="mr-2 h-4 w-4 text-gray-400" />
+                            <span className="truncate">Course</span>
+                        </div>
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                        <SelectItem value="all">All Courses</SelectItem>
+                        <SelectItem value="Computer Science">BS Computer Science</SelectItem>
+                        <SelectItem value="Information Technology">BS Information Technology</SelectItem>
+                        <SelectItem value="Electronics Engineering">BS Electronics Engineering</SelectItem>
+                        <SelectItem value="Business Administration">BS Business Administration</SelectItem>
+                        <SelectItem value="Education">BS Education</SelectItem>
+                    </SelectContent>
+                </Select>
+                <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
+                    <SelectTrigger className="w-[180px] bg-slate-700 border-slate-600">
+                        <div className="flex items-center">
+                            <Filter className="mr-2 h-4 w-4 text-gray-400" />
+                            <span className="truncate">Payment Method</span>
+                        </div>
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                        <SelectItem value="all">All Methods</SelectItem>
+                        <SelectItem value="credit-card">Credit Card</SelectItem>
+                        <SelectItem value="e-wallet">E-Wallet</SelectItem>
+                        <SelectItem value="bank-transfer">Bank Transfer</SelectItem>
+                        <SelectItem value="cash">Cash</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+        </div>
+    )
+}
+
 export default function BusinessOfficeCollectionsPage() {
     const [searchTerm, setSearchTerm] = useState("")
     const [statusFilter, setStatusFilter] = useState("all")
     const [courseFilter, setCourseFilter] = useState("all")
     const [paymentMethodFilter, setPaymentMethodFilter] = useState("all")
+    const [activeTab, setActiveTab] = useState("collections")
 
     // Filter collections based on search and filters
     const filteredCollections = collectionsData.filter((collection) => {
@@ -186,27 +483,28 @@ export default function BusinessOfficeCollectionsPage() {
     return (
         <DashboardLayout>
             <div className="container mx-auto px-4 py-8">
-                <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
+                {/* Header Section with Mobile-Optimized Actions */}
+                <div className="mb-8 flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
                     <div>
                         <h1 className="text-2xl font-bold text-white">Collections Management</h1>
                         <p className="text-gray-300">Monitor and manage fee collections</p>
                     </div>
-                    <div className="mt-4 flex space-x-3 md:mt-0">
-                        <DateRangePicker />
-                        <Button className="bg-primary hover:bg-primary/90">
-                            <Download className="mr-2 h-4 w-4" />
-                            Export Report
-                        </Button>
-                    </div>
+
+                    {/* Mobile Actions */}
+                    <MobileActions />
+
+                    {/* Desktop Actions */}
+                    <DesktopActions />
                 </div>
 
-                <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-4">
+                {/* KPI Cards - Mobile Optimized */}
+                <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-medium">Total Collections</CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">₱10,500,000</div>
+                        <CardContent className="p-4 sm:p-6">
+                            <div className="text-xl sm:text-2xl font-bold">₱10,500,000</div>
                             <p className="text-xs text-gray-400 mt-1">
                                 <TrendingUp className="inline h-3 w-3 text-green-500 mr-1" />
                                 +15% from last month
@@ -218,8 +516,8 @@ export default function BusinessOfficeCollectionsPage() {
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-medium">Outstanding Balance</CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">₱850,000</div>
+                        <CardContent className="p-4 sm:p-6">
+                            <div className="text-xl sm:text-2xl font-bold">₱850,000</div>
                             <p className="text-xs text-gray-400 mt-1">
                                 <Users className="inline h-3 w-3 text-amber-500 mr-1" />
                                 45 students with balance
@@ -231,8 +529,8 @@ export default function BusinessOfficeCollectionsPage() {
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-medium">Collection Rate</CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">92.5%</div>
+                        <CardContent className="p-4 sm:p-6">
+                            <div className="text-xl sm:text-2xl font-bold">92.5%</div>
                             <p className="text-xs text-gray-400 mt-1">
                                 <CheckCircle className="inline h-3 w-3 text-green-500 mr-1" />
                                 Above target (90%)
@@ -244,8 +542,8 @@ export default function BusinessOfficeCollectionsPage() {
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-medium">Overdue Accounts</CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">12</div>
+                        <CardContent className="p-4 sm:p-6">
+                            <div className="text-xl sm:text-2xl font-bold">12</div>
                             <p className="text-xs text-gray-400 mt-1">
                                 <Clock className="inline h-3 w-3 text-red-500 mr-1" />
                                 Requires attention
@@ -261,82 +559,39 @@ export default function BusinessOfficeCollectionsPage() {
                     </AlertDescription>
                 </Alert>
 
-                <Tabs defaultValue="collections" className="w-full">
-                    <TabsList className="bg-slate-800 border-slate-700 mb-8 grid w-full grid-cols-4 lg:max-w-[800px]">
-                        <TabsTrigger value="collections" className="cursor-pointer">
-                            Collections
-                        </TabsTrigger>
-                        <TabsTrigger value="outstanding" className="cursor-pointer">
-                            Outstanding
-                        </TabsTrigger>
-                        <TabsTrigger value="trends" className="cursor-pointer">
-                            Trends
-                        </TabsTrigger>
-                        <TabsTrigger value="analysis" className="cursor-pointer">
-                            Analysis
-                        </TabsTrigger>
-                    </TabsList>
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                    {/* Mobile Tabs */}
+                    <MobileTabs value={activeTab} onValueChange={setActiveTab} />
+
+                    {/* Desktop Tabs */}
+                    <DesktopTabs />
 
                     <TabsContent value="collections">
                         <Card className="bg-slate-800/60 border-slate-700 text-white mb-6">
-                            <CardContent className="p-6">
-                                <div className="flex flex-col space-y-4 md:flex-row md:items-center md:space-x-4 md:space-y-0">
-                                    <div className="relative flex-1">
-                                        <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                                        <Input
-                                            placeholder="Search by ID, student name..."
-                                            className="pl-10 bg-slate-700 border-slate-600"
-                                            value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="flex space-x-4">
-                                        <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                            <SelectTrigger className="w-[150px] bg-slate-700 border-slate-600">
-                                                <div className="flex items-center">
-                                                    <Filter className="mr-2 h-4 w-4 text-gray-400" />
-                                                    <span className="truncate">Status</span>
-                                                </div>
-                                            </SelectTrigger>
-                                            <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                                <SelectItem value="all">All Status</SelectItem>
-                                                <SelectItem value="collected">Collected</SelectItem>
-                                                <SelectItem value="pending">Pending</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                        <Select value={courseFilter} onValueChange={setCourseFilter}>
-                                            <SelectTrigger className="w-[180px] bg-slate-700 border-slate-600">
-                                                <div className="flex items-center">
-                                                    <Filter className="mr-2 h-4 w-4 text-gray-400" />
-                                                    <span className="truncate">Course</span>
-                                                </div>
-                                            </SelectTrigger>
-                                            <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                                <SelectItem value="all">All Courses</SelectItem>
-                                                <SelectItem value="Computer Science">BS Computer Science</SelectItem>
-                                                <SelectItem value="Information Technology">BS Information Technology</SelectItem>
-                                                <SelectItem value="Electronics Engineering">BS Electronics Engineering</SelectItem>
-                                                <SelectItem value="Business Administration">BS Business Administration</SelectItem>
-                                                <SelectItem value="Education">BS Education</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                        <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
-                                            <SelectTrigger className="w-[180px] bg-slate-700 border-slate-600">
-                                                <div className="flex items-center">
-                                                    <Filter className="mr-2 h-4 w-4 text-gray-400" />
-                                                    <span className="truncate">Payment Method</span>
-                                                </div>
-                                            </SelectTrigger>
-                                            <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                                <SelectItem value="all">All Methods</SelectItem>
-                                                <SelectItem value="credit-card">Credit Card</SelectItem>
-                                                <SelectItem value="e-wallet">E-Wallet</SelectItem>
-                                                <SelectItem value="bank-transfer">Bank Transfer</SelectItem>
-                                                <SelectItem value="cash">Cash</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
+                            <CardContent className="p-4 sm:p-6">
+                                {/* Mobile Filters */}
+                                <MobileFilters
+                                    searchTerm={searchTerm}
+                                    setSearchTerm={setSearchTerm}
+                                    statusFilter={statusFilter}
+                                    setStatusFilter={setStatusFilter}
+                                    courseFilter={courseFilter}
+                                    setCourseFilter={setCourseFilter}
+                                    paymentMethodFilter={paymentMethodFilter}
+                                    setPaymentMethodFilter={setPaymentMethodFilter}
+                                />
+
+                                {/* Desktop Filters */}
+                                <DesktopFilters
+                                    searchTerm={searchTerm}
+                                    setSearchTerm={setSearchTerm}
+                                    statusFilter={statusFilter}
+                                    setStatusFilter={setStatusFilter}
+                                    courseFilter={courseFilter}
+                                    setCourseFilter={setCourseFilter}
+                                    paymentMethodFilter={paymentMethodFilter}
+                                    setPaymentMethodFilter={setPaymentMethodFilter}
+                                />
                             </CardContent>
                         </Card>
 
@@ -348,7 +603,47 @@ export default function BusinessOfficeCollectionsPage() {
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <div className="rounded-lg border border-slate-700">
+                                {/* Mobile Card View */}
+                                <div className="md:hidden space-y-4">
+                                    {filteredCollections.map((collection) => (
+                                        <Card key={collection.id} className="bg-slate-700/50 border-slate-600">
+                                            <CardContent className="p-4">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div>
+                                                        <p className="font-medium text-white">{collection.studentName}</p>
+                                                        <p className="text-sm text-gray-400">{collection.studentId}</p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="font-bold text-white">₱{collection.amount.toLocaleString()}</p>
+                                                        {collection.status === "Collected" ? (
+                                                            <span className="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-500">
+                                                                Collected
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-500">
+                                                                Pending
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2 text-sm text-gray-400">
+                                                    <div>
+                                                        <span className="block">ID: {collection.id}</span>
+                                                        <span className="block">Date: {collection.date}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="block">Fee: {collection.feeType}</span>
+                                                        <span className="block">Method: {collection.paymentMethod}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="mt-2 text-sm text-gray-400">Course: {collection.course}</div>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+
+                                {/* Desktop Table View */}
+                                <div className="hidden md:block rounded-lg border border-slate-700">
                                     <div className="overflow-x-auto">
                                         <table className="w-full">
                                             <thead>
@@ -408,7 +703,60 @@ export default function BusinessOfficeCollectionsPage() {
                                 <CardDescription className="text-gray-300">Students with unpaid or partially paid fees</CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <div className="rounded-lg border border-slate-700">
+                                {/* Mobile Card View */}
+                                <div className="md:hidden space-y-4 mb-6">
+                                    {filteredOutstanding.map((student) => (
+                                        <Card key={student.studentId} className="bg-slate-700/50 border-slate-600">
+                                            <CardContent className="p-4">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div>
+                                                        <p className="font-medium text-white">{student.studentName}</p>
+                                                        <p className="text-sm text-gray-400">{student.studentId}</p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="font-bold text-amber-500">₱{student.balance.toLocaleString()}</p>
+                                                        {student.status === "Overdue" ? (
+                                                            <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-500">
+                                                                Overdue
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-500">
+                                                                Current
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2 text-sm text-gray-400 mb-3">
+                                                    <div>
+                                                        <span className="block">Total: ₱{student.totalFees.toLocaleString()}</span>
+                                                        <span className="block">Paid: ₱{student.amountPaid.toLocaleString()}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="block">Due: {student.dueDate}</span>
+                                                        <span className="block">
+                                                            {student.daysOverdue > 0 ? (
+                                                                <span className="text-red-500">{student.daysOverdue} days overdue</span>
+                                                            ) : (
+                                                                <span>Current</span>
+                                                            )}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div className="text-sm text-gray-400 mb-3">Course: {student.course}</div>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="w-full border-slate-600 text-white hover:bg-slate-700"
+                                                >
+                                                    Send Reminder
+                                                </Button>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+
+                                {/* Desktop Table View */}
+                                <div className="hidden md:block rounded-lg border border-slate-700">
                                     <div className="overflow-x-auto">
                                         <table className="w-full">
                                             <thead>
@@ -471,23 +819,23 @@ export default function BusinessOfficeCollectionsPage() {
                                     </div>
                                 </div>
 
-                                <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+                                <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                     <Card className="bg-slate-700/50 border-slate-600">
                                         <CardContent className="p-4">
                                             <p className="text-sm text-gray-400">Total Outstanding</p>
-                                            <p className="text-2xl font-bold">₱850,000</p>
+                                            <p className="text-xl sm:text-2xl font-bold">₱850,000</p>
                                         </CardContent>
                                     </Card>
                                     <Card className="bg-slate-700/50 border-slate-600">
                                         <CardContent className="p-4">
                                             <p className="text-sm text-gray-400">Overdue Amount</p>
-                                            <p className="text-2xl font-bold text-red-500">₱320,000</p>
+                                            <p className="text-xl sm:text-2xl font-bold text-red-500">₱320,000</p>
                                         </CardContent>
                                     </Card>
                                     <Card className="bg-slate-700/50 border-slate-600">
                                         <CardContent className="p-4">
                                             <p className="text-sm text-gray-400">Students with Balance</p>
-                                            <p className="text-2xl font-bold">45</p>
+                                            <p className="text-xl sm:text-2xl font-bold">45</p>
                                         </CardContent>
                                     </Card>
                                 </div>
@@ -503,7 +851,7 @@ export default function BusinessOfficeCollectionsPage() {
                                     <CardDescription className="text-gray-300">Monthly collection performance</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="h-80">
+                                    <div className="h-64 sm:h-80">
                                         <PaymentChart data={collectionTrend} />
                                     </div>
                                 </CardContent>
@@ -515,14 +863,14 @@ export default function BusinessOfficeCollectionsPage() {
                                     <CardDescription className="text-gray-300">Distribution by payment method</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="h-80">
+                                    <div className="h-100 sm:h-80">
                                         <PaymentPieChart data={paymentMethodDistribution} />
                                     </div>
                                 </CardContent>
                             </Card>
                         </div>
 
-                        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+                        <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
                             <Card className="bg-slate-800/60 border-slate-700 text-white">
                                 <CardHeader>
                                     <CardTitle>Collection Efficiency</CardTitle>
@@ -596,7 +944,7 @@ export default function BusinessOfficeCollectionsPage() {
                                 <CardContent className="space-y-4">
                                     <div className="text-center">
                                         <p className="text-sm text-gray-400">Expected Collections</p>
-                                        <p className="text-3xl font-bold text-green-500">₱2.5M</p>
+                                        <p className="text-2xl sm:text-3xl font-bold text-green-500">₱2.5M</p>
                                     </div>
                                     <div className="space-y-2">
                                         <div className="flex justify-between text-sm">
@@ -625,7 +973,7 @@ export default function BusinessOfficeCollectionsPage() {
                                     <CardDescription className="text-gray-300">Revenue distribution by program</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="h-80">
+                                    <div className="h-100 sm:h-80">
                                         <PaymentPieChart data={courseCollectionDistribution} />
                                     </div>
                                 </CardContent>
@@ -670,7 +1018,7 @@ export default function BusinessOfficeCollectionsPage() {
                                 <CardDescription className="text-gray-300">Based on collection analysis</CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                     <div className="rounded-lg bg-slate-700/50 p-4">
                                         <div className="flex items-center mb-2">
                                             <FileText className="h-5 w-5 text-blue-500 mr-2" />
