@@ -12,6 +12,9 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { DateRangePicker } from "@/components/admin/date-range-picker"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import {
     Download,
     Upload,
@@ -23,6 +26,9 @@ import {
     FileText,
     DollarSign,
     Clock,
+    Calendar,
+    MoreVertical,
+    Filter,
 } from "lucide-react"
 
 // Type definitions
@@ -161,6 +167,192 @@ const reconciliationSummary = {
     variance: -15000,
 }
 
+// Mobile Actions Component
+function MobileActions() {
+    return (
+        <div className="flex items-center gap-2 md:hidden">
+            {/* Date Range Picker - Simplified for mobile */}
+            <Sheet>
+                <SheetTrigger asChild>
+                    <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
+                        <Calendar className="h-4 w-4" />
+                    </Button>
+                </SheetTrigger>
+                <SheetContent side="bottom" className="bg-slate-800 border-slate-700">
+                    <div className="py-4">
+                        <h3 className="text-lg font-medium text-white mb-4">Select Date Range</h3>
+                        <DateRangePicker />
+                    </div>
+                </SheetContent>
+            </Sheet>
+
+            {/* Actions Menu */}
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
+                        <MoreVertical className="h-4 w-4" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700 text-white">
+                    <DropdownMenuItem className="hover:bg-slate-700">
+                        <Upload className="mr-2 h-4 w-4" />
+                        Import Statement
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="hover:bg-slate-700">
+                        <Download className="mr-2 h-4 w-4" />
+                        Export Report
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+    )
+}
+
+// Desktop Actions Component
+function DesktopActions() {
+    return (
+        <div className="hidden md:flex space-x-3">
+            <DateRangePicker />
+            <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
+                <Upload className="mr-2 h-4 w-4" />
+                Import Statement
+            </Button>
+            <Button className="bg-primary hover:bg-primary/90">
+                <Download className="mr-2 h-4 w-4" />
+                Export Report
+            </Button>
+        </div>
+    )
+}
+
+// Mobile Tabs Component
+function MobileTabs({ value, onValueChange }: { value: string; onValueChange: (value: string) => void }) {
+    const tabs = [
+        { value: "overview", label: "Overview", shortLabel: "Overview" },
+        { value: "bank-transactions", label: "Bank", shortLabel: "Bank" },
+        { value: "system-payments", label: "System", shortLabel: "System" },
+        { value: "matching", label: "Matching", shortLabel: "Match" },
+    ]
+
+    return (
+        <div className="md:hidden mb-6">
+            <ScrollArea className="w-full whitespace-nowrap">
+                <div className="flex space-x-1 p-1 bg-slate-800 rounded-lg border border-slate-700">
+                    {tabs.map((tab) => (
+                        <button
+                            key={tab.value}
+                            onClick={() => onValueChange(tab.value)}
+                            className={`
+                                flex-shrink-0 px-4 py-2 text-sm font-medium rounded-md transition-colors
+                                ${value === tab.value
+                                    ? "bg-slate-700 text-white shadow-sm"
+                                    : "text-slate-400 hover:text-white hover:bg-slate-700/50"
+                                }
+                            `}
+                        >
+                            {tab.shortLabel}
+                        </button>
+                    ))}
+                </div>
+                <ScrollBar orientation="horizontal" className="invisible" />
+            </ScrollArea>
+        </div>
+    )
+}
+
+// Desktop Tabs Component
+function DesktopTabs() {
+    return (
+        <TabsList className="hidden md:grid bg-slate-800 border-slate-700 mb-8 w-full grid-cols-4 lg:max-w-[600px]">
+            <TabsTrigger value="overview" className="cursor-pointer">
+                Overview
+            </TabsTrigger>
+            <TabsTrigger value="bank-transactions" className="cursor-pointer">
+                Bank Transactions
+            </TabsTrigger>
+            <TabsTrigger value="system-payments" className="cursor-pointer">
+                System Payments
+            </TabsTrigger>
+            <TabsTrigger value="matching" className="cursor-pointer">
+                Manual Matching
+            </TabsTrigger>
+        </TabsList>
+    )
+}
+
+// Mobile Transaction Card Component
+function MobileTransactionCard({ transaction }: { transaction: BankTransaction }) {
+    return (
+        <div className="rounded-lg border border-slate-700 p-4 bg-slate-800/60">
+            <div className="flex items-start justify-between mb-2">
+                <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">{transaction.description}</p>
+                    <p className="text-xs text-gray-400">{transaction.date}</p>
+                </div>
+                <div className="ml-2 flex-shrink-0">
+                    <Badge
+                        variant={transaction.status === "matched" ? "default" : "secondary"}
+                        className={
+                            transaction.status === "matched" ? "bg-green-500/20 text-green-400" : "bg-amber-500/20 text-amber-400"
+                        }
+                    >
+                        {transaction.status === "matched" ? "Matched" : "Unmatched"}
+                    </Badge>
+                </div>
+            </div>
+            <div className="flex items-center justify-between">
+                <div>
+                    <span className={`text-lg font-bold ${transaction.amount > 0 ? "text-green-500" : "text-red-500"}`}>
+                        ₱{Math.abs(transaction.amount).toLocaleString()}
+                    </span>
+                    <p className="text-xs text-gray-400">Ref: {transaction.reference}</p>
+                </div>
+                {transaction.status === "unmatched" && (
+                    <Button size="sm" variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
+                        Match
+                    </Button>
+                )}
+            </div>
+        </div>
+    )
+}
+
+// Mobile Payment Card Component
+function MobilePaymentCard({ payment }: { payment: SystemPayment }) {
+    return (
+        <div className="rounded-lg border border-slate-700 p-4 bg-slate-800/60">
+            <div className="flex items-start justify-between mb-2">
+                <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white">{payment.studentName}</p>
+                    <p className="text-xs text-gray-400">{payment.studentId}</p>
+                    <p className="text-xs text-gray-400">{payment.date}</p>
+                </div>
+                <div className="ml-2 flex-shrink-0">
+                    <Badge
+                        variant={payment.status === "matched" ? "default" : "secondary"}
+                        className={
+                            payment.status === "matched" ? "bg-green-500/20 text-green-400" : "bg-amber-500/20 text-amber-400"
+                        }
+                    >
+                        {payment.status === "matched" ? "Matched" : "Unmatched"}
+                    </Badge>
+                </div>
+            </div>
+            <div className="flex items-center justify-between">
+                <div>
+                    <span className="text-lg font-bold text-green-500">₱{payment.amount.toLocaleString()}</span>
+                    <p className="text-xs text-gray-400">{payment.paymentMethod}</p>
+                </div>
+                {payment.status === "unmatched" && (
+                    <Button size="sm" variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
+                        Match
+                    </Button>
+                )}
+            </div>
+        </div>
+    )
+}
+
 export default function ReconciliationPage() {
     const [selectedTab, setSelectedTab] = useState("overview")
     const [searchTerm, setSearchTerm] = useState("")
@@ -183,32 +375,28 @@ export default function ReconciliationPage() {
     return (
         <DashboardLayout allowedRoles={["business-office"]}>
             <div className="container mx-auto px-4 py-8">
-                <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
+                {/* Header Section with Mobile-Optimized Actions */}
+                <div className="mb-8 flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
                     <div>
                         <h1 className="text-2xl font-bold text-white">Bank Reconciliation</h1>
                         <p className="text-gray-300">Reconcile bank statements with system payments</p>
                     </div>
-                    <div className="mt-4 flex space-x-3 md:mt-0">
-                        <DateRangePicker />
-                        <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
-                            <Upload className="mr-2 h-4 w-4" />
-                            Import Statement
-                        </Button>
-                        <Button className="bg-primary hover:bg-primary/90">
-                            <Download className="mr-2 h-4 w-4" />
-                            Export Report
-                        </Button>
-                    </div>
+
+                    {/* Mobile Actions */}
+                    <MobileActions />
+
+                    {/* Desktop Actions */}
+                    <DesktopActions />
                 </div>
 
-                {/* Reconciliation Summary */}
-                <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-4">
+                {/* Reconciliation Summary - Mobile Optimized */}
+                <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-medium">Total Transactions</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{reconciliationSummary.totalBankTransactions}</div>
+                            <div className="text-xl sm:text-2xl font-bold">{reconciliationSummary.totalBankTransactions}</div>
                             <p className="text-xs text-gray-400 mt-1">
                                 <FileText className="inline h-3 w-3 text-blue-500 mr-1" />
                                 Bank transactions
@@ -221,7 +409,9 @@ export default function ReconciliationPage() {
                             <CardTitle className="text-sm font-medium">Matched</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold text-green-500">{reconciliationSummary.matchedTransactions}</div>
+                            <div className="text-xl sm:text-2xl font-bold text-green-500">
+                                {reconciliationSummary.matchedTransactions}
+                            </div>
                             <p className="text-xs text-gray-400 mt-1">
                                 <CheckCircle className="inline h-3 w-3 text-green-500 mr-1" />
                                 {(
@@ -238,7 +428,9 @@ export default function ReconciliationPage() {
                             <CardTitle className="text-sm font-medium">Unmatched</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold text-amber-500">{reconciliationSummary.unmatchedBankTransactions}</div>
+                            <div className="text-xl sm:text-2xl font-bold text-amber-500">
+                                {reconciliationSummary.unmatchedBankTransactions}
+                            </div>
                             <p className="text-xs text-gray-400 mt-1">
                                 <AlertTriangle className="inline h-3 w-3 text-amber-500 mr-1" />
                                 Require attention
@@ -251,7 +443,7 @@ export default function ReconciliationPage() {
                             <CardTitle className="text-sm font-medium">Variance</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold text-red-500">
+                            <div className="text-xl sm:text-2xl font-bold text-red-500">
                                 ₱{Math.abs(reconciliationSummary.variance).toLocaleString()}
                             </div>
                             <p className="text-xs text-gray-400 mt-1">
@@ -282,20 +474,11 @@ export default function ReconciliationPage() {
                 </div>
 
                 <Tabs value={selectedTab} onValueChange={setSelectedTab} className="w-full">
-                    <TabsList className="bg-slate-800 border-slate-700 mb-8 grid w-full grid-cols-4 lg:max-w-[600px]">
-                        <TabsTrigger value="overview" className="cursor-pointer">
-                            Overview
-                        </TabsTrigger>
-                        <TabsTrigger value="bank-transactions" className="cursor-pointer">
-                            Bank Transactions
-                        </TabsTrigger>
-                        <TabsTrigger value="system-payments" className="cursor-pointer">
-                            System Payments
-                        </TabsTrigger>
-                        <TabsTrigger value="matching" className="cursor-pointer">
-                            Manual Matching
-                        </TabsTrigger>
-                    </TabsList>
+                    {/* Mobile Tabs */}
+                    <MobileTabs value={selectedTab} onValueChange={setSelectedTab} />
+
+                    {/* Desktop Tabs */}
+                    <DesktopTabs />
 
                     <TabsContent value="overview">
                         <div className="space-y-6">
@@ -453,14 +636,52 @@ export default function ReconciliationPage() {
 
                     <TabsContent value="bank-transactions">
                         <Card className="bg-slate-800/60 border-slate-700 text-white">
-                            <CardHeader className="flex flex-row items-center justify-between">
+                            <CardHeader className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
                                 <div>
                                     <CardTitle>Bank Transactions</CardTitle>
                                     <CardDescription className="text-gray-300">Transactions from bank statement</CardDescription>
                                 </div>
-                                <div className="flex space-x-2">
+                                <div className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-2">
+                                    {/* Mobile Filter */}
+                                    <Sheet>
+                                        <SheetTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="sm:hidden border-slate-600 text-white hover:bg-slate-700"
+                                            >
+                                                <Filter className="h-4 w-4 mr-2" />
+                                                Filter
+                                            </Button>
+                                        </SheetTrigger>
+                                        <SheetContent side="bottom" className="bg-slate-800 border-slate-700">
+                                            <div className="py-4 space-y-4">
+                                                <h3 className="text-lg font-medium text-white">Filter Transactions</h3>
+                                                <div>
+                                                    <Label htmlFor="mobile-status-filter" className="text-white">
+                                                        Status
+                                                    </Label>
+                                                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                                        <SelectTrigger
+                                                            id="mobile-status-filter"
+                                                            className="bg-slate-700 border-slate-600 text-white mt-2"
+                                                        >
+                                                            <SelectValue placeholder="Filter by status" />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                                                            <SelectItem value="all">All Status</SelectItem>
+                                                            <SelectItem value="matched">Matched</SelectItem>
+                                                            <SelectItem value="unmatched">Unmatched</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
+                                        </SheetContent>
+                                    </Sheet>
+
+                                    {/* Desktop Filter */}
                                     <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                        <SelectTrigger className="w-[150px] bg-slate-700 border-slate-600">
+                                        <SelectTrigger className="hidden sm:flex w-[150px] bg-slate-700 border-slate-600">
                                             <SelectValue placeholder="Filter by status" />
                                         </SelectTrigger>
                                         <SelectContent className="bg-slate-700 border-slate-600 text-white">
@@ -484,7 +705,21 @@ export default function ReconciliationPage() {
                                     </div>
                                 </div>
 
-                                <div className="rounded-lg border border-slate-700">
+                                {/* Mobile View - Cards */}
+                                <div className="md:hidden space-y-4">
+                                    {bankTransactions
+                                        .filter((transaction) => {
+                                            const matchesSearch = transaction.description.toLowerCase().includes(searchTerm.toLowerCase())
+                                            const matchesStatus = statusFilter === "all" || transaction.status === statusFilter
+                                            return matchesSearch && matchesStatus
+                                        })
+                                        .map((transaction) => (
+                                            <MobileTransactionCard key={transaction.id} transaction={transaction} />
+                                        ))}
+                                </div>
+
+                                {/* Desktop View - Table */}
+                                <div className="hidden md:block rounded-lg border border-slate-700">
                                     <div className="overflow-x-auto">
                                         <table className="w-full">
                                             <thead>
@@ -588,7 +823,23 @@ export default function ReconciliationPage() {
                                     </div>
                                 </div>
 
-                                <div className="rounded-lg border border-slate-700">
+                                {/* Mobile View - Cards */}
+                                <div className="md:hidden space-y-4">
+                                    {systemPayments
+                                        .filter((payment) => {
+                                            const matchesSearch =
+                                                payment.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                                payment.id.toLowerCase().includes(searchTerm.toLowerCase())
+                                            const matchesStatus = statusFilter === "all" || payment.status === statusFilter
+                                            return matchesSearch && matchesStatus
+                                        })
+                                        .map((payment) => (
+                                            <MobilePaymentCard key={payment.id} payment={payment} />
+                                        ))}
+                                </div>
+
+                                {/* Desktop View - Table */}
+                                <div className="hidden md:block rounded-lg border border-slate-700">
                                     <div className="overflow-x-auto">
                                         <table className="w-full">
                                             <thead>
@@ -721,7 +972,7 @@ export default function ReconciliationPage() {
                                     </div>
 
                                     <div className="mt-6 pt-6 border-t border-slate-700">
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
                                             <div>
                                                 <h3 className="text-lg font-medium">Matching Rules</h3>
                                                 <p className="text-sm text-gray-400">Configure automatic matching criteria</p>
