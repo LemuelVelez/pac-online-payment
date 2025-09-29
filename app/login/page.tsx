@@ -177,7 +177,7 @@ export default function LoginPage() {
                                                     key={cred.role}
                                                     variant="outline"
                                                     size="sm"
-                                                    className="text-xs border-slate-700 text-gray-300 hover:bg-slate-700 hover:text-white"
+                                                    className="text-xs border-slate-700 text-gray-900 hover:bg-slate-700 hover:text-white"
                                                     onClick={() => loginAsDemoUser(cred.email)}
                                                 >
                                                     {cred.role}
