@@ -24,7 +24,7 @@ export default function Home() {
               <Button className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8 py-6 text-lg">
                 <Link href="/login">Get Started</Link>
               </Button>
-              <Button variant="outline" className="text-white border-white hover:bg-white/10 px-8 py-6 text-lg">
+              <Button variant="outline" className="text-white hover:text-white border-white bg-transparent hover:bg-white/10 px-8 py-6 text-lg">
                 Learn More
               </Button>
             </div>

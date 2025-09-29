@@ -10,7 +10,7 @@ export function SiteHeader() {
     const [isMenuOpen, setIsMenuOpen] = useState(false)
 
     return (
-        <header className="relative bg-gradient-to-r from-purple-900 to-indigo-900">
+        <header className="sticky top-0 z-50 bg-slate-900/60 supports-[backdrop-filter]:backdrop-blur-md border-b border-white/10">
             <div className="container mx-auto py-4 px-4">
                 {/* Desktop and Mobile Header */}
                 <div className="flex justify-between items-center">
@@ -29,7 +29,7 @@ export function SiteHeader() {
                         <Button variant="ghost" className="text-white hover:text-white hover:bg-white/10">
                             Help
                         </Button>
-                        <Button variant="outline" className="text-white border-white hover:bg-white/10">
+                        <Button variant="outline" className="text-white hover:text-white border-white bg-transparent hover:bg-white/10">
                             Contact
                         </Button>
                         <Button className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600">
@@ -42,6 +42,7 @@ export function SiteHeader() {
                         className="md:hidden text-white p-2"
                         onClick={() => setIsMenuOpen(!isMenuOpen)}
                         aria-label="Toggle menu"
+                        aria-expanded={isMenuOpen}
                     >
                         {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
                     </button>
