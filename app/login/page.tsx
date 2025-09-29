@@ -63,7 +63,7 @@ export default function LoginPage() {
     }
 
     return (
-        <div className="max-h-screen overflow-y-auto bg-gradient-to-br from-slate-900 via-purple-950 to-slate-900 flex flex-col">
+        <div className="max-h-screen overflow-y-auto bg-slate-800 flex flex-col">
             <header className="container mx-auto py-6 px-4">
                 <Link href="/" className="flex items-center gap-2 text-white hover:text-purple-300 transition-colors">
                     <ArrowLeft className="h-5 w-5" />
@@ -83,10 +83,10 @@ export default function LoginPage() {
 
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                         <TabsList className="grid w-full grid-cols-2 mb-8">
-                            <TabsTrigger className="cursor-pointer" value="login">
+                            <TabsTrigger className="cursor-pointer hover:bg-slate-800/60 transition-colors data-[state=active]:text-white data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-pink-500 data-[state=active]:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500" value="login">
                                 Login
                             </TabsTrigger>
-                            <TabsTrigger className="cursor-pointer" value="register">
+                            <TabsTrigger className="cursor-pointer hover:bg-slate-800/60 transition-colors data-[state=active]:text-white data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-pink-500 data-[state=active]:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500" value="register">
                                 Register
                             </TabsTrigger>
                         </TabsList>
