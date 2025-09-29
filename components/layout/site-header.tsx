@@ -51,7 +51,7 @@ export function SiteHeader() {
                 {/* Mobile Navigation Menu */}
                 <div
                     className={cn(
-                        "absolute left-0 right-0 bg-gradient-to-r from-purple-900 to-indigo-900 shadow-lg z-50 md:hidden transition-all duration-300 ease-in-out",
+                        "absolute left-0 right-0 bg-slate-900/90 shadow-lg z-50 md:hidden transition-all duration-300 ease-in-out",
                         isMenuOpen ? "top-full opacity-100" : "-top-96 opacity-0 pointer-events-none",
                     )}
                 >
