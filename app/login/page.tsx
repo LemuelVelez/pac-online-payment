@@ -193,7 +193,7 @@ export default function LoginPage() {
                                                     key={cred.role}
                                                     variant="outline"
                                                     size="sm"
-                                                    className="text-xs border-slate-700 text-gray-900 hover:bg-slate-700 hover:text-white"
+                                                    className="text-xs text-white border-slate-700 hover:bg-slate-700 hover:text-white"
                                                     onClick={() => loginAsDemoUser(cred.email)}
                                                 >
                                                     {cred.role}
@@ -315,7 +315,7 @@ export default function LoginPage() {
                                                                 Terms of Service
                                                             </button>
                                                         </DialogTrigger>
-                                                        <DialogContent className="max-w-2xl sm:max-w-3xl bg-slate-300">
+                                                        <DialogContent className="max-w-2xl sm:max-w-3xl bg-slate-800">
                                                             <DialogHeader>
                                                                 <DialogTitle>Terms of Service</DialogTitle>
                                                                 <DialogDescription>
@@ -441,7 +441,7 @@ export default function LoginPage() {
                                                                 Privacy Policy
                                                             </button>
                                                         </DialogTrigger>
-                                                        <DialogContent className="max-w-2xl sm:max-w-3xl bg-slate-300">
+                                                        <DialogContent className="max-w-2xl sm:max-w-3xl bg-slate-800">
                                                             <DialogHeader>
                                                                 <DialogTitle>Privacy Policy</DialogTitle>
                                                                 <DialogDescription>
