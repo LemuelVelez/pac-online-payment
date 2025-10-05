@@ -19,7 +19,7 @@ export function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
     useEffect(() => {
         if (!isLoading && !user) {
             // User is not logged in, redirect to login
-            router.push(`/login?redirect=${encodeURIComponent(pathname)}`)
+            router.push(`/auth?redirect=${encodeURIComponent(pathname)}`)
             return
         }
 
@@ -39,7 +39,7 @@ export function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
                     router.push("/dashboard")
                     break
                 default:
-                    router.push("/login")
+                    router.push("/auth")
             }
         }
     }, [isLoading, user, router, allowedRoles, pathname])

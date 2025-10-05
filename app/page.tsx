@@ -22,7 +22,7 @@ export default function Home() {
             </p>
             <div className="flex gap-4">
               <Button className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8 py-6 text-lg">
-                <Link href="/login">Get Started</Link>
+                <Link href="/auth">Get Started</Link>
               </Button>
               <Button variant="outline" className="text-white hover:text-white border-white bg-transparent hover:bg-white/10 px-8 py-6 text-lg">
                 Learn More
@@ -83,7 +83,7 @@ export default function Home() {
               description="Join hundreds of students who are already enjoying the convenience of our online payment system."
             />
             <Button className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8 py-6 text-lg">
-              <Link href="/login">Login Now</Link>
+              <Link href="/auth">Login Now</Link>
               <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
           </div>

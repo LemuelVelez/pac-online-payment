@@ -109,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const logout = () => {
         setUser(null)
         localStorage.removeItem("user")
-        router.push("/login")
+        router.push("/auth")
     }
 
     // Redirect based on user role
@@ -128,7 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 router.push("/dashboard")
                 break
             default:
-                router.push("/login")
+                router.push("/auth")
         }
     }
 

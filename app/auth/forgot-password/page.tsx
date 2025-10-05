@@ -38,7 +38,7 @@ export default function ForgotPasswordPage() {
     return (
         <div className="max-h-screen overflow-y-auto bg-slate-800 flex flex-col min-h-screen">
             <header className="container mx-auto py-6 px-4">
-                <Link href="/login" className="flex items-center gap-2 text-white hover:text-purple-300 transition-colors">
+                <Link href="/auth" className="flex items-center gap-2 text-white hover:text-purple-300 transition-colors">
                     <ArrowLeft className="h-5 w-5" />
                     <span>Back to Login</span>
                 </Link>
@@ -106,7 +106,7 @@ export default function ForgotPasswordPage() {
                         <CardFooter className="flex justify-center border-t border-slate-700 pt-6">
                             <p className="text-sm text-gray-400">
                                 Remember your password?{" "}
-                                <Link href="/login" className="text-purple-400 hover:text-purple-300">
+                                <Link href="/auth" className="text-purple-400 hover:text-purple-300">
                                     Back to login
                                 </Link>
                             </p>
