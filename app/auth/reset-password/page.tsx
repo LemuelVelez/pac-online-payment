@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 "use client"
 
@@ -18,8 +19,8 @@ export default function ResetPasswordPage() {
     const userId = sp.get("userId") ?? ""
     const secret = sp.get("secret") ?? ""
 
-    const [password, setPassword] = useState("")
-    const [confirm, setConfirm] = useState("")
+    const [password, setPassword] = useState<string>("")
+    const [confirm, setConfirm] = useState<string>("") // const confirm: string
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState("")
     const [success, setSuccess] = useState(false)
@@ -43,7 +44,8 @@ export default function ResetPasswordPage() {
         setIsLoading(true)
         try {
             const account = getAccount()
-            await account.updateRecovery(userId, secret, password, confirm)
+            // FIX: updateRecovery expects (userId, secret, password) — 3 args
+            await account.updateRecovery(userId, secret, password)
             setSuccess(true)
         } catch (err: any) {
             setError(err?.message ?? "Failed to reset password. Please try again.")

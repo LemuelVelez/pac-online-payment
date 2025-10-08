@@ -24,7 +24,7 @@ const USERS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_COLLECTION_ID as str
 async function ensureUserDoc(userId: string, email: string, fullName?: string) {
     const databases = getDatabases()
     try {
-        // Try to create a 1:1 user-profile document keyed by userId
+        // Create a 1:1 user-profile document keyed by userId
         await databases.createDocument(
             DB_ID,
             USERS_COL_ID,
@@ -36,12 +36,11 @@ async function ensureUserDoc(userId: string, email: string, fullName?: string) {
                 role: "student", // default role
                 status: "active",
             },
+            // ✅ Use only user-scoped permissions (matches allowed: any, users, user:{id}, users/unverified, user:{id}/unverified)
             [
                 Permission.read(Role.user(userId)),
                 Permission.update(Role.user(userId)),
-                Permission.read(Role.team("admins")),
-                Permission.update(Role.team("admins")),
-                Permission.delete(Role.team("admins")),
+                Permission.delete(Role.user(userId)),
             ]
         )
     } catch (err: any) {
@@ -69,6 +68,8 @@ export default function LoginPage() {
     const [confirmPassword, setConfirmPassword] = useState("")
     const [regError, setRegError] = useState("")
     const [isRegistering, setIsRegistering] = useState(false)
+    const [showRegPassword, setShowRegPassword] = useState(false)
+    const [showRegConfirm, setShowRegConfirm] = useState(false)
 
     const searchParams = useSearchParams()
     const router = useRouter()
@@ -81,7 +82,7 @@ export default function LoginPage() {
         try {
             const account = getAccount()
             await account.createEmailPasswordSession(email, password)
-            // Ensure a users doc exists (in case legacy users registered before we added the collection)
+            // Ensure a users doc exists (for legacy users)
             const me = await account.get()
             await ensureUserDoc(me.$id, me.email, me.name)
 
@@ -98,6 +99,8 @@ export default function LoginPage() {
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault()
         setRegError("")
+
+        // Basic client validations
         if (regPassword !== confirmPassword) {
             setRegError("Passwords do not match.")
             return
@@ -114,15 +117,37 @@ export default function LoginPage() {
         setIsRegistering(true)
         try {
             const account = getAccount()
-            // 1) Create the Appwrite Account
-            await account.create(ID.unique(), regEmail, regPassword, fullName || undefined)
-            // 2) Create a session so we can write the profile doc with user permissions
+
+            // ✅ Check first: rely on Appwrite's 409 conflict if email already exists
+            try {
+                await account.create(ID.unique(), regEmail, regPassword, fullName || undefined)
+            } catch (err: any) {
+                const code = err?.code ?? err?.response?.code
+                if (code === 409) {
+                    setRegError("An account with this email already exists. Please log in instead.")
+                    return // stop — do not create session or continue
+                }
+                throw err
+            }
+
+            // Create a session so we can write the profile doc and send the verification email
             await account.createEmailPasswordSession(regEmail, regPassword)
-            // 3) Get the current user and create the profile document with default role=student
+
+            // Create the profile document with default role=student
             const me = await account.get()
             await ensureUserDoc(me.$id, me.email, fullName || me.name)
 
-            router.push("/")
+            // Send verification email with callback
+            const origin = window.location.origin
+            const verifyCallbackUrl = `${origin}/auth/verify-email/callback`
+            try {
+                await account.createVerification(verifyCallbackUrl)
+            } catch (e) {
+                console.warn("createVerification failed:", e)
+            }
+
+            // Redirect to verify email screen after registration
+            router.push(`/auth/verify-email?email=${encodeURIComponent(regEmail)}&justRegistered=1`)
         } catch (err: any) {
             setRegError(err?.message ?? "Failed to register. Please try again.")
         } finally {
@@ -215,6 +240,8 @@ export default function LoginPage() {
                                                     type="button"
                                                     className="absolute right-3 top-3 text-gray-400 hover:text-white"
                                                     onClick={() => setShowPassword(!showPassword)}
+                                                    aria-label={showPassword ? "Hide password" : "Show password"}
+                                                    aria-pressed={showPassword}
                                                 >
                                                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                                 </button>
@@ -304,6 +331,7 @@ export default function LoginPage() {
                                             </div>
                                         </div>
 
+                                        {/* Password with Eye/EyeOff toggle */}
                                         <div className="space-y-2">
                                             <Label htmlFor="reg-password" className="text-white">
                                                 Password
@@ -312,16 +340,26 @@ export default function LoginPage() {
                                                 <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                                                 <Input
                                                     id="reg-password"
-                                                    type="password"
+                                                    type={showRegPassword ? "text" : "password"}
                                                     placeholder="Create a password"
-                                                    className="pl-10 bg-slate-900/50 border-slate-700 text-white"
+                                                    className="pl-10 pr-10 bg-slate-900/50 border-slate-700 text-white"
                                                     value={regPassword}
                                                     onChange={(e) => setRegPassword(e.target.value)}
                                                     required
                                                 />
+                                                <button
+                                                    type="button"
+                                                    className="absolute right-3 top-3 text-gray-400 hover:text-white"
+                                                    onClick={() => setShowRegPassword((s) => !s)}
+                                                    aria-label={showRegPassword ? "Hide password" : "Show password"}
+                                                    aria-pressed={showRegPassword}
+                                                >
+                                                    {showRegPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                                </button>
                                             </div>
                                         </div>
 
+                                        {/* Confirm password with Eye/EyeOff toggle */}
                                         <div className="space-y-2">
                                             <Label htmlFor="confirm-password" className="text-white">
                                                 Confirm Password
@@ -330,13 +368,22 @@ export default function LoginPage() {
                                                 <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                                                 <Input
                                                     id="confirm-password"
-                                                    type="password"
+                                                    type={showRegConfirm ? "text" : "password"}
                                                     placeholder="Confirm your password"
-                                                    className="pl-10 bg-slate-900/50 border-slate-700 text-white"
+                                                    className="pl-10 pr-10 bg-slate-900/50 border-slate-700 text-white"
                                                     value={confirmPassword}
                                                     onChange={(e) => setConfirmPassword(e.target.value)}
                                                     required
                                                 />
+                                                <button
+                                                    type="button"
+                                                    className="absolute right-3 top-3 text-gray-400 hover:text-white"
+                                                    onClick={() => setShowRegConfirm((s) => !s)}
+                                                    aria-label={showRegConfirm ? "Hide password" : "Show password"}
+                                                    aria-pressed={showRegConfirm}
+                                                >
+                                                    {showRegConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                                </button>
                                             </div>
                                         </div>
 
