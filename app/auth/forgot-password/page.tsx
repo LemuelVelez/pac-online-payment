@@ -1,8 +1,7 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import Link from "next/link"
 import { ArrowLeft, Mail } from "lucide-react"
@@ -11,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { getAccount } from "@/lib/appwrite"
 
 export default function ForgotPasswordPage() {
     const [email, setEmail] = useState("")
@@ -24,12 +24,12 @@ export default function ForgotPasswordPage() {
         setIsLoading(true)
 
         try {
-            // Here you would implement the actual password reset request
-            // For now, we'll simulate a successful request
-            await new Promise((resolve) => setTimeout(resolve, 1500))
+            const account = getAccount()
+            const resetUrl = `${window.location.origin}/auth/reset-password`
+            await account.createRecovery(email, resetUrl)
             setSuccess(true)
-        } catch (error) {
-            setError("Failed to send password reset email. Please try again.")
+        } catch (err: any) {
+            setError(err?.message ?? "Failed to send password reset email. Please try again.")
         } finally {
             setIsLoading(false)
         }
