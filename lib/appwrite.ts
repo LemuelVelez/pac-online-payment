@@ -135,7 +135,7 @@ export async function getCurrentRole(): Promise<string | null> {
 }
 
 /**
- * If there is an active session *and* the role is "student",
+ * If there is an active session, the account is verified, *and* the role is "student",
  * redirect the browser to the student dashboard (app/dashboard/page.tsx).
  *
  * @param target default "/dashboard"
@@ -144,6 +144,9 @@ export async function getCurrentRole(): Promise<string | null> {
 export async function redirectIfActiveStudent(target: string = "/dashboard") {
   const me = await getCurrentUserSafe();
   if (!me) return false;
+
+  // ⛔ Do not redirect if email is not verified
+  if (!me.emailVerification) return false;
 
   const role = await getOrCreateUserRole(me.$id, me.email, me.name);
   if ((role ?? "").toLowerCase() === "student") {

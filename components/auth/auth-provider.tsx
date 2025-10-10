@@ -6,8 +6,6 @@ import {
     getAccount,
     getOrCreateUserRole,
     roleToDashboard,
-    signOutCurrentSession,
-    signOutAllSessions,
 } from "@/lib/appwrite"
 
 // Define user roles
@@ -28,7 +26,7 @@ interface AuthContextType {
     isLoading: boolean
     // accept optional redirectPath so login callers can choose destination
     login: (email: string, password: string, redirectPath?: string) => Promise<void>
-    // optional allDevices flag to sign out everywhere
+    // if you want a “Log out from all devices” button anywhere, call logout(true)
     logout: (allDevices?: boolean) => Promise<void>
 }
 
@@ -47,9 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             try {
                 const parsed = JSON.parse(seeded) as User
                 setUser(parsed)
-            } catch {
-                // ignore bad JSON
-            }
+            } catch { }
         }
 
         let cancelled = false
@@ -57,16 +53,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 try {
                     const account = getAccount()
                     const me = await account.get() // throws if no session
-                    const role = (await getOrCreateUserRole(me.$id, me.email, me.name)) as UserRole
-                    const hydrated: User = {
-                        id: me.$id,
-                        name: me.name || me.email,
-                        email: me.email,
-                        role,
-                    }
-                    if (!cancelled) {
-                        setUser(hydrated)
-                        localStorage.setItem("user", JSON.stringify(hydrated))
+                    // If somehow we have a session but it's not verified, do not hydrate as logged-in
+                    if (!me.emailVerification) {
+                        if (!cancelled) {
+                            setUser(null)
+                            localStorage.removeItem("user")
+                        }
+                    } else {
+                        const role = (await getOrCreateUserRole(me.$id, me.email, me.name)) as UserRole
+                        const hydrated: User = {
+                            id: me.$id,
+                            name: me.name || me.email,
+                            email: me.email,
+                            role,
+                        }
+                        if (!cancelled) {
+                            setUser(hydrated)
+                            localStorage.setItem("user", JSON.stringify(hydrated))
+                        }
                     }
                 } catch {
                     if (!cancelled) {
@@ -87,9 +91,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(true)
         try {
             const account = getAccount()
+            // Create session to be able to read account
             await account.createEmailPasswordSession(email, password)
 
             const me = await account.get()
+
+            // Block unverified users: nuke the new session and send them to verify-email
+            if (!me.emailVerification) {
+                try {
+                    // best-effort: send a fresh verification email
+                    const origin = typeof window !== "undefined" ? window.location.origin : ""
+                    const verifyCallbackUrl = origin ? `${origin}/auth/verify-email/callback` : undefined
+                    if (verifyCallbackUrl) {
+                        await account.createVerification(verifyCallbackUrl)
+                    }
+                } catch {
+                    // ignore email send errors
+                }
+
+                // delete the just-created session so they are not "logged in"
+                try {
+                    await account.deleteSession("current")
+                } catch { /* ignore */ }
+
+                // clear local state (if any) and redirect to verify-email
+                setUser(null)
+                localStorage.removeItem("user")
+                const qs = `?email=${encodeURIComponent(me.email)}&needsVerification=1`
+                router.replace(`/auth/verify-email${qs}`)
+                return
+            }
+
+            // Verified: proceed
             const role = (await getOrCreateUserRole(me.$id, me.email, me.name)) as UserRole
 
             const authUser: User = {
@@ -113,21 +146,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }
 
-    const logout = async (allDevices: boolean = false) => {
+    const logout = async (allDevices?: boolean) => {
         setIsLoading(true)
         try {
-            if (allDevices) {
-                await signOutAllSessions()
-            } else {
-                await signOutCurrentSession()
+            const account = getAccount()
+            try {
+                if (allDevices) {
+                    await account.deleteSessions()
+                } else {
+                    await account.deleteSession("current")
+                }
+            } catch {
+                // ignore if already logged out
             }
-        } catch {
-            // ignore network/SDK errors; we still clear client state below
-        } finally {
-            // Always clear client-side state
             setUser(null)
             localStorage.removeItem("user")
             router.replace("/auth")
+        } finally {
             setIsLoading(false)
         }
     }

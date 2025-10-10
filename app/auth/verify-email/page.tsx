@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, BadgeCheck, MailCheck, Loader2 } from "lucide-react"
@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { getAccount, getOrCreateUserRole, roleToDashboard } from "@/lib/appwrite"
+
+const RESEND_COOLDOWN_SECONDS = 60
 
 export default function VerifyEmailPage() {
     const router = useRouter()
@@ -23,6 +25,33 @@ export default function VerifyEmailPage() {
     const [needsLogin, setNeedsLogin] = useState(false)
     const [isVerified, setIsVerified] = useState<boolean | null>(null)
     const [email, setEmail] = useState<string>("")
+
+    // Cooldown state for "Send Verification Email"
+    const [cooldown, setCooldown] = useState<number>(0)
+
+    // Key for localStorage, tie to email if available so cooldown is per-account
+    const cooldownKey = useMemo(
+        () => (email ? `verifyEmailLastSentAt:${email}` : "verifyEmailLastSentAt"),
+        [email]
+    )
+
+    const computeSecondsLeft = (lastSentAtMs: number | null) => {
+        if (!lastSentAtMs) return 0
+        const elapsed = Math.floor((Date.now() - lastSentAtMs) / 1000)
+        const left = RESEND_COOLDOWN_SECONDS - elapsed
+        return left > 0 ? left : 0
+    }
+
+    const loadCooldownFromStorage = () => {
+        try {
+            const raw = localStorage.getItem(cooldownKey)
+            const lastSentAt = raw ? parseInt(raw, 10) : null
+            const left = computeSecondsLeft(lastSentAt)
+            setCooldown(left)
+        } catch {
+            setCooldown(0)
+        }
+    }
 
     const refreshStatus = async () => {
         setError("")
@@ -38,12 +67,30 @@ export default function VerifyEmailPage() {
         }
     }
 
+    // Initial status check
     useEffect(() => {
         ; (async () => {
             await refreshStatus()
             setLoading(false)
         })()
     }, [])
+
+    // Load cooldown whenever we know the email (or key changes)
+    useEffect(() => {
+        if (typeof window === "undefined") return
+        // Slight defer to ensure email has been set before reading
+        loadCooldownFromStorage()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [cooldownKey])
+
+    // Tick down the cooldown every second
+    useEffect(() => {
+        if (cooldown <= 0) return
+        const id = setInterval(() => {
+            setCooldown((s) => (s > 1 ? s - 1 : 0))
+        }, 1000)
+        return () => clearInterval(id)
+    }, [cooldown])
 
     const sendVerification = async () => {
         setError("")
@@ -53,6 +100,15 @@ export default function VerifyEmailPage() {
             const origin = window.location.origin
             const verifyCallbackUrl = `${origin}/auth/verify-email/callback`
             await getAccount().createVerification(verifyCallbackUrl)
+
+            // Start cooldown
+            try {
+                localStorage.setItem(cooldownKey, String(Date.now()))
+            } catch {
+                // ignore storage errors
+            }
+            setCooldown(RESEND_COOLDOWN_SECONDS)
+
             setInfo("Verification email sent. Please check your inbox.")
         } catch (err: any) {
             setError(err?.message ?? "Failed to send verification email.")
@@ -65,6 +121,8 @@ export default function VerifyEmailPage() {
         setRefreshing(true)
         try {
             await refreshStatus()
+            // Also re-check cooldown in case account/email changed
+            loadCooldownFromStorage()
         } finally {
             setRefreshing(false)
         }
@@ -165,6 +223,7 @@ export default function VerifyEmailPage() {
                                 className="cursor-pointer w-full sm:w-auto text-slate-700 hover:text-white border-slate-700 hover:bg-slate-700 inline-flex items-center gap-2"
                                 onClick={onRefreshClick}
                                 disabled={loading || refreshing}
+                                title="Refresh your verification status"
                             >
                                 {refreshing ? (
                                     <>
@@ -180,13 +239,20 @@ export default function VerifyEmailPage() {
                                 <Button
                                     className="cursor-pointer w-full sm:w-auto bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 inline-flex items-center gap-2"
                                     onClick={sendVerification}
-                                    disabled={loading || needsLogin || isVerified === true || sending}
+                                    disabled={loading || needsLogin || isVerified === true || sending || cooldown > 0}
+                                    title={
+                                        cooldown > 0
+                                            ? `You can resend in ${cooldown}s`
+                                            : "Send a verification email to your address"
+                                    }
                                 >
                                     {sending ? (
                                         <>
                                             <Loader2 className="h-4 w-4 animate-spin" />
                                             Sending…
                                         </>
+                                    ) : cooldown > 0 ? (
+                                        <>Resend in {cooldown}s</>
                                     ) : (
                                         <>Send Verification Email</>
                                     )}
@@ -198,6 +264,7 @@ export default function VerifyEmailPage() {
                                         className="cursor-pointer w-full sm:w-auto inline-flex items-center gap-2"
                                         onClick={goToDashboard}
                                         disabled={continuing}
+                                        title="Continue to your dashboard"
                                     >
                                         {continuing ? (
                                             <>

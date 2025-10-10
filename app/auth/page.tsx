@@ -21,7 +21,7 @@ import {
     redirectIfActiveStudent,
     isStudentIdAvailable,
 } from "@/lib/appwrite"
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
+import { Select, SelectTrigger, SelectContent, SelectItem } from "@/components/ui/select"
 
 // Use the provider (now wired to Appwrite) for consistent auth state
 import { useAuth } from "@/components/auth/auth-provider"
@@ -35,8 +35,18 @@ const COURSES = [
     "BACHELOR OF SCIENCE IN COMPUTER SCIENCE",
     "BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY",
 ] as const
+type CourseName = typeof COURSES[number]
+
+// Acronyms for display in the trigger (prevents overflow)
+const COURSE_ACRONYM: Record<CourseName, string> = {
+    "BACHELOR OF SCIENCE IN EDUCATION": "BSED",
+    "BACHELOR OF SCIENCE IN SOCIAL WORK": "BSSW",
+    "BACHELOR OF SCIENCE IN COMPUTER SCIENCE": "BSCS",
+    "BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY": "BSIT",
+}
 
 const YEAR_LEVELS = ["1st", "2nd", "3rd", "4th", "5th"] as const
+type YearLevel = typeof YEAR_LEVELS[number]
 type AccountType = "student" | "other"
 
 /** Create the user-profile doc keyed by userId. Extras are optional. */
@@ -95,10 +105,10 @@ export default function LoginPage() {
 
     // register state
     const [fullName, setFullName] = useState("")
-    const [accountType, setAccountType] = useState<AccountType>("student") // NEW
-    const [studentId, setStudentId] = useState("") // NEW (optional)
-    const [course, setCourse] = useState<string | undefined>(undefined) // NEW
-    const [yearLevel, setYearLevel] = useState<string | undefined>(undefined) // NEW
+    const [accountType, setAccountType] = useState<AccountType>("student")
+    const [studentId, setStudentId] = useState("") // optional
+    const [course, setCourse] = useState<CourseName | undefined>(undefined) // store full name; display acronym
+    const [yearLevel, setYearLevel] = useState<YearLevel | undefined>(undefined)
     const [regEmail, setRegEmail] = useState("")
     const [regPassword, setRegPassword] = useState("")
     const [confirmPassword, setConfirmPassword] = useState("")
@@ -113,12 +123,27 @@ export default function LoginPage() {
 
     const { login } = useAuth()
 
-    // If already logged in and role is student, bounce straight to /dashboard
+    /**
+     * On mount:
+     * - If there is a session and email is UNVERIFIED -> redirect to verify-email page.
+     * - Else if there is a verified student session -> redirect to /dashboard.
+     */
     useEffect(() => {
         ; (async () => {
-            await redirectIfActiveStudent("/dashboard")
+            try {
+                const me = await getAccount().get() // throws if no session
+                if (!me.emailVerification) {
+                    const qs = `?email=${encodeURIComponent(me.email)}&needsVerification=1`
+                    router.replace(`/auth/verify-email${qs}`)
+                    return
+                }
+                // Verified -> allow role-based redirect for students
+                await redirectIfActiveStudent("/dashboard")
+            } catch {
+                // no active session – stay on auth page
+            }
         })()
-    }, [])
+    }, [router])
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -192,19 +217,25 @@ export default function LoginPage() {
             // Create the profile document (include extras only when provided)
             const me = await account.get()
             try {
-                await ensureUserDoc(me.$id, me.email, fullName || me.name, accountType === "student"
-                    ? {
-                        studentId: trimmedStudentId || undefined,
-                        course: course || undefined,
-                        yearLevel: yearLevel || undefined,
-                    }
-                    : undefined
+                await ensureUserDoc(
+                    me.$id,
+                    me.email,
+                    fullName || me.name,
+                    accountType === "student"
+                        ? {
+                            studentId: trimmedStudentId || undefined,
+                            course: course || undefined,      // save full name; show acronym in UI
+                            yearLevel: yearLevel || undefined,
+                        }
+                        : undefined
                 )
             } catch (err: any) {
                 // If DB has unique index on studentId, catch 409 and abort gracefully
                 const code = err?.code ?? err?.response?.code
                 if (code === 409) {
-                    try { await account.deleteSession("current") } catch { }
+                    try {
+                        await account.deleteSession("current")
+                    } catch { }
                     setRegError("That Student ID is already in use. Please use a different one.")
                     return
                 }
@@ -404,7 +435,9 @@ export default function LoginPage() {
                                                 onValueChange={(v: AccountType) => setAccountType(v)}
                                             >
                                                 <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
-                                                    <SelectValue placeholder="Select account type" />
+                                                    <span className="truncate">
+                                                        {accountType === "student" ? "Student" : "Other (Staff/Guest)"}
+                                                    </span>
                                                 </SelectTrigger>
                                                 <SelectContent className="bg-slate-900 text-white border-slate-700">
                                                     <SelectItem value="student">Student</SelectItem>
@@ -435,19 +468,26 @@ export default function LoginPage() {
                                                     </div>
                                                 </div>
 
-                                                {/* Course (Select) */}
+                                                {/* Course (Select) — show ACRONYM in the trigger to avoid overflow */}
                                                 <div className="space-y-2">
                                                     <Label className="text-white">Course</Label>
                                                     <Select
                                                         value={course}
-                                                        onValueChange={(v) => setCourse(v)}
+                                                        onValueChange={(v: CourseName) => setCourse(v)}
                                                     >
                                                         <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
-                                                            <SelectValue placeholder="Select course" />
+                                                            <span className="truncate">
+                                                                {course ? COURSE_ACRONYM[course] : "Select course"}
+                                                            </span>
                                                         </SelectTrigger>
                                                         <SelectContent className="bg-slate-900 text-white border-slate-700">
                                                             {COURSES.map((c) => (
-                                                                <SelectItem key={c} value={c}>{c}</SelectItem>
+                                                                <SelectItem key={c} value={c}>
+                                                                    <div className="flex w-full items-center justify-between gap-2">
+                                                                        <span className="block">{c}</span>
+                                                                        <span className="text-xs opacity-70">{COURSE_ACRONYM[c]}</span>
+                                                                    </div>
+                                                                </SelectItem>
                                                             ))}
                                                         </SelectContent>
                                                     </Select>
@@ -458,10 +498,12 @@ export default function LoginPage() {
                                                     <Label className="text-white">Year Level</Label>
                                                     <Select
                                                         value={yearLevel}
-                                                        onValueChange={(v) => setYearLevel(v)}
+                                                        onValueChange={(v: YearLevel) => setYearLevel(v)}
                                                     >
                                                         <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
-                                                            <SelectValue placeholder="Select year level" />
+                                                            <span className="truncate">
+                                                                {yearLevel ?? "Select year level"}
+                                                            </span>
                                                         </SelectTrigger>
                                                         <SelectContent className="bg-slate-900 text-white border-slate-700">
                                                             {YEAR_LEVELS.map((y) => (
