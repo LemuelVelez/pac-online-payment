@@ -53,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 try {
                     const account = getAccount()
                     const me = await account.get() // throws if no session
-                    // If somehow we have a session but it's not verified, do not hydrate as logged-in
+                    // If we have a session but it's not verified, DO NOT hydrate as logged-in.
                     if (!me.emailVerification) {
                         if (!cancelled) {
                             setUser(null)
@@ -96,10 +96,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             const me = await account.get()
 
-            // Block unverified users: nuke the new session and send them to verify-email
+            // ⛔ Block full login for unverified users, but KEEP the session so they can fix email / verify.
             if (!me.emailVerification) {
+                // best-effort: send a fresh verification email
                 try {
-                    // best-effort: send a fresh verification email
                     const origin = typeof window !== "undefined" ? window.location.origin : ""
                     const verifyCallbackUrl = origin ? `${origin}/auth/verify-email/callback` : undefined
                     if (verifyCallbackUrl) {
@@ -109,12 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     // ignore email send errors
                 }
 
-                // delete the just-created session so they are not "logged in"
-                try {
-                    await account.deleteSession("current")
-                } catch { /* ignore */ }
-
-                // clear local state (if any) and redirect to verify-email
+                // Do not set user; keep session and route to verify-email
                 setUser(null)
                 localStorage.removeItem("user")
                 const qs = `?email=${encodeURIComponent(me.email)}&needsVerification=1`

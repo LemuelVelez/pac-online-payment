@@ -9,27 +9,36 @@ import { ArrowLeft, BadgeCheck, MailCheck, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { getAccount, getOrCreateUserRole, roleToDashboard } from "@/lib/appwrite"
 
 const RESEND_COOLDOWN_SECONDS = 60
 
 export default function VerifyEmailPage() {
     const router = useRouter()
-    const [loading, setLoading] = useState(true)        // initial page check state
-    const [refreshing, setRefreshing] = useState(false) // button: refresh
-    const [sending, setSending] = useState(false)       // button: send email
-    const [continuing, setContinuing] = useState(false) // button: continue to dashboard
 
+    // page + action states
+    const [loading, setLoading] = useState(true)         // initial page check state
+    const [refreshing, setRefreshing] = useState(false)  // button: refresh
+    const [sending, setSending] = useState(false)        // button: send email
+    const [continuing, setContinuing] = useState(false)  // button: continue to dashboard
+    const [updatingEmail, setUpdatingEmail] = useState(false) // button: change email
+    const [signingOut, setSigningOut] = useState(false)  // button: sign out
+
+    // messages and status
     const [error, setError] = useState<string>("")
     const [info, setInfo] = useState<string>("")
     const [needsLogin, setNeedsLogin] = useState(false)
     const [isVerified, setIsVerified] = useState<boolean | null>(null)
     const [email, setEmail] = useState<string>("")
 
-    // Cooldown state for "Send Verification Email"
-    const [cooldown, setCooldown] = useState<number>(0)
+    // "wrong email" form
+    const [newEmail, setNewEmail] = useState<string>("")
+    const [currentPassword, setCurrentPassword] = useState<string>("")
 
-    // Key for localStorage, tie to email if available so cooldown is per-account
+    // resend cooldown
+    const [cooldown, setCooldown] = useState<number>(0)
     const cooldownKey = useMemo(
         () => (email ? `verifyEmailLastSentAt:${email}` : "verifyEmailLastSentAt"),
         [email]
@@ -59,6 +68,8 @@ export default function VerifyEmailPage() {
             const me = await getAccount().get()
             setEmail(me.email)
             setIsVerified(!!me.emailVerification)
+            // prefill "new email" with current (in case user just wants to adjust)
+            setNewEmail(me.email)
         } catch (err: any) {
             setNeedsLogin(true)
             setIsVerified(null)
@@ -67,7 +78,7 @@ export default function VerifyEmailPage() {
         }
     }
 
-    // Initial status check
+    // initial status check
     useEffect(() => {
         ; (async () => {
             await refreshStatus()
@@ -75,20 +86,17 @@ export default function VerifyEmailPage() {
         })()
     }, [])
 
-    // Load cooldown whenever we know the email (or key changes)
+    // Load cooldown whenever key (email) changes
     useEffect(() => {
         if (typeof window === "undefined") return
-        // Slight defer to ensure email has been set before reading
         loadCooldownFromStorage()
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [cooldownKey])
 
-    // Tick down the cooldown every second
+    // tick down cooldown every second
     useEffect(() => {
         if (cooldown <= 0) return
-        const id = setInterval(() => {
-            setCooldown((s) => (s > 1 ? s - 1 : 0))
-        }, 1000)
+        const id = setInterval(() => setCooldown((s) => (s > 1 ? s - 1 : 0)), 1000)
         return () => clearInterval(id)
     }, [cooldown])
 
@@ -109,7 +117,7 @@ export default function VerifyEmailPage() {
             }
             setCooldown(RESEND_COOLDOWN_SECONDS)
 
-            setInfo("Verification email sent. Please check your inbox.")
+            setInfo("Verification email sent. Please check your inbox or spam folder.")
         } catch (err: any) {
             setError(err?.message ?? "Failed to send verification email.")
         } finally {
@@ -121,10 +129,55 @@ export default function VerifyEmailPage() {
         setRefreshing(true)
         try {
             await refreshStatus()
-            // Also re-check cooldown in case account/email changed
             loadCooldownFromStorage()
         } finally {
             setRefreshing(false)
+        }
+    }
+
+    // ✅ Allow users to fix a wrong address without leaving the page.
+    // Appwrite requires the *current password* to change email.
+    const onChangeEmail = async () => {
+        setError("")
+        setInfo("")
+        if (!newEmail || !currentPassword) {
+            setError("Please enter your new email and your current password.")
+            return
+        }
+        if (newEmail === email) {
+            setError("The new email is the same as your current email.")
+            return
+        }
+
+        setUpdatingEmail(true)
+        try {
+            await getAccount().updateEmail(newEmail, currentPassword)
+
+            // Refresh local state
+            setEmail(newEmail)
+            setIsVerified(false)
+
+            // Immediately send a verification to the new address
+            try {
+                const origin = window.location.origin
+                const verifyCallbackUrl = `${origin}/auth/verify-email/callback`
+                await getAccount().createVerification(verifyCallbackUrl)
+
+                // Reset cooldown based on the new email
+                try {
+                    localStorage.setItem(`verifyEmailLastSentAt:${newEmail}`, String(Date.now()))
+                } catch { }
+                setCooldown(RESEND_COOLDOWN_SECONDS)
+            } catch {
+                // If sending fails, that's OK; they can press the button.
+            }
+
+            setInfo("Email updated. We've sent a new verification link to your new address.")
+            setCurrentPassword("")
+        } catch (err: any) {
+            setError(err?.message ?? "Could not update email. Please double-check your password.")
+        } finally {
+            setUpdatingEmail(false)
         }
     }
 
@@ -143,6 +196,18 @@ export default function VerifyEmailPage() {
             setError("Unable to route to dashboard.")
         } finally {
             setContinuing(false)
+        }
+    }
+
+    const onSignOut = async () => {
+        setSigningOut(true)
+        try {
+            await getAccount().deleteSession("current")
+        } catch {
+            // ignore
+        } finally {
+            setSigningOut(false)
+            router.replace("/auth")
         }
     }
 
@@ -214,9 +279,78 @@ export default function VerifyEmailPage() {
                                     </p>
                                 </div>
                             )}
+
+                            {/* Wrong email? Change it here (only when we have a session and not verified) */}
+                            {!loading && !needsLogin && isVerified === false && (
+                                <div className="mt-6 rounded-md border border-slate-700 p-4 bg-slate-900/40">
+                                    <h3 className="text-sm font-semibold text-white mb-3">Entered the wrong email?</h3>
+                                    <div className="space-y-3">
+                                        <div className="space-y-1">
+                                            <Label htmlFor="new-email" className="text-sm text-gray-200">New email</Label>
+                                            <Input
+                                                id="new-email"
+                                                type="email"
+                                                placeholder="name@example.com"
+                                                className="bg-slate-900/50 border-slate-700 text-white"
+                                                value={newEmail}
+                                                onChange={(e) => setNewEmail(e.target.value)}
+                                                autoCapitalize="none"
+                                                autoCorrect="off"
+                                                spellCheck={false}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label htmlFor="current-password" className="text-sm text-gray-200">Current password</Label>
+                                            <Input
+                                                id="current-password"
+                                                type="password"
+                                                placeholder="Enter your password"
+                                                className="bg-slate-900/50 border-slate-700 text-white"
+                                                value={currentPassword}
+                                                onChange={(e) => setCurrentPassword(e.target.value)}
+                                                autoComplete="current-password"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                                            <Button
+                                                className="inline-flex items-center gap-2 w-full sm:w-auto bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                                                onClick={onChangeEmail}
+                                                disabled={updatingEmail || !newEmail || !currentPassword}
+                                                title="Update your email and resend the verification link"
+                                            >
+                                                {updatingEmail ? (
+                                                    <>
+                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                        Updating…
+                                                    </>
+                                                ) : (
+                                                    <>Change Email & Resend</>
+                                                )}
+                                            </Button>
+
+                                            <Button
+                                                variant="outline"
+                                                className="inline-flex items-center gap-2 w-full sm:w-auto text-slate-200 border-slate-700 hover:bg-slate-800"
+                                                onClick={onSignOut}
+                                                disabled={signingOut}
+                                                title="Sign out and return to login"
+                                            >
+                                                {signingOut ? (
+                                                    <>
+                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                        Signing out…
+                                                    </>
+                                                ) : (
+                                                    <>Sign out</>
+                                                )}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </CardContent>
 
-                        {/* Responsive, non-overflowing footer */}
+                        {/* Footer actions */}
                         <CardFooter className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between border-t border-slate-700 pt-6">
                             <Button
                                 variant="outline"

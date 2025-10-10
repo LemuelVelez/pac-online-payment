@@ -376,7 +376,7 @@ export default function LoginPage() {
                                         </div>
                                         <Button
                                             type="submit"
-                                            className="w-full cursor-pointer bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                                            className="w-full cursor-pointer text-white bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
                                             disabled={isLoading}
                                         >
                                             {isLoading ? "Logging in..." : "Login"}
@@ -597,7 +597,7 @@ export default function LoginPage() {
 
                                         <Button
                                             type="submit"
-                                            className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                                            className="w-full text-white bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
                                             disabled={isRegistering}
                                         >
                                             {isRegistering ? "Creating account..." : "Register"}
