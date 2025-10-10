@@ -141,16 +141,14 @@ export default function MakePaymentPage() {
     setShowPaymongoDialog(true)
   }
 
-  /** Create a PayMongo payment link and redirect the user to checkout. */
+  /** Create a PayMongo payment link and open it in a new tab (target=_blank). */
   const handlePaymongoRedirect = async () => {
     try {
       setIsRedirecting(true)
 
       const amt = Number.parseFloat(amount) || 0
       const description = `${courses.find((c) => c.id === selectedCourse)?.code} – ${yearLevels.find((y) => y.id === selectedYear)?.name}`
-      const remarks = selectedFees.length
-        ? `Fees: ${selectedFees.join(", ")}`
-        : "Custom payment"
+      const remarks = selectedFees.length ? `Fees: ${selectedFees.join(", ")}` : "Custom payment"
 
       const link = await createPaymentLink({
         amount: amt,
@@ -164,8 +162,12 @@ export default function MakePaymentPage() {
         },
       })
 
-      // Redirect to PayMongo hosted checkout
-      window.location.href = link.checkoutUrl
+      // Open PayMongo hosted checkout in a NEW TAB
+      window.open(link.checkoutUrl, "_blank", "noopener,noreferrer")
+
+      // Close dialog and reset redirecting state
+      setShowPaymongoDialog(false)
+      setIsRedirecting(false)
     } catch (err: any) {
       console.error(err)
       alert(err?.message ?? "Failed to start payment. Please try again.")
@@ -492,7 +494,7 @@ export default function MakePaymentPage() {
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                       />
                     </svg>
-                    Redirecting...
+                    Opening new tab…
                   </span>
                 ) : (
                   <span className="flex items-center">
