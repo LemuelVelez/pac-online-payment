@@ -3,10 +3,21 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LogOut } from "lucide-react"
+import { LogOut, Power } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
 import { navigationConfig, roleDisplayNames } from "@/components/navigation/role-navigation"
+import {
+    AlertDialog,
+    AlertDialogTrigger,
+    AlertDialogContent,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogCancel,
+    AlertDialogAction,
+} from "@/components/ui/alert-dialog"
 
 interface DashboardSidebarProps {
     isOpen?: boolean
@@ -79,8 +90,8 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                                         key={item.name}
                                         href={item.href}
                                         className={`group flex items-center rounded-md px-3 py-2 text-sm font-medium cursor-pointer ${isActive
-                                            ? "bg-primary/10 text-primary dark:bg-primary/5"
-                                            : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                                                ? "bg-primary/10 text-primary dark:bg-primary/5"
+                                                : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                                             }`}
                                         onClick={handleClose}
                                     >
@@ -95,14 +106,54 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                             })}
                         </nav>
                     </div>
-                    <div className="border-t border-gray-200 p-4 dark:border-gray-800">
-                        <button
-                            className="flex w-full items-center rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 cursor-pointer"
-                            onClick={logout}
-                        >
-                            <LogOut className="mr-3 size-5 text-gray-500 dark:text-gray-400" />
-                            Sign out
-                        </button>
+                    <div className="border-t border-gray-200 p-4 space-y-2 dark:border-gray-800">
+                        {/* Log out (all devices) with confirmation */}
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <button
+                                    className="flex w-full items-center rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 cursor-pointer"
+                                >
+                                    <Power className="mr-3 size-5 text-gray-500 dark:text-gray-400" />
+                                    Log out (all devices)
+                                </button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="bg-slate-900 border-slate-700 text-white">
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Log out from all devices?</AlertDialogTitle>
+                                    <AlertDialogDescription className="text-slate-300">
+                                        This will end your session on this browser and any other devices where you’re signed in.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel className="bg-slate-800 text-white border-slate-700">Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => logout(true)}>Log out everywhere</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+
+                        {/* Sign out (current device) with confirmation */}
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <button
+                                    className="flex w-full items-center rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 cursor-pointer"
+                                >
+                                    <LogOut className="mr-3 size-5 text-gray-500 dark:text-gray-400" />
+                                    Sign out
+                                </button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="bg-slate-900 border-slate-700 text-white">
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Log out of this device?</AlertDialogTitle>
+                                    <AlertDialogDescription className="text-slate-300">
+                                        This will end your current session on this browser only.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel className="bg-slate-800 text-white border-slate-700">Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => logout()}>Log out</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
                     </div>
                 </div>
             </div>
@@ -131,8 +182,8 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                                         key={item.name}
                                         href={item.href}
                                         className={`group flex items-center rounded-md px-3 py-2 text-sm font-medium cursor-pointer ${isActive
-                                            ? "bg-primary/10 text-primary dark:bg-primary/5"
-                                            : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                                                ? "bg-primary/10 text-primary dark:bg-primary/5"
+                                                : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                                             }`}
                                         onClick={handleClose}
                                     >
@@ -147,14 +198,54 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                             })}
                         </nav>
                     </div>
-                    <div className="border-t border-gray-200 p-4 dark:border-gray-800">
-                        <button
-                            className="flex w-full items-center rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 cursor-pointer"
-                            onClick={logout}
-                        >
-                            <LogOut className="mr-3 size-5 text-gray-500 dark:text-gray-400" />
-                            Sign out
-                        </button>
+                    <div className="border-t border-gray-200 p-4 space-y-2 dark:border-gray-800">
+                        {/* Log out (all devices) with confirmation */}
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <button
+                                    className="flex w-full items-center rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 cursor-pointer"
+                                >
+                                    <Power className="mr-3 size-5 text-gray-500 dark:text-gray-400" />
+                                    Log out (all devices)
+                                </button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="bg-slate-900 border-slate-700 text-white">
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Log out from all devices?</AlertDialogTitle>
+                                    <AlertDialogDescription className="text-slate-300">
+                                        This will end your session on this browser and any other devices where you’re signed in.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel className="bg-slate-800 text-white border-slate-700">Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => logout(true)}>Log out everywhere</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+
+                        {/* Sign out (current device) with confirmation */}
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <button
+                                    className="flex w-full items-center rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 cursor-pointer"
+                                >
+                                    <LogOut className="mr-3 size-5 text-gray-500 dark:text-gray-400" />
+                                    Sign out
+                                </button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="bg-slate-900 border-slate-700 text-white">
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Log out of this device?</AlertDialogTitle>
+                                    <AlertDialogDescription className="text-slate-300">
+                                        This will end your current session on this browser only.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel className="bg-slate-800 text-white border-slate-700">Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => logout()}>Log out</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
                     </div>
                 </div>
             </div>

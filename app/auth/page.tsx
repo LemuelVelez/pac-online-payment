@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client"
 
 import type React from "react"
@@ -15,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { getAccount, getDatabases, ID, Permission, Role, redirectIfActiveStudent } from "@/lib/appwrite"
 
-// (Kept for compatibility if other parts still import it)
+// Use the provider (now wired to Appwrite) for consistent auth state
 import { useAuth } from "@/components/auth/auth-provider"
 
 const DB_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string
@@ -75,7 +74,9 @@ export default function LoginPage() {
     const router = useRouter()
     const redirect = searchParams.get("redirect")
 
-    // 🔹 NEW: If already logged in and role is student, bounce straight to /dashboard
+    const { login } = useAuth()
+
+    // If already logged in and role is student, bounce straight to /dashboard
     useEffect(() => {
         ; (async () => {
             await redirectIfActiveStudent("/dashboard")
@@ -87,13 +88,10 @@ export default function LoginPage() {
         setError("")
         setIsLoading(true)
         try {
-            const account = getAccount()
-            await account.createEmailPasswordSession(email, password)
-            // Ensure a users doc exists (for legacy users)
-            const me = await account.get()
-            await ensureUserDoc(me.$id, me.email, me.name)
-
-            router.push(redirect ? decodeURIComponent(redirect) : "/")
+            // ✅ Use provider login so the auth context is hydrated before navigating
+            const target = redirect ? decodeURIComponent(redirect) : "/dashboard"
+            await login(email, password, target)
+            // provider will router.replace(...) for us
         } catch (err: any) {
             setError(err?.message ?? "Invalid email or password. Please try again.")
         } finally {
@@ -125,7 +123,7 @@ export default function LoginPage() {
         try {
             const account = getAccount()
 
-            // ✅ Check first: rely on Appwrite's 409 conflict if email already exists
+            // Check first: rely on Appwrite's 409 conflict if email already exists
             try {
                 await account.create(ID.unique(), regEmail, regPassword, fullName || undefined)
             } catch (err: any) {
@@ -409,7 +407,7 @@ export default function LoginPage() {
 
                                         <Button
                                             type="submit"
-                                            className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                                            className="w-full bg-gradient-to-r from紫-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
                                             disabled={isRegistering}
                                         >
                                             {isRegistering ? "Creating account..." : "Register"}

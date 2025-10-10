@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import { useState, useEffect } from "react"
@@ -11,6 +12,7 @@ import { PaymentChart } from "@/components/dashboard/payment-chart"
 import { PaymentPieChart } from "@/components/dashboard/payment-pie-chart"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import type { UserRole } from "@/components/auth/auth-provider" // ✅ for allowedRoles typing
 
 // Course options
 const courses = [
@@ -30,202 +32,44 @@ const yearLevels = [
 ]
 
 // Payment data by course and year
-const paymentData = {
+const paymentData: any = {
     bscs: {
-        "1": {
-            tuition: 25000,
-            laboratory: 5000,
-            library: 1500,
-            miscellaneous: 3500,
-            total: 35000,
-            paid: 10000,
-        },
-        "2": {
-            tuition: 27000,
-            laboratory: 6000,
-            library: 1500,
-            miscellaneous: 3500,
-            total: 38000,
-            paid: 15000,
-        },
-        "3": {
-            tuition: 29000,
-            laboratory: 7000,
-            library: 1500,
-            miscellaneous: 3500,
-            total: 41000,
-            paid: 0,
-        },
-        "4": {
-            tuition: 31000,
-            laboratory: 8000,
-            library: 1500,
-            miscellaneous: 3500,
-            total: 44000,
-            paid: 0,
-        },
+        "1": { tuition: 25000, laboratory: 5000, library: 1500, miscellaneous: 3500, total: 35000, paid: 10000 },
+        "2": { tuition: 27000, laboratory: 6000, library: 1500, miscellaneous: 3500, total: 38000, paid: 15000 },
+        "3": { tuition: 29000, laboratory: 7000, library: 1500, miscellaneous: 3500, total: 41000, paid: 0 },
+        "4": { tuition: 31000, laboratory: 8000, library: 1500, miscellaneous: 3500, total: 44000, paid: 0 },
     },
     bsit: {
-        "1": {
-            tuition: 23000,
-            laboratory: 4500,
-            library: 1500,
-            miscellaneous: 3000,
-            total: 32000,
-            paid: 8000,
-        },
-        "2": {
-            tuition: 25000,
-            laboratory: 5500,
-            library: 1500,
-            miscellaneous: 3000,
-            total: 35000,
-            paid: 0,
-        },
-        "3": {
-            tuition: 27000,
-            laboratory: 6500,
-            library: 1500,
-            miscellaneous: 3000,
-            total: 38000,
-            paid: 0,
-        },
-        "4": {
-            tuition: 29000,
-            laboratory: 7500,
-            library: 1500,
-            miscellaneous: 3000,
-            total: 41000,
-            paid: 0,
-        },
+        "1": { tuition: 23000, laboratory: 4500, library: 1500, miscellaneous: 3000, total: 32000, paid: 8000 },
+        "2": { tuition: 25000, laboratory: 5500, library: 1500, miscellaneous: 3000, total: 35000, paid: 0 },
+        "3": { tuition: 27000, laboratory: 6500, library: 1500, miscellaneous: 3000, total: 38000, paid: 0 },
+        "4": { tuition: 29000, laboratory: 7500, library: 1500, miscellaneous: 3000, total: 41000, paid: 0 },
     },
     bsece: {
-        "1": {
-            tuition: 27000,
-            laboratory: 6000,
-            library: 1500,
-            miscellaneous: 4000,
-            total: 38500,
-            paid: 12000,
-        },
-        "2": {
-            tuition: 29000,
-            laboratory: 7000,
-            library: 1500,
-            miscellaneous: 4000,
-            total: 41500,
-            paid: 0,
-        },
-        "3": {
-            tuition: 31000,
-            laboratory: 8000,
-            library: 1500,
-            miscellaneous: 4000,
-            total: 44500,
-            paid: 0,
-        },
-        "4": {
-            tuition: 33000,
-            laboratory: 9000,
-            library: 1500,
-            miscellaneous: 4000,
-            total: 47500,
-            paid: 0,
-        },
+        "1": { tuition: 27000, laboratory: 6000, library: 1500, miscellaneous: 4000, total: 38500, paid: 12000 },
+        "2": { tuition: 29000, laboratory: 7000, library: 1500, miscellaneous: 4000, total: 41500, paid: 0 },
+        "3": { tuition: 31000, laboratory: 8000, library: 1500, miscellaneous: 4000, total: 44500, paid: 0 },
+        "4": { tuition: 33000, laboratory: 9000, library: 1500, miscellaneous: 4000, total: 47500, paid: 0 },
     },
     bsba: {
-        "1": {
-            tuition: 22000,
-            laboratory: 2000,
-            library: 1500,
-            miscellaneous: 3000,
-            total: 28500,
-            paid: 7000,
-        },
-        "2": {
-            tuition: 24000,
-            laboratory: 2000,
-            library: 1500,
-            miscellaneous: 3000,
-            total: 30500,
-            paid: 0,
-        },
-        "3": {
-            tuition: 26000,
-            laboratory: 2000,
-            library: 1500,
-            miscellaneous: 3000,
-            total: 32500,
-            paid: 0,
-        },
-        "4": {
-            tuition: 28000,
-            laboratory: 2000,
-            library: 1500,
-            miscellaneous: 3000,
-            total: 34500,
-            paid: 0,
-        },
+        "1": { tuition: 22000, laboratory: 2000, library: 1500, miscellaneous: 3000, total: 28500, paid: 7000 },
+        "2": { tuition: 24000, laboratory: 2000, library: 1500, miscellaneous: 3000, total: 30500, paid: 0 },
+        "3": { tuition: 26000, laboratory: 2000, library: 1500, miscellaneous: 3000, total: 32500, paid: 0 },
+        "4": { tuition: 28000, laboratory: 2000, library: 1500, miscellaneous: 3000, total: 34500, paid: 0 },
     },
     bsed: {
-        "1": {
-            tuition: 20000,
-            laboratory: 1500,
-            library: 1500,
-            miscellaneous: 3000,
-            total: 26000,
-            paid: 6500,
-        },
-        "2": {
-            tuition: 22000,
-            laboratory: 1500,
-            library: 1500,
-            miscellaneous: 3000,
-            total: 28000,
-            paid: 0,
-        },
-        "3": {
-            tuition: 24000,
-            laboratory: 1500,
-            library: 1500,
-            miscellaneous: 3000,
-            total: 30000,
-            paid: 0,
-        },
-        "4": {
-            tuition: 26000,
-            laboratory: 1500,
-            library: 1500,
-            miscellaneous: 3000,
-            total: 32000,
-            paid: 0,
-        },
+        "1": { tuition: 20000, laboratory: 1500, library: 1500, miscellaneous: 3000, total: 26000, paid: 6500 },
+        "2": { tuition: 22000, laboratory: 1500, library: 1500, miscellaneous: 3000, total: 28000, paid: 0 },
+        "3": { tuition: 24000, laboratory: 1500, library: 1500, miscellaneous: 3000, total: 30000, paid: 0 },
+        "4": { tuition: 26000, laboratory: 1500, library: 1500, miscellaneous: 3000, total: 32000, paid: 0 },
     },
 }
 
 // Recent transactions data
 const recentTransactions = [
-    {
-        id: "PAY-123458",
-        date: "Jul 05, 2023",
-        description: "Laboratory Fee",
-        amount: 800.0,
-        status: "Completed",
-    },
-    {
-        id: "PAY-123457",
-        date: "Jun 10, 2023",
-        description: "Library Fee",
-        amount: 500.0,
-        status: "Completed",
-    },
-    {
-        id: "PAY-123456",
-        date: "May 15, 2023",
-        description: "Tuition Fee - 1st Semester",
-        amount: 1500.0,
-        status: "Completed",
-    },
+    { id: "PAY-123458", date: "Jul 05, 2023", description: "Laboratory Fee", amount: 800.0, status: "Completed" },
+    { id: "PAY-123457", date: "Jun 10, 2023", description: "Library Fee", amount: 500.0, status: "Completed" },
+    { id: "PAY-123456", date: "May 15, 2023", description: "Tuition Fee - 1st Semester", amount: 1500.0, status: "Completed" },
 ]
 
 export default function DashboardPage() {
@@ -270,7 +114,8 @@ export default function DashboardPage() {
     ]
 
     return (
-        <DashboardLayout>
+        // ✅ Use RoleGuard via allowedRoles so auth loads before rendering (fixes missing sidebar nav)
+        <DashboardLayout allowedRoles={["student"] as UserRole[]}>
             <div className="container mx-auto px-4 py-8">
                 <div className="mb-8">
                     <h1 className="text-2xl font-bold text-white">Student Payment Dashboard</h1>
@@ -339,7 +184,9 @@ export default function DashboardPage() {
                                     </div>
                                     <div>
                                         <p className="text-3xl font-bold">₱{currentPaymentData.total.toLocaleString()}</p>
-                                        <p className="text-sm text-gray-300">{courses.find((c) => c.id === selectedCourse)?.name}</p>
+                                        <p className="text-sm text-gray-300">
+                                            {courses.find((c) => c.id === selectedCourse)?.name}
+                                        </p>
                                     </div>
                                 </div>
                             </div>
@@ -407,8 +254,8 @@ export default function DashboardPage() {
                                 <Alert className="mt-4 bg-amber-500/20 border-amber-500/50 text-amber-200">
                                     <AlertDescription>
                                         You have a remaining balance of ₱
-                                        {(currentPaymentData.total - currentPaymentData.paid).toLocaleString()}. Please settle your payments
-                                        before the deadline.
+                                        {(currentPaymentData.total - currentPaymentData.paid).toLocaleString()}. Please settle your
+                                        payments before the deadline.
                                     </AlertDescription>
                                 </Alert>
                             )}
@@ -442,7 +289,9 @@ export default function DashboardPage() {
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
                         <CardHeader>
                             <CardTitle>Payment History</CardTitle>
-                            <CardDescription className="text-gray-300">Monthly payment activity for the current year</CardDescription>
+                            <CardDescription className="text-gray-300">
+                                Monthly payment activity for the current year
+                            </CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="h-80">

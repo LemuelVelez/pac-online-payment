@@ -2,6 +2,13 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
+import {
+    getAccount,
+    getOrCreateUserRole,
+    roleToDashboard,
+    signOutCurrentSession,
+    signOutAllSessions,
+} from "@/lib/appwrite"
 
 // Define user roles
 export type UserRole = "admin" | "cashier" | "business-office" | "student" | null
@@ -19,116 +26,109 @@ export interface User {
 interface AuthContextType {
     user: User | null
     isLoading: boolean
-    login: (email: string, password: string) => Promise<void>
-    logout: () => void
+    // accept optional redirectPath so login callers can choose destination
+    login: (email: string, password: string, redirectPath?: string) => Promise<void>
+    // optional allDevices flag to sign out everywhere
+    logout: (allDevices?: boolean) => Promise<void>
 }
 
 // Create auth context
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-// Mock users for demonstration
-const MOCK_USERS: User[] = [
-    {
-        id: "1",
-        name: "Admin User",
-        email: "admin@example.com",
-        role: "admin",
-        avatar: "/images/avatars/admin.png",
-    },
-    {
-        id: "2",
-        name: "Cashier User",
-        email: "cashier@example.com",
-        role: "cashier",
-        avatar: "/images/avatars/cashier.png",
-    },
-    {
-        id: "3",
-        name: "Business Office User",
-        email: "business@example.com",
-        role: "business-office",
-        avatar: "/images/avatars/business.png",
-    },
-    {
-        id: "4",
-        name: "John Smith",
-        email: "student@example.com",
-        role: "student",
-        avatar: "/images/avatars/student.png",
-    },
-]
-
-// Auth provider component
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const router = useRouter()
 
-    // Check for existing session on mount
+    // Seed from localStorage quickly (optional), then reconcile with Appwrite session.
     useEffect(() => {
-        const storedUser = localStorage.getItem("user")
-        if (storedUser) {
-            setUser(JSON.parse(storedUser))
+        const seeded = localStorage.getItem("user")
+        if (seeded) {
+            try {
+                const parsed = JSON.parse(seeded) as User
+                setUser(parsed)
+            } catch {
+                // ignore bad JSON
+            }
         }
-        setIsLoading(false)
+
+        let cancelled = false
+            ; (async () => {
+                try {
+                    const account = getAccount()
+                    const me = await account.get() // throws if no session
+                    const role = (await getOrCreateUserRole(me.$id, me.email, me.name)) as UserRole
+                    const hydrated: User = {
+                        id: me.$id,
+                        name: me.name || me.email,
+                        email: me.email,
+                        role,
+                    }
+                    if (!cancelled) {
+                        setUser(hydrated)
+                        localStorage.setItem("user", JSON.stringify(hydrated))
+                    }
+                } catch {
+                    if (!cancelled) {
+                        setUser(null)
+                        localStorage.removeItem("user")
+                    }
+                } finally {
+                    if (!cancelled) setIsLoading(false)
+                }
+            })()
+
+        return () => {
+            cancelled = true
+        }
     }, [])
 
-    // Login function
-    const login = async (email: string, password: string) => {
+    const login = async (email: string, password: string, redirectPath?: string) => {
         setIsLoading(true)
         try {
-            // Simulate API call delay
-            await new Promise((resolve) => setTimeout(resolve, 1000))
+            const account = getAccount()
+            await account.createEmailPasswordSession(email, password)
 
-            // Find user by email (in a real app, this would be an API call)
-            const foundUser = MOCK_USERS.find((u) => u.email.toLowerCase() === email.toLowerCase())
+            const me = await account.get()
+            const role = (await getOrCreateUserRole(me.$id, me.email, me.name)) as UserRole
 
-            if (!foundUser) {
-                throw new Error("Invalid credentials")
+            const authUser: User = {
+                id: me.$id,
+                name: me.name || me.email,
+                email: me.email,
+                role,
             }
 
-            // In a real app, you would validate the password here
-            // For demo purposes, we'll accept any password for existing users
-            console.log("Password provided:", password) // This uses the password parameter
+            setUser(authUser)
+            localStorage.setItem("user", JSON.stringify(authUser))
 
-            // Set user in state and localStorage
-            setUser(foundUser)
-            localStorage.setItem("user", JSON.stringify(foundUser))
-
-            // Redirect based on role
-            redirectBasedOnRole(foundUser.role)
+            // Prefer explicit redirectPath (e.g., ?redirect=/dashboard), otherwise role-based
+            const target = redirectPath || roleToDashboard(role || "student")
+            router.replace(target)
         } catch (error) {
-            console.error("Login failed:", error)
+            // Surface error to caller
             throw error
         } finally {
             setIsLoading(false)
         }
     }
 
-    // Logout function
-    const logout = () => {
-        setUser(null)
-        localStorage.removeItem("user")
-        router.push("/auth")
-    }
-
-    // Redirect based on user role
-    const redirectBasedOnRole = (role: UserRole) => {
-        switch (role) {
-            case "admin":
-                router.push("/admin/dashboard")
-                break
-            case "cashier":
-                router.push("/cashier/dashboard")
-                break
-            case "business-office":
-                router.push("/business-office/dashboard")
-                break
-            case "student":
-                router.push("/dashboard")
-                break
-            default:
-                router.push("/auth")
+    const logout = async (allDevices: boolean = false) => {
+        setIsLoading(true)
+        try {
+            if (allDevices) {
+                await signOutAllSessions()
+            } else {
+                await signOutCurrentSession()
+            }
+        } catch {
+            // ignore network/SDK errors; we still clear client state below
+        } finally {
+            // Always clear client-side state
+            setUser(null)
+            localStorage.removeItem("user")
+            router.replace("/auth")
+            setIsLoading(false)
         }
     }
 

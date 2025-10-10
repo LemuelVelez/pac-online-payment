@@ -114,7 +114,7 @@ export async function getOrCreateUserRole(
   }
 }
 
-/* ========================= NEW: Session helpers & redirect ========================= */
+/* ========================= Session helpers & redirect ========================= */
 
 /** Safely get the current session user; returns null if no active session */
 export async function getCurrentUserSafe() {
@@ -153,4 +153,30 @@ export async function redirectIfActiveStudent(target: string = "/dashboard") {
     return true;
   }
   return false;
+}
+
+/* ========================= NEW: Sign-out helpers (backend calls) ========================= */
+
+/**
+ * Sign out the *current* session using Appwrite.
+ * Falls back to deleteSessions() if the current-session deletion fails.
+ */
+export async function signOutCurrentSession(): Promise<void> {
+  const account = getAccount();
+  try {
+    await account.deleteSession("current");
+  } catch {
+    // Fallback: try to nuke all sessions if current cannot be found
+    try {
+      await account.deleteSessions();
+    } catch {
+      // swallow; we'll still clear local state in the UI
+    }
+  }
+}
+
+/** Sign out from *all devices* (delete all sessions for this user). */
+export async function signOutAllSessions(): Promise<void> {
+  const account = getAccount();
+  await account.deleteSessions();
 }
