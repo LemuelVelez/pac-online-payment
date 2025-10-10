@@ -1,7 +1,5 @@
 "use client"
 
-import type React from "react"
-
 import { useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,178 +11,144 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { CreditCard, Landmark, Wallet, ExternalLink, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
-// Course options
-const courses = [
-  { id: "bscs", name: "BS Computer Science" },
-  { id: "bsit", name: "BS Information Technology" },
-  { id: "bsece", name: "BS Electronics Engineering" },
-  { id: "bsba", name: "BS Business Administration" },
-  { id: "bsed", name: "BS Education" },
-]
+// ──────────────────────────────────────────────────────────────────────────────
+// Types
+type YearId = "1" | "2" | "3" | "4"
+type CourseId = "bsed" | "bscs" | "bssw" | "bsit"
+type FeeKey = "tuition" | "laboratory" | "library" | "miscellaneous"
+type FeeBreakdown = {
+  tuition: number
+  laboratory: number
+  library: number
+  miscellaneous: number
+  total: number
+  paid: number
+}
+type CourseConfig = Record<YearId, FeeBreakdown>
+type PaymentData = Record<CourseId, CourseConfig>
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Constants (from the provided fee slips)
+const PER_UNIT = 206.0
+const LIB_FEE = 157.65
+const OTHER_FEES = 5682.72
+
+// 18-unit slip (BSED, BSCS, BSSW)
+const UNITS_18 = 18
+const TUITION_18 = PER_UNIT * UNITS_18 // 3708.00
+const LAB_18 = 630.6
+const TOTAL_18 = 10178.97
+
+// 24-unit slip (BSIT)
+const UNITS_24 = 24
+const TUITION_24 = PER_UNIT * UNITS_24 // 4944.00
+const LAB_24 = 1260.6
+const TOTAL_24 = 12044.97
+
+// Course options (use acronyms for display)
+const courses: { id: CourseId; code: string; name: string }[] = [
+  { id: "bsed", code: "BSED", name: "BACHELOR OF SCIENCE IN EDUCATION" },
+  { id: "bscs", code: "BSCS", name: "BACHELOR OF SCIENCE IN COMPUTER SCIENCE" },
+  { id: "bssw", code: "BSSW", name: "BACHELOR OF SCIENCE IN SOCIAL WORK" },
+  { id: "bsit", code: "BSIT", name: "BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY" },
+] as const
 
 // Year levels
-const yearLevels = [
+const yearLevels: { id: YearId; name: string }[] = [
   { id: "1", name: "First Year" },
   { id: "2", name: "Second Year" },
   { id: "3", name: "Third Year" },
   { id: "4", name: "Fourth Year" },
-]
+] as const
 
-// Payment data by course and year
-const paymentData = {
-  bscs: {
-    "1": {
-      tuition: 25000,
-      laboratory: 5000,
-      library: 1500,
-      miscellaneous: 3500,
-      total: 35000,
-      paid: 10000,
-    },
-    "2": {
-      tuition: 27000,
-      laboratory: 6000,
-      library: 1500,
-      miscellaneous: 3500,
-      total: 38000,
-      paid: 15000,
-    },
-    "3": {
-      tuition: 29000,
-      laboratory: 7000,
-      library: 1500,
-      miscellaneous: 3500,
-      total: 41000,
-      paid: 0,
-    },
-    "4": {
-      tuition: 31000,
-      laboratory: 8000,
-      library: 1500,
-      miscellaneous: 3500,
-      total: 44000,
-      paid: 0,
-    },
-  },
-  bsit: {
-    "1": {
-      tuition: 23000,
-      laboratory: 4500,
-      library: 1500,
-      miscellaneous: 3000,
-      total: 32000,
-      paid: 8000,
-    },
-    "2": {
-      tuition: 25000,
-      laboratory: 5500,
-      library: 1500,
-      miscellaneous: 3000,
-      total: 35000,
-      paid: 0,
-    },
-    "3": {
-      tuition: 27000,
-      laboratory: 6500,
-      library: 1500,
-      miscellaneous: 3000,
-      total: 38000,
-      paid: 0,
-    },
-    "4": {
-      tuition: 29000,
-      laboratory: 7500,
-      library: 1500,
-      miscellaneous: 3000,
-      total: 41000,
-      paid: 0,
-    },
-  },
-  // Other courses data...
+// Base fee templates
+const base18: FeeBreakdown = {
+  tuition: TUITION_18,
+  laboratory: LAB_18,
+  library: LIB_FEE,
+  miscellaneous: OTHER_FEES,
+  total: TOTAL_18,
+  paid: 0,
 }
 
+const base24: FeeBreakdown = {
+  tuition: TUITION_24,
+  laboratory: LAB_24,
+  library: LIB_FEE,
+  miscellaneous: OTHER_FEES,
+  total: TOTAL_24,
+  paid: 0,
+}
+
+// Payment data by course and year
+const paymentData: PaymentData = {
+  bsed: { "1": { ...base18 }, "2": { ...base18 }, "3": { ...base18 }, "4": { ...base18 } },
+  bscs: { "1": { ...base18 }, "2": { ...base18 }, "3": { ...base18 }, "4": { ...base18 } },
+  bssw: { "1": { ...base18 }, "2": { ...base18 }, "3": { ...base18 }, "4": { ...base18 } },
+  bsit: { "1": { ...base24 }, "2": { ...base24 }, "3": { ...base24 }, "4": { ...base24 } },
+}
+
+// For displaying the “units” note beside tuition
+const UNITS_BY_COURSE: Record<CourseId, number> = {
+  bsed: UNITS_18,
+  bscs: UNITS_18,
+  bssw: UNITS_18,
+  bsit: UNITS_24,
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+
 export default function MakePaymentPage() {
-  const [selectedCourse, setSelectedCourse] = useState("bscs")
-  const [selectedYear, setSelectedYear] = useState("1")
+  const [selectedCourse, setSelectedCourse] = useState<CourseId>("bsed")
+  const [selectedYear, setSelectedYear] = useState<YearId>("1")
   const [paymentMethod, setPaymentMethod] = useState("credit-card")
-  const [selectedFees, setSelectedFees] = useState<string[]>([])
-  const [currentPaymentData, setCurrentPaymentData] = useState(paymentData.bscs["1"])
+  const [selectedFees, setSelectedFees] = useState<FeeKey[]>([])
+  const [currentPaymentData, setCurrentPaymentData] = useState<FeeBreakdown>(paymentData.bsed["1"])
   const [amount, setAmount] = useState("")
   const [showPaymongoDialog, setShowPaymongoDialog] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
 
   // Update payment data when course or year changes
   const handleCourseChange = (value: string) => {
-    setSelectedCourse(value)
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-expect-error
-    if (paymentData[value] && paymentData[value][selectedYear]) {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      setCurrentPaymentData(paymentData[value][selectedYear])
-      setSelectedFees([])
-      setAmount("")
-    }
+    const v = value as CourseId
+    setSelectedCourse(v)
+    setCurrentPaymentData(paymentData[v][selectedYear])
+    setSelectedFees([])
+    setAmount("")
   }
 
   const handleYearChange = (value: string) => {
-    setSelectedYear(value)
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    if (paymentData[selectedCourse] && paymentData[selectedCourse][value]) {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      setCurrentPaymentData(paymentData[selectedCourse][value])
-      setSelectedFees([])
-      setAmount("")
-    }
+    const v = value as YearId
+    setSelectedYear(v)
+    setCurrentPaymentData(paymentData[selectedCourse][v])
+    setSelectedFees([])
+    setAmount("")
   }
 
-  const handleFeeSelection = (fee: string) => {
-    setSelectedFees((prev) => {
-      if (prev.includes(fee)) {
-        return prev.filter((item) => item !== fee)
-      } else {
-        return [...prev, fee]
-      }
-    })
+  const handleFeeSelection = (fee: FeeKey) => {
+    setSelectedFees((prev) => (prev.includes(fee) ? prev.filter((f) => f !== fee) : [...prev, fee]))
   }
 
   // Calculate total amount based on selected fees
-  const calculateTotal = () => {
-    let total = 0
-    if (selectedFees.includes("tuition")) total += currentPaymentData.tuition
-    if (selectedFees.includes("laboratory")) total += currentPaymentData.laboratory
-    if (selectedFees.includes("library")) total += currentPaymentData.library
-    if (selectedFees.includes("miscellaneous")) total += currentPaymentData.miscellaneous
-    return total
-  }
+  const calculateTotal = () => selectedFees.reduce((acc, key) => acc + currentPaymentData[key], 0)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    // Show the Paymongo dialog
     setShowPaymongoDialog(true)
   }
 
   const handlePaymongoRedirect = () => {
     setIsRedirecting(true)
-    // Simulate redirect to Paymongo
     setTimeout(() => {
-      // In a real implementation, this would redirect to Paymongo
       window.alert("In a real implementation, you would be redirected to Paymongo to complete your payment.")
       setIsRedirecting(false)
       setShowPaymongoDialog(false)
     }, 2000)
   }
+
+  const unitsNote = UNITS_BY_COURSE[selectedCourse]
 
   return (
     <DashboardLayout>
@@ -205,24 +169,26 @@ export default function MakePaymentPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  {/* VERTICAL LAYOUT */}
+                  <div className="flex flex-col gap-4">
                     <div className="space-y-2">
                       <label htmlFor="course" className="text-sm font-medium">
-                        Course
+                        Course (Acronym)
                       </label>
                       <Select value={selectedCourse} onValueChange={handleCourseChange}>
                         <SelectTrigger id="course" className="bg-slate-700 border-slate-600">
-                          <SelectValue placeholder="Select course" />
+                          <SelectValue placeholder="Select course (BSED/BSCS/BSSW/BSIT)" />
                         </SelectTrigger>
                         <SelectContent className="bg-slate-700 border-slate-600 text-white">
                           {courses.map((course) => (
                             <SelectItem key={course.id} value={course.id}>
-                              {course.name}
+                              {course.code}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
+
                     <div className="space-y-2">
                       <label htmlFor="year" className="text-sm font-medium">
                         Year Level
@@ -251,74 +217,30 @@ export default function MakePaymentPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="tuition"
-                        checked={selectedFees.includes("tuition")}
-                        onCheckedChange={() => handleFeeSelection("tuition")}
-                        className="cursor-pointer"
-                      />
-                      <div className="grid gap-1.5 leading-none">
-                        <label
-                          htmlFor="tuition"
-                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                        >
-                          Tuition Fee
-                        </label>
-                        <p className="text-sm text-gray-400">₱{currentPaymentData.tuition.toLocaleString()}</p>
+                    {([
+                      { key: "tuition", label: `Tuition Fee (₱${PER_UNIT.toFixed(2)} × ${unitsNote} units)` },
+                      { key: "laboratory", label: "Laboratory Fee" },
+                      { key: "library", label: "Library Fee" },
+                      { key: "miscellaneous", label: "Miscellaneous (Other Fees)" },
+                    ] as { key: FeeKey; label: string }[]).map((item) => (
+                      <div className="flex items-center space-x-2" key={item.key}>
+                        <Checkbox
+                          id={item.key}
+                          checked={selectedFees.includes(item.key)}
+                          onCheckedChange={() => handleFeeSelection(item.key)}
+                          className="cursor-pointer"
+                        />
+                        <div className="grid gap-1.5 leading-none">
+                          <label
+                            htmlFor={item.key}
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                          >
+                            {item.label}
+                          </label>
+                          <p className="text-sm text-gray-400">₱{currentPaymentData[item.key].toLocaleString()}</p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="laboratory"
-                        checked={selectedFees.includes("laboratory")}
-                        onCheckedChange={() => handleFeeSelection("laboratory")}
-                        className="cursor-pointer"
-                      />
-                      <div className="grid gap-1.5 leading-none">
-                        <label
-                          htmlFor="laboratory"
-                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                        >
-                          Laboratory Fee
-                        </label>
-                        <p className="text-sm text-gray-400">₱{currentPaymentData.laboratory.toLocaleString()}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="library"
-                        checked={selectedFees.includes("library")}
-                        onCheckedChange={() => handleFeeSelection("library")}
-                        className="cursor-pointer"
-                      />
-                      <div className="grid gap-1.5 leading-none">
-                        <label
-                          htmlFor="library"
-                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                        >
-                          Library Fee
-                        </label>
-                        <p className="text-sm text-gray-400">₱{currentPaymentData.library.toLocaleString()}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="miscellaneous"
-                        checked={selectedFees.includes("miscellaneous")}
-                        onCheckedChange={() => handleFeeSelection("miscellaneous")}
-                        className="cursor-pointer"
-                      />
-                      <div className="grid gap-1.5 leading-none">
-                        <label
-                          htmlFor="miscellaneous"
-                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                        >
-                          Miscellaneous Fee
-                        </label>
-                        <p className="text-sm text-gray-400">₱{currentPaymentData.miscellaneous.toLocaleString()}</p>
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 </CardContent>
               </Card>
@@ -389,6 +311,8 @@ export default function MakePaymentPage() {
                         className="bg-slate-700 border-slate-600"
                         value={amount}
                         onChange={(e) => setAmount(e.target.value)}
+                        min="0"
+                        step="0.01"
                       />
                     </div>
                     <div className="text-sm text-gray-400">
@@ -422,38 +346,31 @@ export default function MakePaymentPage() {
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-gray-300">Course:</span>
-                    <span>{courses.find((c) => c.id === selectedCourse)?.name}</span>
+                    <span>{courses.find((c) => c.id === selectedCourse)?.code}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-300">Year Level:</span>
                     <span>{yearLevels.find((y) => y.id === selectedYear)?.name}</span>
                   </div>
-                  <div className="border-t border-slate-700 my-2"></div>
-                  {selectedFees.includes("tuition") && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">Tuition Fee:</span>
-                      <span>₱{currentPaymentData.tuition.toLocaleString()}</span>
-                    </div>
+                  <div className="border-t border-slate-700 my-2" />
+                  {(["tuition", "laboratory", "library", "miscellaneous"] as FeeKey[]).map(
+                    (k) =>
+                      selectedFees.includes(k) && (
+                        <div className="flex justify-between" key={k}>
+                          <span className="text-gray-300">
+                            {k === "tuition"
+                              ? `Tuition Fee (₱${PER_UNIT.toFixed(2)} × ${UNITS_BY_COURSE[selectedCourse]} units)`
+                              : k === "laboratory"
+                                ? "Laboratory Fee"
+                                : k === "library"
+                                  ? "Library Fee"
+                                  : "Miscellaneous (Other Fees)"}
+                          </span>
+                          <span>₱{currentPaymentData[k].toLocaleString()}</span>
+                        </div>
+                      )
                   )}
-                  {selectedFees.includes("laboratory") && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">Laboratory Fee:</span>
-                      <span>₱{currentPaymentData.laboratory.toLocaleString()}</span>
-                    </div>
-                  )}
-                  {selectedFees.includes("library") && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">Library Fee:</span>
-                      <span>₱{currentPaymentData.library.toLocaleString()}</span>
-                    </div>
-                  )}
-                  {selectedFees.includes("miscellaneous") && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">Miscellaneous Fee:</span>
-                      <span>₱{currentPaymentData.miscellaneous.toLocaleString()}</span>
-                    </div>
-                  )}
-                  <div className="border-t border-slate-700 my-2"></div>
+                  <div className="border-t border-slate-700 my-2" />
                   <div className="flex justify-between font-medium">
                     <span>Selected Fees Total:</span>
                     <span>₱{calculateTotal().toLocaleString()}</span>
@@ -462,7 +379,7 @@ export default function MakePaymentPage() {
                     <span className="text-gray-300">Amount to Pay:</span>
                     <span>₱{amount ? Number.parseFloat(amount).toLocaleString() : "0.00"}</span>
                   </div>
-                  <div className="border-t border-slate-700 my-2"></div>
+                  <div className="border-t border-slate-700 my-2" />
                   <div className="flex justify-between">
                     <span className="text-gray-300">Total Fees:</span>
                     <span>₱{currentPaymentData.total.toLocaleString()}</span>
@@ -521,7 +438,7 @@ export default function MakePaymentPage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">Reference:</span>
-                    <span>PAY-{Math.floor(Math.random() * 1000000)}</span>
+                    <span>PAY-{Math.floor(Math.random() * 1_000_000)}</span>
                   </div>
                 </div>
               </div>
@@ -537,23 +454,11 @@ export default function MakePaymentPage() {
               <Button variant="outline" onClick={() => setShowPaymongoDialog(false)} className="border-slate-600">
                 Cancel
               </Button>
-              <Button
-                onClick={handlePaymongoRedirect}
-                className="bg-primary hover:bg-primary/90"
-                disabled={isRedirecting}
-              >
+              <Button onClick={handlePaymongoRedirect} className="bg-primary hover:bg-primary/90" disabled={isRedirecting}>
                 {isRedirecting ? (
                   <span className="flex items-center">
                     <svg className="mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24">
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                        fill="none"
-                      />
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                       <path
                         className="opacity-75"
                         fill="currentColor"

@@ -1,7 +1,6 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { CreditCard, Wallet, BookOpen } from "lucide-react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
@@ -12,109 +11,142 @@ import { PaymentChart } from "@/components/dashboard/payment-chart"
 import { PaymentPieChart } from "@/components/dashboard/payment-pie-chart"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import type { UserRole } from "@/components/auth/auth-provider" // ✅ for allowedRoles typing
+import type { UserRole } from "@/components/auth/auth-provider"
 
-// Course options
-const courses = [
-    { id: "bscs", name: "BS Computer Science" },
-    { id: "bsit", name: "BS Information Technology" },
-    { id: "bsece", name: "BS Electronics Engineering" },
-    { id: "bsba", name: "BS Business Administration" },
-    { id: "bsed", name: "BS Education" },
-]
+// ──────────────────────────────────────────────────────────────────────────────
+// Types
+type YearId = "1" | "2" | "3" | "4"
+type CourseId = "bsed" | "bscs" | "bssw" | "bsit"
+type FeeKey = "tuition" | "laboratory" | "library" | "miscellaneous"
+type FeeBreakdown = {
+    tuition: number
+    laboratory: number
+    library: number
+    miscellaneous: number
+    total: number
+    paid: number
+}
+type CourseConfig = Record<YearId, FeeBreakdown>
+type PaymentData = Record<CourseId, CourseConfig>
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Constants (from the provided fee slips)
+const PER_UNIT = 206.0
+const LIB_FEE = 157.65
+const OTHER_FEES = 5682.72 // registration + passbook + development + student assoc + medical + other school fees
+
+// 18-unit slip (BSED, BSCS, BSSW)
+const UNITS_18 = 18
+const TUITION_18 = PER_UNIT * UNITS_18 // 3708.00
+const LAB_18 = 630.6
+const TOTAL_18 = 10178.97
+
+// 24-unit slip (BSIT)
+const UNITS_24 = 24
+const TUITION_24 = PER_UNIT * UNITS_24 // 4944.00
+const LAB_24 = 1260.6
+const TOTAL_24 = 12044.97
+
+// Courses
+const courses: { id: CourseId; name: string }[] = [
+    { id: "bsed", name: "BACHELOR OF SCIENCE IN EDUCATION" },
+    { id: "bscs", name: "BACHELOR OF SCIENCE IN COMPUTER SCIENCE" },
+    { id: "bssw", name: "BACHELOR OF SCIENCE IN SOCIAL WORK" },
+    { id: "bsit", name: "BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY" },
+] as const
 
 // Year levels
-const yearLevels = [
+const yearLevels: { id: YearId; name: string }[] = [
     { id: "1", name: "First Year" },
     { id: "2", name: "Second Year" },
     { id: "3", name: "Third Year" },
     { id: "4", name: "Fourth Year" },
-]
+] as const
 
-// Payment data by course and year
-const paymentData: any = {
-    bscs: {
-        "1": { tuition: 25000, laboratory: 5000, library: 1500, miscellaneous: 3500, total: 35000, paid: 10000 },
-        "2": { tuition: 27000, laboratory: 6000, library: 1500, miscellaneous: 3500, total: 38000, paid: 15000 },
-        "3": { tuition: 29000, laboratory: 7000, library: 1500, miscellaneous: 3500, total: 41000, paid: 0 },
-        "4": { tuition: 31000, laboratory: 8000, library: 1500, miscellaneous: 3500, total: 44000, paid: 0 },
-    },
-    bsit: {
-        "1": { tuition: 23000, laboratory: 4500, library: 1500, miscellaneous: 3000, total: 32000, paid: 8000 },
-        "2": { tuition: 25000, laboratory: 5500, library: 1500, miscellaneous: 3000, total: 35000, paid: 0 },
-        "3": { tuition: 27000, laboratory: 6500, library: 1500, miscellaneous: 3000, total: 38000, paid: 0 },
-        "4": { tuition: 29000, laboratory: 7500, library: 1500, miscellaneous: 3000, total: 41000, paid: 0 },
-    },
-    bsece: {
-        "1": { tuition: 27000, laboratory: 6000, library: 1500, miscellaneous: 4000, total: 38500, paid: 12000 },
-        "2": { tuition: 29000, laboratory: 7000, library: 1500, miscellaneous: 4000, total: 41500, paid: 0 },
-        "3": { tuition: 31000, laboratory: 8000, library: 1500, miscellaneous: 4000, total: 44500, paid: 0 },
-        "4": { tuition: 33000, laboratory: 9000, library: 1500, miscellaneous: 4000, total: 47500, paid: 0 },
-    },
-    bsba: {
-        "1": { tuition: 22000, laboratory: 2000, library: 1500, miscellaneous: 3000, total: 28500, paid: 7000 },
-        "2": { tuition: 24000, laboratory: 2000, library: 1500, miscellaneous: 3000, total: 30500, paid: 0 },
-        "3": { tuition: 26000, laboratory: 2000, library: 1500, miscellaneous: 3000, total: 32500, paid: 0 },
-        "4": { tuition: 28000, laboratory: 2000, library: 1500, miscellaneous: 3000, total: 34500, paid: 0 },
-    },
-    bsed: {
-        "1": { tuition: 20000, laboratory: 1500, library: 1500, miscellaneous: 3000, total: 26000, paid: 6500 },
-        "2": { tuition: 22000, laboratory: 1500, library: 1500, miscellaneous: 3000, total: 28000, paid: 0 },
-        "3": { tuition: 24000, laboratory: 1500, library: 1500, miscellaneous: 3000, total: 30000, paid: 0 },
-        "4": { tuition: 26000, laboratory: 1500, library: 1500, miscellaneous: 3000, total: 32000, paid: 0 },
-    },
+// Fee templates
+const base18: FeeBreakdown = {
+    tuition: TUITION_18,
+    laboratory: LAB_18,
+    library: LIB_FEE,
+    miscellaneous: OTHER_FEES,
+    total: TOTAL_18,
+    paid: 0,
 }
 
-// Recent transactions data
+const base24: FeeBreakdown = {
+    tuition: TUITION_24,
+    laboratory: LAB_24,
+    library: LIB_FEE,
+    miscellaneous: OTHER_FEES,
+    total: TOTAL_24,
+    paid: 0,
+}
+
+// Payment data by course and year
+const paymentData: PaymentData = {
+    bsed: { "1": { ...base18 }, "2": { ...base18 }, "3": { ...base18 }, "4": { ...base18 } },
+    bscs: { "1": { ...base18 }, "2": { ...base18 }, "3": { ...base18 }, "4": { ...base18 } },
+    bssw: { "1": { ...base18 }, "2": { ...base18 }, "3": { ...base18 }, "4": { ...base18 } },
+    bsit: { "1": { ...base24 }, "2": { ...base24 }, "3": { ...base24 }, "4": { ...base24 } },
+}
+
+// Units per course (for display)
+const UNITS_BY_COURSE: Record<CourseId, number> = {
+    bsed: UNITS_18,
+    bscs: UNITS_18,
+    bssw: UNITS_18,
+    bsit: UNITS_24,
+}
+
+// Recent transactions (sample)
 const recentTransactions = [
     { id: "PAY-123458", date: "Jul 05, 2023", description: "Laboratory Fee", amount: 800.0, status: "Completed" },
     { id: "PAY-123457", date: "Jun 10, 2023", description: "Library Fee", amount: 500.0, status: "Completed" },
     { id: "PAY-123456", date: "May 15, 2023", description: "Tuition Fee - 1st Semester", amount: 1500.0, status: "Completed" },
-]
+] as const
 
 export default function DashboardPage() {
-    const [selectedCourse, setSelectedCourse] = useState("bscs")
-    const [selectedYear, setSelectedYear] = useState("1")
-    const [currentPaymentData, setCurrentPaymentData] = useState(paymentData.bscs["1"])
-    const paymentHistory = [
-        { month: "Jan", amount: 0 },
-        { month: "Feb", amount: 0 },
-        { month: "Mar", amount: 0 },
-        { month: "Apr", amount: 0 },
-        { month: "May", amount: 1500 },
-        { month: "Jun", amount: 500 },
-        { month: "Jul", amount: 800 },
-        { month: "Aug", amount: 0 },
-        { month: "Sep", amount: 0 },
-        { month: "Oct", amount: 0 },
-        { month: "Nov", amount: 0 },
-        { month: "Dec", amount: 0 },
-    ]
+    const [selectedCourse, setSelectedCourse] = useState<CourseId>("bsed")
+    const [selectedYear, setSelectedYear] = useState<YearId>("1")
+    const [currentPaymentData, setCurrentPaymentData] = useState<FeeBreakdown>(paymentData.bsed["1"])
+
+    const paymentHistory = useMemo(
+        () => [
+            { month: "Jan", amount: 0 },
+            { month: "Feb", amount: 0 },
+            { month: "Mar", amount: 0 },
+            { month: "Apr", amount: 0 },
+            { month: "May", amount: 1500 },
+            { month: "Jun", amount: 500 },
+            { month: "Jul", amount: 800 },
+            { month: "Aug", amount: 0 },
+            { month: "Sep", amount: 0 },
+            { month: "Oct", amount: 0 },
+            { month: "Nov", amount: 0 },
+            { month: "Dec", amount: 0 },
+        ],
+        []
+    )
 
     // Update payment data when course or year changes
     useEffect(() => {
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        if (paymentData[selectedCourse] && paymentData[selectedCourse][selectedYear]) {
-            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-            // @ts-ignore
-            setCurrentPaymentData(paymentData[selectedCourse][selectedYear])
-        }
+        setCurrentPaymentData(paymentData[selectedCourse][selectedYear])
     }, [selectedCourse, selectedYear])
 
     // Calculate payment progress
-    const paymentProgress = Math.round((currentPaymentData.paid / currentPaymentData.total) * 100)
+    const paymentProgress = currentPaymentData.total
+        ? Math.round((currentPaymentData.paid / currentPaymentData.total) * 100)
+        : 0
 
     // Prepare pie chart data
-    const pieChartData = [
-        { name: "Tuition", value: currentPaymentData.tuition },
-        { name: "Laboratory", value: currentPaymentData.laboratory },
-        { name: "Library", value: currentPaymentData.library },
-        { name: "Miscellaneous", value: currentPaymentData.miscellaneous },
-    ]
+    const pieChartData = (["tuition", "laboratory", "library", "miscellaneous"] as FeeKey[]).map((k) => ({
+        name: k[0].toUpperCase() + k.slice(1),
+        value: currentPaymentData[k],
+    }))
+
+    const currentUnits = UNITS_BY_COURSE[selectedCourse]
 
     return (
-        // ✅ Use RoleGuard via allowedRoles so auth loads before rendering (fixes missing sidebar nav)
         <DashboardLayout allowedRoles={["student"] as UserRole[]}>
             <div className="container mx-auto px-4 py-8">
                 <div className="mb-8">
@@ -136,7 +168,7 @@ export default function DashboardPage() {
                                 <label htmlFor="course" className="text-sm font-medium">
                                     Course
                                 </label>
-                                <Select value={selectedCourse} onValueChange={(value) => setSelectedCourse(value)}>
+                                <Select value={selectedCourse} onValueChange={(v: string) => setSelectedCourse(v as CourseId)}>
                                     <SelectTrigger id="course" className="bg-slate-700 border-slate-600">
                                         <SelectValue placeholder="Select course" />
                                     </SelectTrigger>
@@ -153,7 +185,7 @@ export default function DashboardPage() {
                                 <label htmlFor="year" className="text-sm font-medium">
                                     Year Level
                                 </label>
-                                <Select value={selectedYear} onValueChange={(value) => setSelectedYear(value)}>
+                                <Select value={selectedYear} onValueChange={(v: string) => setSelectedYear(v as YearId)}>
                                     <SelectTrigger id="year" className="bg-slate-700 border-slate-600">
                                         <SelectValue placeholder="Select year level" />
                                     </SelectTrigger>
@@ -226,7 +258,7 @@ export default function DashboardPage() {
                                         <p className="text-3xl font-bold">
                                             ₱{(currentPaymentData.total - currentPaymentData.paid).toLocaleString()}
                                         </p>
-                                        <p className="text-sm text-gray-300">{100 - paymentProgress}% remaining</p>
+                                        <p className="text-sm text-gray-300">{Math.max(0, 100 - paymentProgress)}% remaining</p>
                                     </div>
                                 </div>
                             </div>
@@ -254,8 +286,8 @@ export default function DashboardPage() {
                                 <Alert className="mt-4 bg-amber-500/20 border-amber-500/50 text-amber-200">
                                     <AlertDescription>
                                         You have a remaining balance of ₱
-                                        {(currentPaymentData.total - currentPaymentData.paid).toLocaleString()}. Please settle your
-                                        payments before the deadline.
+                                        {(currentPaymentData.total - currentPaymentData.paid).toLocaleString()}. Please
+                                        settle your payments before the deadline.
                                     </AlertDescription>
                                 </Alert>
                             )}
@@ -306,7 +338,7 @@ export default function DashboardPage() {
                     <CardHeader>
                         <CardTitle>Fee Details</CardTitle>
                         <CardDescription className="text-gray-300">
-                            Breakdown of fees for {courses.find((c) => c.id === selectedCourse)?.name} -{" "}
+                            Breakdown of fees for {courses.find((c) => c.id === selectedCourse)?.name} –{" "}
                             {yearLevels.find((y) => y.id === selectedYear)?.name}
                         </CardDescription>
                     </CardHeader>
@@ -322,7 +354,9 @@ export default function DashboardPage() {
                                 </thead>
                                 <tbody className="divide-y divide-slate-700">
                                     <tr className="text-sm">
-                                        <td className="px-6 py-4 font-medium">Tuition Fee</td>
+                                        <td className="px-6 py-4 font-medium">
+                                            Tuition Fee (₱{PER_UNIT.toFixed(2)} × {currentUnits} units)
+                                        </td>
                                         <td className="px-6 py-4">₱{currentPaymentData.tuition.toLocaleString()}</td>
                                         <td className="px-6 py-4">
                                             {currentPaymentData.paid > 0 ? (
@@ -355,7 +389,7 @@ export default function DashboardPage() {
                                         </td>
                                     </tr>
                                     <tr className="text-sm">
-                                        <td className="px-6 py-4 font-medium">Miscellaneous Fee</td>
+                                        <td className="px-6 py-4 font-medium">Miscellaneous (Other Fees)</td>
                                         <td className="px-6 py-4">₱{currentPaymentData.miscellaneous.toLocaleString()}</td>
                                         <td className="px-6 py-4">
                                             <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-500">
@@ -366,7 +400,7 @@ export default function DashboardPage() {
                                     <tr className="bg-slate-900/30 text-sm font-medium">
                                         <td className="px-6 py-4">Total</td>
                                         <td className="px-6 py-4">₱{currentPaymentData.total.toLocaleString()}</td>
-                                        <td className="px-6 py-4"></td>
+                                        <td className="px-6 py-4" />
                                     </tr>
                                 </tbody>
                             </table>
@@ -398,15 +432,15 @@ export default function DashboardPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-700">
-                                    {recentTransactions.map((transaction) => (
-                                        <tr key={transaction.id} className="text-sm text-gray-200">
-                                            <td className="whitespace-nowrap px-6 py-4 font-medium">{transaction.id}</td>
-                                            <td className="whitespace-nowrap px-6 py-4">{transaction.date}</td>
-                                            <td className="px-6 py-4">{transaction.description}</td>
-                                            <td className="whitespace-nowrap px-6 py-4 font-medium">₱{transaction.amount.toFixed(2)}</td>
+                                    {recentTransactions.map((t) => (
+                                        <tr key={t.id} className="text-sm text-gray-200">
+                                            <td className="whitespace-nowrap px-6 py-4 font-medium">{t.id}</td>
+                                            <td className="whitespace-nowrap px-6 py-4">{t.date}</td>
+                                            <td className="px-6 py-4">{t.description}</td>
+                                            <td className="whitespace-nowrap px-6 py-4 font-medium">₱{t.amount.toFixed(2)}</td>
                                             <td className="whitespace-nowrap px-6 py-4">
                                                 <span className="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-500">
-                                                    {transaction.status}
+                                                    {t.status}
                                                 </span>
                                             </td>
                                         </tr>
