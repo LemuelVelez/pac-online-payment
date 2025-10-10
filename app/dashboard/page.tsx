@@ -13,6 +13,10 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import type { UserRole } from "@/components/auth/auth-provider"
 
+// Appwrite backend
+import { getCurrentUserSafe } from "@/lib/appwrite"
+import { getPaidTotal, listRecentPayments, type PaymentRecord } from "@/lib/appwrite-payments"
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Types
 type YearId = "1" | "2" | "3" | "4"
@@ -33,7 +37,7 @@ type PaymentData = Record<CourseId, CourseConfig>
 // Constants (from the provided fee slips)
 const PER_UNIT = 206.0
 const LIB_FEE = 157.65
-const OTHER_FEES = 5682.72 // registration + passbook + development + student assoc + medical + other school fees
+const OTHER_FEES = 5682.72
 
 // 18-unit slip (BSED, BSCS, BSSW)
 const UNITS_18 = 18
@@ -98,17 +102,13 @@ const UNITS_BY_COURSE: Record<CourseId, number> = {
     bsit: UNITS_24,
 }
 
-// Recent transactions (sample)
-const recentTransactions = [
-    { id: "PAY-123458", date: "Jul 05, 2023", description: "Laboratory Fee", amount: 800.0, status: "Completed" },
-    { id: "PAY-123457", date: "Jun 10, 2023", description: "Library Fee", amount: 500.0, status: "Completed" },
-    { id: "PAY-123456", date: "May 15, 2023", description: "Tuition Fee - 1st Semester", amount: 1500.0, status: "Completed" },
-] as const
+type TxnRow = { id: string; date: string; description: string; amount: number; status: string }
 
 export default function DashboardPage() {
     const [selectedCourse, setSelectedCourse] = useState<CourseId>("bsed")
     const [selectedYear, setSelectedYear] = useState<YearId>("1")
     const [currentPaymentData, setCurrentPaymentData] = useState<FeeBreakdown>(paymentData.bsed["1"])
+    const [transactions, setTransactions] = useState<TxnRow[]>([])
 
     const paymentHistory = useMemo(
         () => [
@@ -128,17 +128,43 @@ export default function DashboardPage() {
         []
     )
 
-    // Update payment data when course or year changes
+    // Update base fee bundle on course/year change
     useEffect(() => {
         setCurrentPaymentData(paymentData[selectedCourse][selectedYear])
     }, [selectedCourse, selectedYear])
 
-    // Calculate payment progress
+    // Pull paid total + recent txns from Appwrite for the signed-in user
+    useEffect(() => {
+        ; (async () => {
+            try {
+                const me = await getCurrentUserSafe()
+                if (!me) return
+
+                // Paid total for this course/year
+                const paid = await getPaidTotal(me.$id, selectedCourse, selectedYear)
+
+                setCurrentPaymentData((prev) => ({ ...prev, paid }))
+
+                // Recent transactions
+                const docs = await listRecentPayments(me.$id, 10)
+                const mapped: TxnRow[] = docs.map((d) => ({
+                    id: d.reference || d.$id,
+                    date: new Date(d.$createdAt).toLocaleDateString(),
+                    description: prettyDescription(d),
+                    amount: Number(d.amount) || 0,
+                    status: d.status,
+                }))
+                setTransactions(mapped)
+            } catch {
+                // Silent fallback; keep local defaults if backend is unavailable.
+            }
+        })()
+    }, [selectedCourse, selectedYear])
+
     const paymentProgress = currentPaymentData.total
         ? Math.round((currentPaymentData.paid / currentPaymentData.total) * 100)
         : 0
 
-    // Prepare pie chart data
     const pieChartData = (["tuition", "laboratory", "library", "miscellaneous"] as FeeKey[]).map((k) => ({
         name: k[0].toUpperCase() + k.slice(1),
         value: currentPaymentData[k],
@@ -165,35 +191,27 @@ export default function DashboardPage() {
                     <CardContent>
                         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                             <div className="space-y-2">
-                                <label htmlFor="course" className="text-sm font-medium">
-                                    Course
-                                </label>
+                                <label htmlFor="course" className="text-sm font-medium">Course</label>
                                 <Select value={selectedCourse} onValueChange={(v: string) => setSelectedCourse(v as CourseId)}>
                                     <SelectTrigger id="course" className="bg-slate-700 border-slate-600">
                                         <SelectValue placeholder="Select course" />
                                     </SelectTrigger>
                                     <SelectContent className="bg-slate-700 border-slate-600 text-white">
                                         {courses.map((course) => (
-                                            <SelectItem key={course.id} value={course.id}>
-                                                {course.name}
-                                            </SelectItem>
+                                            <SelectItem key={course.id} value={course.id}>{course.name}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <label htmlFor="year" className="text-sm font-medium">
-                                    Year Level
-                                </label>
+                                <label htmlFor="year" className="text-sm font-medium">Year Level</label>
                                 <Select value={selectedYear} onValueChange={(v: string) => setSelectedYear(v as YearId)}>
                                     <SelectTrigger id="year" className="bg-slate-700 border-slate-600">
                                         <SelectValue placeholder="Select year level" />
                                     </SelectTrigger>
                                     <SelectContent className="bg-slate-700 border-slate-600 text-white">
                                         {yearLevels.map((year) => (
-                                            <SelectItem key={year.id} value={year.id}>
-                                                {year.name}
-                                            </SelectItem>
+                                            <SelectItem key={year.id} value={year.id}>{year.name}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
@@ -205,61 +223,39 @@ export default function DashboardPage() {
                 {/* Payment Summary */}
                 <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-3">
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-lg">Total Fees</CardTitle>
-                        </CardHeader>
+                        <CardHeader className="pb-2"><CardTitle className="text-lg">Total Fees</CardTitle></CardHeader>
                         <CardContent>
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center">
-                                    <div className="mr-4 rounded-lg bg-primary/20 p-3">
-                                        <BookOpen className="size-6 text-primary" />
-                                    </div>
-                                    <div>
-                                        <p className="text-3xl font-bold">₱{currentPaymentData.total.toLocaleString()}</p>
-                                        <p className="text-sm text-gray-300">
-                                            {courses.find((c) => c.id === selectedCourse)?.name}
-                                        </p>
-                                    </div>
+                            <div className="flex items-center">
+                                <div className="mr-4 rounded-lg bg-primary/20 p-3"><BookOpen className="size-6 text-primary" /></div>
+                                <div>
+                                    <p className="text-3xl font-bold">₱{currentPaymentData.total.toLocaleString()}</p>
+                                    <p className="text-sm text-gray-300">{courses.find((c) => c.id === selectedCourse)?.name}</p>
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
 
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-lg">Amount Paid</CardTitle>
-                        </CardHeader>
+                        <CardHeader className="pb-2"><CardTitle className="text-lg">Amount Paid</CardTitle></CardHeader>
                         <CardContent>
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center">
-                                    <div className="mr-4 rounded-lg bg-green-500/20 p-3">
-                                        <Wallet className="size-6 text-green-500" />
-                                    </div>
-                                    <div>
-                                        <p className="text-3xl font-bold">₱{currentPaymentData.paid.toLocaleString()}</p>
-                                        <p className="text-sm text-gray-300">{paymentProgress}% of total fees</p>
-                                    </div>
+                            <div className="flex items-center">
+                                <div className="mr-4 rounded-lg bg-green-500/20 p-3"><Wallet className="size-6 text-green-500" /></div>
+                                <div>
+                                    <p className="text-3xl font-bold">₱{currentPaymentData.paid.toLocaleString()}</p>
+                                    <p className="text-sm text-gray-300">{paymentProgress}% of total fees</p>
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
 
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-lg">Balance Due</CardTitle>
-                        </CardHeader>
+                        <CardHeader className="pb-2"><CardTitle className="text-lg">Balance Due</CardTitle></CardHeader>
                         <CardContent>
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center">
-                                    <div className="mr-4 rounded-lg bg-red-500/20 p-3">
-                                        <CreditCard className="size-6 text-red-500" />
-                                    </div>
-                                    <div>
-                                        <p className="text-3xl font-bold">
-                                            ₱{(currentPaymentData.total - currentPaymentData.paid).toLocaleString()}
-                                        </p>
-                                        <p className="text-sm text-gray-300">{Math.max(0, 100 - paymentProgress)}% remaining</p>
-                                    </div>
+                            <div className="flex items-center">
+                                <div className="mr-4 rounded-lg bg-red-500/20 p-3"><CreditCard className="size-6 text-red-500" /></div>
+                                <div>
+                                    <p className="text-3xl font-bold">₱{(currentPaymentData.total - currentPaymentData.paid).toLocaleString()}</p>
+                                    <p className="text-sm text-gray-300">{Math.max(0, 100 - paymentProgress)}% remaining</p>
                                 </div>
                             </div>
                         </CardContent>
@@ -270,9 +266,7 @@ export default function DashboardPage() {
                 <Card className="mb-8 bg-slate-800/60 border-slate-700 text-white">
                     <CardHeader>
                         <CardTitle>Payment Progress</CardTitle>
-                        <CardDescription className="text-gray-300">
-                            Track your payment progress for the current semester
-                        </CardDescription>
+                        <CardDescription className="text-gray-300">Track your payment progress for the current semester</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-4">
@@ -281,24 +275,17 @@ export default function DashboardPage() {
                                 <span className="text-sm font-medium">{paymentProgress}%</span>
                             </div>
                             <Progress value={paymentProgress} className="h-2 bg-slate-700" />
-
                             {paymentProgress < 100 && (
                                 <Alert className="mt-4 bg-amber-500/20 border-amber-500/50 text-amber-200">
                                     <AlertDescription>
-                                        You have a remaining balance of ₱
-                                        {(currentPaymentData.total - currentPaymentData.paid).toLocaleString()}. Please
-                                        settle your payments before the deadline.
+                                        You have a remaining balance of ₱{(currentPaymentData.total - currentPaymentData.paid).toLocaleString()}.
+                                        Please settle your payments before the deadline.
                                     </AlertDescription>
                                 </Alert>
                             )}
-
                             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <Link href="/make-payment">
-                                    <Button className="w-full bg-primary hover:bg-primary/90">Make a Payment</Button>
-                                </Link>
-                                <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
-                                    View Payment Schedule
-                                </Button>
+                                <Link href="/make-payment"><Button className="w-full bg-primary hover:bg-primary/90">Make a Payment</Button></Link>
+                                <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">View Payment Schedule</Button>
                             </div>
                         </div>
                     </CardContent>
@@ -311,25 +298,15 @@ export default function DashboardPage() {
                             <CardTitle>Fee Breakdown</CardTitle>
                             <CardDescription className="text-gray-300">Distribution of fees by category</CardDescription>
                         </CardHeader>
-                        <CardContent>
-                            <div className="h-80">
-                                <PaymentPieChart data={pieChartData} />
-                            </div>
-                        </CardContent>
+                        <CardContent><div className="h-80"><PaymentPieChart data={pieChartData} /></div></CardContent>
                     </Card>
 
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
                         <CardHeader>
                             <CardTitle>Payment History</CardTitle>
-                            <CardDescription className="text-gray-300">
-                                Monthly payment activity for the current year
-                            </CardDescription>
+                            <CardDescription className="text-gray-300">Monthly payment activity for the current year</CardDescription>
                         </CardHeader>
-                        <CardContent>
-                            <div className="h-80">
-                                <PaymentChart data={paymentHistory} />
-                            </div>
-                        </CardContent>
+                        <CardContent><div className="h-80"><PaymentChart data={paymentHistory} /></div></CardContent>
                     </Card>
                 </div>
 
@@ -338,8 +315,7 @@ export default function DashboardPage() {
                     <CardHeader>
                         <CardTitle>Fee Details</CardTitle>
                         <CardDescription className="text-gray-300">
-                            Breakdown of fees for {courses.find((c) => c.id === selectedCourse)?.name} –{" "}
-                            {yearLevels.find((y) => y.id === selectedYear)?.name}
+                            Breakdown of fees for {courses.find((c) => c.id === selectedCourse)?.name} – {yearLevels.find((y) => y.id === selectedYear)?.name}
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -347,55 +323,35 @@ export default function DashboardPage() {
                             <table className="w-full">
                                 <thead>
                                     <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
-                                        <th className="px-6 py-3">Fee Type</th>
-                                        <th className="px-6 py-3">Amount</th>
-                                        <th className="px-6 py-3">Status</th>
+                                        <th className="px-6 py-3">Fee Type</th><th className="px-6 py-3">Amount</th><th className="px-6 py-3">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-700">
                                     <tr className="text-sm">
-                                        <td className="px-6 py-4 font-medium">
-                                            Tuition Fee (₱{PER_UNIT.toFixed(2)} × {currentUnits} units)
-                                        </td>
+                                        <td className="px-6 py-4 font-medium">Tuition Fee (₱{PER_UNIT.toFixed(2)} × {currentUnits} units)</td>
                                         <td className="px-6 py-4">₱{currentPaymentData.tuition.toLocaleString()}</td>
                                         <td className="px-6 py-4">
                                             {currentPaymentData.paid > 0 ? (
-                                                <span className="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-500">
-                                                    Partially Paid
-                                                </span>
+                                                <span className="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-500">Partially Paid</span>
                                             ) : (
-                                                <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-500">
-                                                    Unpaid
-                                                </span>
+                                                <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-500">Unpaid</span>
                                             )}
                                         </td>
                                     </tr>
                                     <tr className="text-sm">
                                         <td className="px-6 py-4 font-medium">Laboratory Fee</td>
                                         <td className="px-6 py-4">₱{currentPaymentData.laboratory.toLocaleString()}</td>
-                                        <td className="px-6 py-4">
-                                            <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-500">
-                                                Unpaid
-                                            </span>
-                                        </td>
+                                        <td className="px-6 py-4"><span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-500">Unpaid</span></td>
                                     </tr>
                                     <tr className="text-sm">
                                         <td className="px-6 py-4 font-medium">Library Fee</td>
                                         <td className="px-6 py-4">₱{currentPaymentData.library.toLocaleString()}</td>
-                                        <td className="px-6 py-4">
-                                            <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-500">
-                                                Unpaid
-                                            </span>
-                                        </td>
+                                        <td className="px-6 py-4"><span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-500">Unpaid</span></td>
                                     </tr>
                                     <tr className="text-sm">
                                         <td className="px-6 py-4 font-medium">Miscellaneous (Other Fees)</td>
                                         <td className="px-6 py-4">₱{currentPaymentData.miscellaneous.toLocaleString()}</td>
-                                        <td className="px-6 py-4">
-                                            <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-500">
-                                                Unpaid
-                                            </span>
-                                        </td>
+                                        <td className="px-6 py-4"><span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-500">Unpaid</span></td>
                                     </tr>
                                     <tr className="bg-slate-900/30 text-sm font-medium">
                                         <td className="px-6 py-4">Total</td>
@@ -415,9 +371,7 @@ export default function DashboardPage() {
                             <CardTitle>Recent Transactions</CardTitle>
                             <CardDescription className="text-gray-300">Your recent payment activities</CardDescription>
                         </div>
-                        <Link href="/payment-history" className="text-sm font-medium text-primary hover:underline">
-                            View All
-                        </Link>
+                        <Link href="/payment-history" className="text-sm font-medium text-primary hover:underline">View All</Link>
                     </CardHeader>
                     <CardContent>
                         <div className="overflow-hidden overflow-x-auto rounded-lg border border-slate-700">
@@ -432,19 +386,25 @@ export default function DashboardPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-700">
-                                    {recentTransactions.map((t) => (
-                                        <tr key={t.id} className="text-sm text-gray-200">
-                                            <td className="whitespace-nowrap px-6 py-4 font-medium">{t.id}</td>
-                                            <td className="whitespace-nowrap px-6 py-4">{t.date}</td>
-                                            <td className="px-6 py-4">{t.description}</td>
-                                            <td className="whitespace-nowrap px-6 py-4 font-medium">₱{t.amount.toFixed(2)}</td>
-                                            <td className="whitespace-nowrap px-6 py-4">
-                                                <span className="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-500">
-                                                    {t.status}
-                                                </span>
-                                            </td>
+                                    {transactions.length === 0 ? (
+                                        <tr className="text-sm text-gray-400">
+                                            <td className="px-6 py-4" colSpan={5}>No transactions yet.</td>
                                         </tr>
-                                    ))}
+                                    ) : (
+                                        transactions.map((t) => (
+                                            <tr key={t.id} className="text-sm text-gray-200">
+                                                <td className="whitespace-nowrap px-6 py-4 font-medium">{t.id}</td>
+                                                <td className="whitespace-nowrap px-6 py-4">{t.date}</td>
+                                                <td className="px-6 py-4">{t.description}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 font-medium">₱{t.amount.toFixed(2)}</td>
+                                                <td className="whitespace-nowrap px-6 py-4">
+                                                    <span className="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-500">
+                                                        {t.status}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
                                 </tbody>
                             </table>
                         </div>
@@ -453,4 +413,12 @@ export default function DashboardPage() {
             </div>
         </DashboardLayout>
     )
+}
+
+/** Helper to make a user-friendly description from a payment record. */
+function prettyDescription(d: PaymentRecord) {
+    const parts = []
+    if (d.fees?.length) parts.push(d.fees.join(", "))
+    parts.push(d.courseId.toUpperCase(), `Y${d.yearId}`)
+    return parts.join(" • ")
 }

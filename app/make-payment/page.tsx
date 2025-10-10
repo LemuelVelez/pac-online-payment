@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import { useState } from "react"
@@ -12,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { CreditCard, Landmark, Wallet, ExternalLink, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { createPaymentLink } from "@/lib/paymongo-api"
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Types
@@ -139,13 +141,36 @@ export default function MakePaymentPage() {
     setShowPaymongoDialog(true)
   }
 
-  const handlePaymongoRedirect = () => {
-    setIsRedirecting(true)
-    setTimeout(() => {
-      window.alert("In a real implementation, you would be redirected to Paymongo to complete your payment.")
+  /** Create a PayMongo payment link and redirect the user to checkout. */
+  const handlePaymongoRedirect = async () => {
+    try {
+      setIsRedirecting(true)
+
+      const amt = Number.parseFloat(amount) || 0
+      const description = `${courses.find((c) => c.id === selectedCourse)?.code} – ${yearLevels.find((y) => y.id === selectedYear)?.name}`
+      const remarks = selectedFees.length
+        ? `Fees: ${selectedFees.join(", ")}`
+        : "Custom payment"
+
+      const link = await createPaymentLink({
+        amount: amt,
+        description,
+        remarks,
+        metadata: {
+          courseId: selectedCourse,
+          yearId: selectedYear,
+          fees: selectedFees,
+          method: paymentMethod,
+        },
+      })
+
+      // Redirect to PayMongo hosted checkout
+      window.location.href = link.checkoutUrl
+    } catch (err: any) {
+      console.error(err)
+      alert(err?.message ?? "Failed to start payment. Please try again.")
       setIsRedirecting(false)
-      setShowPaymongoDialog(false)
-    }, 2000)
+    }
   }
 
   const unitsNote = UNITS_BY_COURSE[selectedCourse]
@@ -437,8 +462,10 @@ export default function MakePaymentPage() {
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-400">Reference:</span>
-                    <span>PAY-{Math.floor(Math.random() * 1_000_000)}</span>
+                    <span className="text-gray-400">Course / Year:</span>
+                    <span>
+                      {courses.find((c) => c.id === selectedCourse)?.code} – {yearLevels.find((y) => y.id === selectedYear)?.name}
+                    </span>
                   </div>
                 </div>
               </div>
