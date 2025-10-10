@@ -3,15 +3,16 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import { ArrowLeft, ShieldCheck, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { getAccount } from "@/lib/appwrite"
+import { getAccount, getOrCreateUserRole, roleToDashboard } from "@/lib/appwrite"
 
 export default function VerifyEmailCallbackPage() {
     const sp = useSearchParams()
+    const router = useRouter()
     const [loading, setLoading] = useState(true)
     const [success, setSuccess] = useState(false)
     const [error, setError] = useState<string>("")
@@ -28,13 +29,24 @@ export default function VerifyEmailCallbackPage() {
             try {
                 await getAccount().updateVerification(userId, secret)
                 setSuccess(true)
+
+                // Fetch session user and route based on role immediately
+                try {
+                    const me = await getAccount().get()
+                    const role = await getOrCreateUserRole(me.$id, me.email, me.name)
+                    const dest = roleToDashboard(role)
+                    router.replace(dest)
+                    return
+                } catch {
+                    // If we can't resolve role/session, just fall through to show success UI
+                }
             } catch (err: any) {
                 setError(err?.message ?? "Verification failed. The link may have expired.")
             } finally {
                 setLoading(false)
             }
         })()
-    }, [sp])
+    }, [sp, router])
 
     return (
         <div className="min-h-screen max-h-screen overflow-y-auto bg-slate-800 flex flex-col">
@@ -72,7 +84,7 @@ export default function VerifyEmailCallbackPage() {
                                 <Alert className="bg-emerald-500/20 border-emerald-500/50 text-emerald-200">
                                     <AlertDescription className="flex items-center gap-2">
                                         <ShieldCheck className="h-5 w-5" />
-                                        Your email is now verified. You can proceed to login.
+                                        Your email is now verified. Redirecting to your dashboard…
                                     </AlertDescription>
                                 </Alert>
                             )}

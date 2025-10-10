@@ -3,7 +3,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft, Eye, EyeOff, Lock, Mail, User } from "lucide-react"
@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { getAccount, getDatabases, ID, Permission, Role } from "@/lib/appwrite"
+import { getAccount, getDatabases, ID, Permission, Role, redirectIfActiveStudent } from "@/lib/appwrite"
 
 // (Kept for compatibility if other parts still import it)
 import { useAuth } from "@/components/auth/auth-provider"
@@ -74,6 +74,13 @@ export default function LoginPage() {
     const searchParams = useSearchParams()
     const router = useRouter()
     const redirect = searchParams.get("redirect")
+
+    // 🔹 NEW: If already logged in and role is student, bounce straight to /dashboard
+    useEffect(() => {
+        ; (async () => {
+            await redirectIfActiveStudent("/dashboard")
+        })()
+    }, [])
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -218,6 +225,10 @@ export default function LoginPage() {
                                                     required
                                                     value={email}
                                                     onChange={(e) => setEmail(e.target.value)}
+                                                    autoComplete="username"
+                                                    autoCapitalize="none"
+                                                    autoCorrect="off"
+                                                    spellCheck={false}
                                                 />
                                             </div>
                                         </div>
@@ -235,6 +246,7 @@ export default function LoginPage() {
                                                     required
                                                     value={password}
                                                     onChange={(e) => setPassword(e.target.value)}
+                                                    autoComplete="current-password"
                                                 />
                                                 <button
                                                     type="button"
@@ -252,6 +264,7 @@ export default function LoginPage() {
                                                 <input
                                                     type="checkbox"
                                                     id="remember"
+                                                    name="remember"
                                                     className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                                                 />
                                                 <Label htmlFor="remember" className="text-sm cursor-pointer text-gray-300">
@@ -309,6 +322,7 @@ export default function LoginPage() {
                                                     value={fullName}
                                                     onChange={(e) => setFullName(e.target.value)}
                                                     required
+                                                    autoComplete="name"
                                                 />
                                             </div>
                                         </div>
@@ -327,6 +341,10 @@ export default function LoginPage() {
                                                     value={regEmail}
                                                     onChange={(e) => setRegEmail(e.target.value)}
                                                     required
+                                                    autoComplete="email"
+                                                    autoCapitalize="none"
+                                                    autoCorrect="off"
+                                                    spellCheck={false}
                                                 />
                                             </div>
                                         </div>
@@ -346,6 +364,7 @@ export default function LoginPage() {
                                                     value={regPassword}
                                                     onChange={(e) => setRegPassword(e.target.value)}
                                                     required
+                                                    autoComplete="new-password"
                                                 />
                                                 <button
                                                     type="button"
@@ -374,6 +393,7 @@ export default function LoginPage() {
                                                     value={confirmPassword}
                                                     onChange={(e) => setConfirmPassword(e.target.value)}
                                                     required
+                                                    autoComplete="new-password"
                                                 />
                                                 <button
                                                     type="button"

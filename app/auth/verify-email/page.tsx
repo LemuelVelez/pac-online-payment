@@ -9,7 +9,7 @@ import { ArrowLeft, BadgeCheck, MailCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { getAccount } from "@/lib/appwrite"
+import { getAccount, getOrCreateUserRole, roleToDashboard } from "@/lib/appwrite"
 
 export default function VerifyEmailPage() {
     const router = useRouter()
@@ -55,6 +55,20 @@ export default function VerifyEmailPage() {
             setError(err?.message ?? "Failed to send verification email.")
         } finally {
             setSending(false)
+        }
+    }
+
+    const goToDashboard = async () => {
+        try {
+            const me = await getAccount().get()
+            if (!me.emailVerification) {
+                setInfo("Please verify your email first.")
+                return
+            }
+            const role = await getOrCreateUserRole(me.$id, me.email, me.name)
+            router.replace(roleToDashboard(role))
+        } catch (e) {
+            setError("Unable to route to dashboard.")
         }
     }
 
@@ -137,13 +151,24 @@ export default function VerifyEmailPage() {
                             >
                                 Refresh Status
                             </Button>
-                            <Button
-                                className="cursor-pointer w-full sm:w-auto bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
-                                onClick={sendVerification}
-                                disabled={loading || needsLogin || isVerified === true || sending}
-                            >
-                                {sending ? "Sending..." : "Send Verification Email"}
-                            </Button>
+                            <div className="flex gap-3 w-full sm:w-auto">
+                                <Button
+                                    className="cursor-pointer w-full sm:w-auto bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                                    onClick={sendVerification}
+                                    disabled={loading || needsLogin || isVerified === true || sending}
+                                >
+                                    {sending ? "Sending..." : "Send Verification Email"}
+                                </Button>
+                                {isVerified === true && (
+                                    <Button
+                                        variant="secondary"
+                                        className="cursor-pointer w-full sm:w-auto"
+                                        onClick={goToDashboard}
+                                    >
+                                        Continue to Dashboard
+                                    </Button>
+                                )}
+                            </div>
                         </CardFooter>
                     </Card>
                 </div>

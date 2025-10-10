@@ -1,4 +1,5 @@
-// lib/appwrite.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   Client,
   Account,
@@ -44,4 +45,112 @@ export function getStorage() {
 
 export function getAvatars() {
   return new Avatars(getClient());
+}
+
+/** Convenience helpers for env IDs used in user profile lookups */
+export function getEnvIds() {
+  const DB_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string;
+  const USERS_COL_ID = process.env
+    .NEXT_PUBLIC_APPWRITE_USERS_COLLECTION_ID as string;
+  return { DB_ID, USERS_COL_ID };
+}
+
+/** Map role -> dashboard route */
+export function roleToDashboard(role: string | null | undefined) {
+  switch ((role ?? "").toLowerCase()) {
+    case "admin":
+      return "/admin/dashboard";
+    case "cashier":
+      return "/cashier/dashboard";
+    case "business-office":
+    case "business_office":
+    case "businessoffice":
+      return "/business-office/dashboard";
+    case "student":
+    default:
+      return "/dashboard";
+  }
+}
+
+/**
+ * Get the user's role from the Users collection.
+ * If the profile doc doesn't exist yet, create it with default role=student and safe user-scoped permissions.
+ */
+export async function getOrCreateUserRole(
+  userId: string,
+  email?: string,
+  fullName?: string
+) {
+  const { DB_ID, USERS_COL_ID } = getEnvIds();
+  const databases = getDatabases();
+
+  try {
+    const doc: any = await databases.getDocument(DB_ID, USERS_COL_ID, userId);
+    return (doc?.role as string) ?? "student";
+  } catch (err) {
+    // Create a minimal profile doc if missing (404/403)
+    try {
+      await databases.createDocument(
+        DB_ID,
+        USERS_COL_ID,
+        userId,
+        {
+          userId,
+          email: email ?? "",
+          fullName: fullName ?? "",
+          role: "student",
+          status: "active",
+        },
+        [
+          Permission.read(Role.user(userId)),
+          Permission.update(Role.user(userId)),
+          Permission.delete(Role.user(userId)),
+        ]
+      );
+    } catch {
+      // ignore create errors; we'll still fall back to student
+    }
+    return "student";
+  }
+}
+
+/* ========================= NEW: Session helpers & redirect ========================= */
+
+/** Safely get the current session user; returns null if no active session */
+export async function getCurrentUserSafe() {
+  try {
+    const me = await getAccount().get();
+    return me;
+  } catch {
+    return null;
+  }
+}
+
+/** Return the current session's role (or null if no session) */
+export async function getCurrentRole(): Promise<string | null> {
+  const me = await getCurrentUserSafe();
+  if (!me) return null;
+  const role = await getOrCreateUserRole(me.$id, me.email, me.name);
+  return role ?? null;
+}
+
+/**
+ * If there is an active session *and* the role is "student",
+ * redirect the browser to the student dashboard (app/dashboard/page.tsx).
+ *
+ * @param target default "/dashboard"
+ * @returns boolean indicating whether a redirect was initiated
+ */
+export async function redirectIfActiveStudent(target: string = "/dashboard") {
+  const me = await getCurrentUserSafe();
+  if (!me) return false;
+
+  const role = await getOrCreateUserRole(me.$id, me.email, me.name);
+  if ((role ?? "").toLowerCase() === "student") {
+    if (typeof window !== "undefined") {
+      window.location.replace(target);
+    }
+    return true;
+  }
+  return false;
 }
