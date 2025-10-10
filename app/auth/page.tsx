@@ -5,14 +5,23 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ArrowLeft, Eye, EyeOff, Lock, Mail, User } from "lucide-react"
+import { ArrowLeft, Eye, EyeOff, Lock, Mail, User, IdCard } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { getAccount, getDatabases, ID, Permission, Role, redirectIfActiveStudent } from "@/lib/appwrite"
+import {
+    getAccount,
+    getDatabases,
+    ID,
+    Permission,
+    Role,
+    redirectIfActiveStudent,
+    isStudentIdAvailable,
+} from "@/lib/appwrite"
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 
 // Use the provider (now wired to Appwrite) for consistent auth state
 import { useAuth } from "@/components/auth/auth-provider"
@@ -20,22 +29,45 @@ import { useAuth } from "@/components/auth/auth-provider"
 const DB_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string
 const USERS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_COLLECTION_ID as string
 
-async function ensureUserDoc(userId: string, email: string, fullName?: string) {
+const COURSES = [
+    "BACHELOR OF SCIENCE IN EDUCATION",
+    "BACHELOR OF SCIENCE IN SOCIAL WORK",
+    "BACHELOR OF SCIENCE IN COMPUTER SCIENCE",
+    "BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY",
+] as const
+
+const YEAR_LEVELS = ["1st", "2nd", "3rd", "4th", "5th"] as const
+type AccountType = "student" | "other"
+
+/** Create the user-profile doc keyed by userId. Extras are optional. */
+async function ensureUserDoc(
+    userId: string,
+    email: string,
+    fullName: string | undefined,
+    opts?: {
+        studentId?: string
+        course?: string
+        yearLevel?: string
+    }
+) {
     const databases = getDatabases()
+    const payload: Record<string, any> = {
+        userId,
+        email,
+        fullName: fullName ?? "",
+        role: "student",
+        status: "active",
+    }
+    if (opts?.studentId) payload.studentId = opts.studentId
+    if (opts?.course) payload.course = opts.course
+    if (opts?.yearLevel) payload.yearLevel = opts.yearLevel
+
     try {
-        // Create a 1:1 user-profile document keyed by userId
         await databases.createDocument(
             DB_ID,
             USERS_COL_ID,
             userId,
-            {
-                userId,
-                email,
-                fullName: fullName ?? "",
-                role: "student", // default role
-                status: "active",
-            },
-            // ✅ Use only user-scoped permissions (matches allowed: any, users, user:{id}, users/unverified, user:{id}/unverified)
+            payload,
             [
                 Permission.read(Role.user(userId)),
                 Permission.update(Role.user(userId)),
@@ -43,8 +75,9 @@ async function ensureUserDoc(userId: string, email: string, fullName?: string) {
             ]
         )
     } catch (err: any) {
-        // If it already exists (409), ignore; otherwise bubble up
-        if (err?.code !== 409 && err?.response?.code !== 409) {
+        // Ignore "already exists"
+        const code = err?.code ?? err?.response?.code
+        if (code !== 409) {
             throw err
         }
     }
@@ -62,6 +95,10 @@ export default function LoginPage() {
 
     // register state
     const [fullName, setFullName] = useState("")
+    const [accountType, setAccountType] = useState<AccountType>("student") // NEW
+    const [studentId, setStudentId] = useState("") // NEW (optional)
+    const [course, setCourse] = useState<string | undefined>(undefined) // NEW
+    const [yearLevel, setYearLevel] = useState<string | undefined>(undefined) // NEW
     const [regEmail, setRegEmail] = useState("")
     const [regPassword, setRegPassword] = useState("")
     const [confirmPassword, setConfirmPassword] = useState("")
@@ -105,7 +142,7 @@ export default function LoginPage() {
         e.preventDefault()
         setRegError("")
 
-        // Basic client validations
+        // Basic client validations (studentId is optional now)
         if (regPassword !== confirmPassword) {
             setRegError("Passwords do not match.")
             return
@@ -123,14 +160,28 @@ export default function LoginPage() {
         try {
             const account = getAccount()
 
-            // Check first: rely on Appwrite's 409 conflict if email already exists
+            // If user typed a studentId, check for duplicates first (best-effort)
+            const trimmedStudentId = studentId.trim()
+            if (accountType === "student" && trimmedStudentId) {
+                try {
+                    const available = await isStudentIdAvailable(trimmedStudentId)
+                    if (!available) {
+                        setRegError("That Student ID is already in use. Please double-check and try another.")
+                        return
+                    }
+                } catch {
+                    // If we can't check due to permissions, we continue and rely on DB unique index if present.
+                }
+            }
+
+            // Create Appwrite account (Appwrite enforces email uniqueness)
             try {
                 await account.create(ID.unique(), regEmail, regPassword, fullName || undefined)
             } catch (err: any) {
                 const code = err?.code ?? err?.response?.code
                 if (code === 409) {
                     setRegError("An account with this email already exists. Please log in instead.")
-                    return // stop — do not create session or continue
+                    return
                 }
                 throw err
             }
@@ -138,11 +189,29 @@ export default function LoginPage() {
             // Create a session so we can write the profile doc and send the verification email
             await account.createEmailPasswordSession(regEmail, regPassword)
 
-            // Create the profile document with default role=student
+            // Create the profile document (include extras only when provided)
             const me = await account.get()
-            await ensureUserDoc(me.$id, me.email, fullName || me.name)
+            try {
+                await ensureUserDoc(me.$id, me.email, fullName || me.name, accountType === "student"
+                    ? {
+                        studentId: trimmedStudentId || undefined,
+                        course: course || undefined,
+                        yearLevel: yearLevel || undefined,
+                    }
+                    : undefined
+                )
+            } catch (err: any) {
+                // If DB has unique index on studentId, catch 409 and abort gracefully
+                const code = err?.code ?? err?.response?.code
+                if (code === 409) {
+                    try { await account.deleteSession("current") } catch { }
+                    setRegError("That Student ID is already in use. Please use a different one.")
+                    return
+                }
+                throw err
+            }
 
-            // Send verification email with callback
+            // Send verification email with callback (best-effort)
             const origin = window.location.origin
             const verifyCallbackUrl = `${origin}/auth/verify-email/callback`
             try {
@@ -195,6 +264,7 @@ export default function LoginPage() {
                             </TabsTrigger>
                         </TabsList>
 
+                        {/* LOGIN */}
                         <TabsContent value="login">
                             <Card className="border-purple-500/20 bg-slate-800/50 backdrop-blur-sm">
                                 <CardHeader>
@@ -293,6 +363,7 @@ export default function LoginPage() {
                             </Card>
                         </TabsContent>
 
+                        {/* REGISTER */}
                         <TabsContent value="register">
                             <Card className="border-purple-500/20 bg-slate-800/50 backdrop-blur-sm">
                                 <CardHeader>
@@ -324,6 +395,83 @@ export default function LoginPage() {
                                                 />
                                             </div>
                                         </div>
+
+                                        {/* NEW: Account Type Select */}
+                                        <div className="space-y-2">
+                                            <Label className="text-white">Account Type</Label>
+                                            <Select
+                                                value={accountType}
+                                                onValueChange={(v: AccountType) => setAccountType(v)}
+                                            >
+                                                <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
+                                                    <SelectValue placeholder="Select account type" />
+                                                </SelectTrigger>
+                                                <SelectContent className="bg-slate-900 text-white border-slate-700">
+                                                    <SelectItem value="student">Student</SelectItem>
+                                                    <SelectItem value="other">Other (Staff/Guest)</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        {/* Student-only fields */}
+                                        {accountType === "student" && (
+                                            <>
+                                                {/* Student ID (optional) */}
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="student-id" className="text-white">
+                                                        Student ID <span className="text-xs text-gray-400">(optional)</span>
+                                                    </Label>
+                                                    <div className="relative">
+                                                        <IdCard className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                                                        <Input
+                                                            id="student-id"
+                                                            placeholder="e.g., 2025-00123"
+                                                            className="pl-10 bg-slate-900/50 border-slate-700 text-white"
+                                                            value={studentId}
+                                                            onChange={(e) => setStudentId(e.target.value)}
+                                                            autoComplete="off"
+                                                            spellCheck={false}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Course (Select) */}
+                                                <div className="space-y-2">
+                                                    <Label className="text-white">Course</Label>
+                                                    <Select
+                                                        value={course}
+                                                        onValueChange={(v) => setCourse(v)}
+                                                    >
+                                                        <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
+                                                            <SelectValue placeholder="Select course" />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="bg-slate-900 text-white border-slate-700">
+                                                            {COURSES.map((c) => (
+                                                                <SelectItem key={c} value={c}>{c}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+
+                                                {/* Year Level (Select) */}
+                                                <div className="space-y-2">
+                                                    <Label className="text-white">Year Level</Label>
+                                                    <Select
+                                                        value={yearLevel}
+                                                        onValueChange={(v) => setYearLevel(v)}
+                                                    >
+                                                        <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
+                                                            <SelectValue placeholder="Select year level" />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="bg-slate-900 text-white border-slate-700">
+                                                            {YEAR_LEVELS.map((y) => (
+                                                                <SelectItem key={y} value={y}>{y}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </>
+                                        )}
 
                                         <div className="space-y-2">
                                             <Label htmlFor="reg-email" className="text-white">
@@ -407,7 +555,7 @@ export default function LoginPage() {
 
                                         <Button
                                             type="submit"
-                                            className="w-full bg-gradient-to-r from紫-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                                            className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
                                             disabled={isRegistering}
                                         >
                                             {isRegistering ? "Creating account..." : "Register"}

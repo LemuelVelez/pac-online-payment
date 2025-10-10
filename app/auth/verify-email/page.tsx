@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, BadgeCheck, MailCheck } from "lucide-react"
+import { ArrowLeft, BadgeCheck, MailCheck, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -13,8 +13,11 @@ import { getAccount, getOrCreateUserRole, roleToDashboard } from "@/lib/appwrite
 
 export default function VerifyEmailPage() {
     const router = useRouter()
-    const [loading, setLoading] = useState(true)
-    const [sending, setSending] = useState(false)
+    const [loading, setLoading] = useState(true)        // initial page check state
+    const [refreshing, setRefreshing] = useState(false) // button: refresh
+    const [sending, setSending] = useState(false)       // button: send email
+    const [continuing, setContinuing] = useState(false) // button: continue to dashboard
+
     const [error, setError] = useState<string>("")
     const [info, setInfo] = useState<string>("")
     const [needsLogin, setNeedsLogin] = useState(false)
@@ -58,7 +61,18 @@ export default function VerifyEmailPage() {
         }
     }
 
+    const onRefreshClick = async () => {
+        setRefreshing(true)
+        try {
+            await refreshStatus()
+        } finally {
+            setRefreshing(false)
+        }
+    }
+
     const goToDashboard = async () => {
+        setContinuing(true)
+        setError("")
         try {
             const me = await getAccount().get()
             if (!me.emailVerification) {
@@ -69,6 +83,8 @@ export default function VerifyEmailPage() {
             router.replace(roleToDashboard(role))
         } catch (e) {
             setError("Unable to route to dashboard.")
+        } finally {
+            setContinuing(false)
         }
     }
 
@@ -142,30 +158,55 @@ export default function VerifyEmailPage() {
                             )}
                         </CardContent>
 
-                        <CardFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-700 pt-6">
+                        {/* Responsive, non-overflowing footer */}
+                        <CardFooter className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between border-t border-slate-700 pt-6">
                             <Button
                                 variant="outline"
-                                className="cursor-pointer w-full sm:w-auto text-slate-700 hover:text-white border-slate-700 hover:bg-slate-700"
-                                onClick={refreshStatus}
-                                disabled={loading}
+                                className="cursor-pointer w-full sm:w-auto text-slate-700 hover:text-white border-slate-700 hover:bg-slate-700 inline-flex items-center gap-2"
+                                onClick={onRefreshClick}
+                                disabled={loading || refreshing}
                             >
-                                Refresh Status
+                                {refreshing ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        Refreshing…
+                                    </>
+                                ) : (
+                                    <>Refresh Status</>
+                                )}
                             </Button>
-                            <div className="flex gap-3 w-full sm:w-auto">
+
+                            <div className="flex w-full sm:w-auto flex-col sm:flex-row sm:flex-wrap gap-3">
                                 <Button
-                                    className="cursor-pointer w-full sm:w-auto bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                                    className="cursor-pointer w-full sm:w-auto bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 inline-flex items-center gap-2"
                                     onClick={sendVerification}
                                     disabled={loading || needsLogin || isVerified === true || sending}
                                 >
-                                    {sending ? "Sending..." : "Send Verification Email"}
+                                    {sending ? (
+                                        <>
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                            Sending…
+                                        </>
+                                    ) : (
+                                        <>Send Verification Email</>
+                                    )}
                                 </Button>
+
                                 {isVerified === true && (
                                     <Button
                                         variant="secondary"
-                                        className="cursor-pointer w-full sm:w-auto"
+                                        className="cursor-pointer w-full sm:w-auto inline-flex items-center gap-2"
                                         onClick={goToDashboard}
+                                        disabled={continuing}
                                     >
-                                        Continue to Dashboard
+                                        {continuing ? (
+                                            <>
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                Continuing…
+                                            </>
+                                        ) : (
+                                            <>Continue to Dashboard</>
+                                        )}
                                     </Button>
                                 )}
                             </div>

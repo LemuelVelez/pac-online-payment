@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Bell, Menu, User, Settings, LogOut, Power } from "lucide-react"
+import { Bell, Menu, User, Settings, LogOut, Power, Loader2 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -38,8 +38,26 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
   const [confirmLogoutOpen, setConfirmLogoutOpen] = useState(false)
   const [confirmLogoutAllOpen, setConfirmLogoutAllOpen] = useState(false)
 
-  const handleLogout = () => logout()
-  const handleLogoutAll = () => logout(true) // all devices
+  // Loading states for spinners
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [isLoggingOutAll, setIsLoggingOutAll] = useState(false)
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true)
+    try {
+      await logout()
+    } finally {
+      setIsLoggingOut(false)
+    }
+  }
+  const handleLogoutAll = async () => {
+    setIsLoggingOutAll(true)
+    try {
+      await logout(true) // all devices
+    } finally {
+      setIsLoggingOutAll(false)
+    }
+  }
 
   const openConfirmLogout = () => {
     setMenuOpen(false)
@@ -134,7 +152,13 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
           </DropdownMenu>
 
           {/* Confirm: Log out (all devices) */}
-          <AlertDialog open={confirmLogoutAllOpen} onOpenChange={setConfirmLogoutAllOpen}>
+          <AlertDialog
+            open={confirmLogoutAllOpen}
+            onOpenChange={(open) => {
+              // Prevent closing while logging out
+              if (!isLoggingOutAll) setConfirmLogoutAllOpen(open)
+            }}
+          >
             <AlertDialogContent className="bg-slate-900 border-slate-700 text-white">
               <AlertDialogHeader>
                 <AlertDialogTitle>Log out from all devices?</AlertDialogTitle>
@@ -144,23 +168,42 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel className="bg-slate-800 text-white border-slate-700">
+                <AlertDialogCancel
+                  className="bg-slate-800 text-white border-slate-700"
+                  disabled={isLoggingOutAll}
+                >
                   Cancel
                 </AlertDialogCancel>
                 <AlertDialogAction
-                  onClick={() => {
-                    setConfirmLogoutAllOpen(false)
-                    handleLogoutAll()
-                  }}
+                  className="inline-flex items-center"
+                  disabled={isLoggingOutAll}
+                  onClick={handleLogoutAll}
+                  aria-busy={isLoggingOutAll}
                 >
-                  Log out everywhere
+                  {isLoggingOutAll ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Logging out…
+                    </>
+                  ) : (
+                    <>
+                      <Power className="mr-2 h-4 w-4" />
+                      Log out everywhere
+                    </>
+                  )}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
 
           {/* Confirm: Logout (current device) */}
-          <AlertDialog open={confirmLogoutOpen} onOpenChange={setConfirmLogoutOpen}>
+          <AlertDialog
+            open={confirmLogoutOpen}
+            onOpenChange={(open) => {
+              // Prevent closing while logging out
+              if (!isLoggingOut) setConfirmLogoutOpen(open)
+            }}
+          >
             <AlertDialogContent className="bg-slate-900 border-slate-700 text-white">
               <AlertDialogHeader>
                 <AlertDialogTitle>Log out of this device?</AlertDialogTitle>
@@ -169,16 +212,29 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel className="bg-slate-800 text-white border-slate-700">
+                <AlertDialogCancel
+                  className="bg-slate-800 text-white border-slate-700"
+                  disabled={isLoggingOut}
+                >
                   Cancel
                 </AlertDialogCancel>
                 <AlertDialogAction
-                  onClick={() => {
-                    setConfirmLogoutOpen(false)
-                    handleLogout()
-                  }}
+                  className="inline-flex items-center"
+                  disabled={isLoggingOut}
+                  onClick={handleLogout}
+                  aria-busy={isLoggingOut}
                 >
-                  Log out
+                  {isLoggingOut ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Logging out…
+                    </>
+                  ) : (
+                    <>
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Log out
+                    </>
+                  )}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

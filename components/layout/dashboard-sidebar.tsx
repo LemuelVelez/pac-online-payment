@@ -3,7 +3,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LogOut, Power } from "lucide-react"
+import { LogOut, Power, Loader2 } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
 import { navigationConfig, roleDisplayNames } from "@/components/navigation/role-navigation"
@@ -29,6 +29,12 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(isOpen || false)
     const sidebarRef = useRef<HTMLDivElement>(null)
     const { user, logout } = useAuth()
+
+    // Loading + dialog control states
+    const [isLoggingOut, setIsLoggingOut] = useState(false)
+    const [isLoggingOutAll, setIsLoggingOutAll] = useState(false)
+    const [confirmLogoutOpen, setConfirmLogoutOpen] = useState(false)
+    const [confirmLogoutAllOpen, setConfirmLogoutAllOpen] = useState(false)
 
     // Get navigation items based on user role
     const navigation = user?.role ? navigationConfig[user.role] || [] : []
@@ -67,6 +73,23 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
             document.removeEventListener("mousedown", handleClickOutside)
         }
     }, [isMobileMenuOpen])
+
+    const doLogout = async () => {
+        setIsLoggingOut(true)
+        try {
+            await logout()
+        } finally {
+            setIsLoggingOut(false)
+        }
+    }
+    const doLogoutAll = async () => {
+        setIsLoggingOutAll(true)
+        try {
+            await logout(true)
+        } finally {
+            setIsLoggingOutAll(false)
+        }
+    }
 
     return (
         <>
@@ -108,10 +131,16 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                     </div>
                     <div className="border-t border-gray-200 p-4 space-y-2 dark:border-gray-800">
                         {/* Log out (all devices) with confirmation */}
-                        <AlertDialog>
+                        <AlertDialog
+                            open={confirmLogoutAllOpen}
+                            onOpenChange={(open) => {
+                                if (!isLoggingOutAll) setConfirmLogoutAllOpen(open)
+                            }}
+                        >
                             <AlertDialogTrigger asChild>
                                 <button
                                     className="flex w-full items-center rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 cursor-pointer"
+                                    onClick={() => setConfirmLogoutAllOpen(true)}
                                 >
                                     <Power className="mr-3 size-5 text-gray-500 dark:text-gray-400" />
                                     Log out (all devices)
@@ -125,17 +154,45 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                                     </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                    <AlertDialogCancel className="bg-slate-800 text-white border-slate-700">Cancel</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => logout(true)}>Log out everywhere</AlertDialogAction>
+                                    <AlertDialogCancel
+                                        className="bg-slate-800 text-white border-slate-700"
+                                        disabled={isLoggingOutAll}
+                                    >
+                                        Cancel
+                                    </AlertDialogCancel>
+                                    <AlertDialogAction
+                                        className="inline-flex items-center"
+                                        disabled={isLoggingOutAll}
+                                        onClick={doLogoutAll}
+                                        aria-busy={isLoggingOutAll}
+                                    >
+                                        {isLoggingOutAll ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Logging out…
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Power className="mr-2 h-4 w-4" />
+                                                Log out everywhere
+                                            </>
+                                        )}
+                                    </AlertDialogAction>
                                 </AlertDialogFooter>
                             </AlertDialogContent>
                         </AlertDialog>
 
                         {/* Sign out (current device) with confirmation */}
-                        <AlertDialog>
+                        <AlertDialog
+                            open={confirmLogoutOpen}
+                            onOpenChange={(open) => {
+                                if (!isLoggingOut) setConfirmLogoutOpen(open)
+                            }}
+                        >
                             <AlertDialogTrigger asChild>
                                 <button
                                     className="flex w-full items-center rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 cursor-pointer"
+                                    onClick={() => setConfirmLogoutOpen(true)}
                                 >
                                     <LogOut className="mr-3 size-5 text-gray-500 dark:text-gray-400" />
                                     Sign out
@@ -149,8 +206,30 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                                     </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                    <AlertDialogCancel className="bg-slate-800 text-white border-slate-700">Cancel</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => logout()}>Log out</AlertDialogAction>
+                                    <AlertDialogCancel
+                                        className="bg-slate-800 text-white border-slate-700"
+                                        disabled={isLoggingOut}
+                                    >
+                                        Cancel
+                                    </AlertDialogCancel>
+                                    <AlertDialogAction
+                                        className="inline-flex items-center"
+                                        disabled={isLoggingOut}
+                                        onClick={doLogout}
+                                        aria-busy={isLoggingOut}
+                                    >
+                                        {isLoggingOut ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Logging out…
+                                            </>
+                                        ) : (
+                                            <>
+                                                <LogOut className="mr-2 h-4 w-4" />
+                                                Log out
+                                            </>
+                                        )}
+                                    </AlertDialogAction>
                                 </AlertDialogFooter>
                             </AlertDialogContent>
                         </AlertDialog>
@@ -200,10 +279,16 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                     </div>
                     <div className="border-t border-gray-200 p-4 space-y-2 dark:border-gray-800">
                         {/* Log out (all devices) with confirmation */}
-                        <AlertDialog>
+                        <AlertDialog
+                            open={confirmLogoutAllOpen}
+                            onOpenChange={(open) => {
+                                if (!isLoggingOutAll) setConfirmLogoutAllOpen(open)
+                            }}
+                        >
                             <AlertDialogTrigger asChild>
                                 <button
                                     className="flex w-full items-center rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 cursor-pointer"
+                                    onClick={() => setConfirmLogoutAllOpen(true)}
                                 >
                                     <Power className="mr-3 size-5 text-gray-500 dark:text-gray-400" />
                                     Log out (all devices)
@@ -217,17 +302,45 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                                     </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                    <AlertDialogCancel className="bg-slate-800 text-white border-slate-700">Cancel</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => logout(true)}>Log out everywhere</AlertDialogAction>
+                                    <AlertDialogCancel
+                                        className="bg-slate-800 text-white border-slate-700"
+                                        disabled={isLoggingOutAll}
+                                    >
+                                        Cancel
+                                    </AlertDialogCancel>
+                                    <AlertDialogAction
+                                        className="inline-flex items-center"
+                                        disabled={isLoggingOutAll}
+                                        onClick={doLogoutAll}
+                                        aria-busy={isLoggingOutAll}
+                                    >
+                                        {isLoggingOutAll ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Logging out…
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Power className="mr-2 h-4 w-4" />
+                                                Log out everywhere
+                                            </>
+                                        )}
+                                    </AlertDialogAction>
                                 </AlertDialogFooter>
                             </AlertDialogContent>
                         </AlertDialog>
 
                         {/* Sign out (current device) with confirmation */}
-                        <AlertDialog>
+                        <AlertDialog
+                            open={confirmLogoutOpen}
+                            onOpenChange={(open) => {
+                                if (!isLoggingOut) setConfirmLogoutOpen(open)
+                            }}
+                        >
                             <AlertDialogTrigger asChild>
                                 <button
                                     className="flex w-full items-center rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 cursor-pointer"
+                                    onClick={() => setConfirmLogoutOpen(true)}
                                 >
                                     <LogOut className="mr-3 size-5 text-gray-500 dark:text-gray-400" />
                                     Sign out
@@ -241,8 +354,30 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                                     </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                    <AlertDialogCancel className="bg-slate-800 text-white border-slate-700">Cancel</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => logout()}>Log out</AlertDialogAction>
+                                    <AlertDialogCancel
+                                        className="bg-slate-800 text-white border-slate-700"
+                                        disabled={isLoggingOut}
+                                    >
+                                        Cancel
+                                    </AlertDialogCancel>
+                                    <AlertDialogAction
+                                        className="inline-flex items-center"
+                                        disabled={isLoggingOut}
+                                        onClick={doLogout}
+                                        aria-busy={isLoggingOut}
+                                    >
+                                        {isLoggingOut ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Logging out…
+                                            </>
+                                        ) : (
+                                            <>
+                                                <LogOut className="mr-2 h-4 w-4" />
+                                                Log out
+                                            </>
+                                        )}
+                                    </AlertDialogAction>
                                 </AlertDialogFooter>
                             </AlertDialogContent>
                         </AlertDialog>

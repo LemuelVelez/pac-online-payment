@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   Client,
   Account,
@@ -75,6 +74,7 @@ export function roleToDashboard(role: string | null | undefined) {
 /**
  * Get the user's role from the Users collection.
  * If the profile doc doesn't exist yet, create it with default role=student and safe user-scoped permissions.
+ * (studentId/course/yearLevel are optional and are created during registration when provided)
  */
 export async function getOrCreateUserRole(
   userId: string,
@@ -87,8 +87,8 @@ export async function getOrCreateUserRole(
   try {
     const doc: any = await databases.getDocument(DB_ID, USERS_COL_ID, userId);
     return (doc?.role as string) ?? "student";
-  } catch (err) {
-    // Create a minimal profile doc if missing (404/403)
+  } catch {
+    // Create a minimal profile doc if missing (no studentId/course/yearLevel here)
     try {
       await databases.createDocument(
         DB_ID,
@@ -179,4 +179,32 @@ export async function signOutCurrentSession(): Promise<void> {
 export async function signOutAllSessions(): Promise<void> {
   const account = getAccount();
   await account.deleteSessions();
+}
+
+/* ========================= Student ID uniqueness check (optional field) ========================= */
+
+/**
+ * Returns true if there is NO document with the same studentId.
+ * NOTE: This requires that the Users collection grants read access
+ * (or that your DB has a unique index on `studentId` and you rely on createDocument 409s).
+ */
+export async function isStudentIdAvailable(
+  studentId: string
+): Promise<boolean> {
+  const { DB_ID, USERS_COL_ID } = getEnvIds();
+  const databases = getDatabases();
+  try {
+    const res: any = await databases.listDocuments(DB_ID, USERS_COL_ID, [
+      Query.equal("studentId", studentId),
+      Query.limit(1),
+    ]);
+    const total =
+      (res?.total as number) ??
+      (Array.isArray(res?.documents) ? res.documents.length : 0);
+    return total === 0;
+  } catch (e) {
+    // If listing is not allowed by permissions, surface control to caller
+    // Caller may rely on DB-level uniqueness (409) when creating the profile.
+    throw e;
+  }
 }
