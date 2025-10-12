@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-img-element */
 import { MainLayout } from "@/components/layout/main-layout"
 import { SectionHeading } from "@/components/ui/section-heading"
 

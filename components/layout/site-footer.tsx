@@ -15,8 +15,7 @@ const gmailCompose = (to: string, subject = "PAC Salug Inquiry", body = "") =>
 
 export function SiteFooter({ fullFooter = true }: SiteFooterProps) {
     const pathname = usePathname()
-    const isActive = (href: string) =>
-        pathname === href || pathname.startsWith(href + "/")
+    const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/")
 
     // Shared style for footer nav links with active underline + bg
     const navLinkBase =
@@ -100,33 +99,22 @@ export function SiteFooter({ fullFooter = true }: SiteFooterProps) {
                         <ul className="space-y-2">
                             <li>
                                 <Link
-                                    href="/help#faq"
+                                    href="/privacy-policy"
                                     className={cn(navLinkBase)}
-                                    data-active={isActive("/help")}
-                                    aria-current={isActive("/help") ? "page" : undefined}
+                                    data-active={isActive("/privacy-policy")}
+                                    aria-current={isActive("/privacy-policy") ? "page" : undefined}
                                 >
-                                    FAQs
+                                    Privacy Policy
                                 </Link>
                             </li>
                             <li>
-                                {/* Stub links; replace with real routes when available */}
-                                <a href="#" className="text-gray-400 hover:text-white text-sm">
-                                    Privacy Policy
-                                </a>
-                            </li>
-                            <li>
-                                <a href="#" className="text-gray-400 hover:text-white text-sm">
-                                    Terms of Service
-                                </a>
-                            </li>
-                            <li>
                                 <Link
-                                    href="/contact"
+                                    href="/terms"
                                     className={cn(navLinkBase)}
-                                    data-active={isActive("/contact")}
-                                    aria-current={isActive("/contact") ? "page" : undefined}
+                                    data-active={isActive("/terms")}
+                                    aria-current={isActive("/terms") ? "page" : undefined}
                                 >
-                                    Contact Support
+                                    Terms of Service
                                 </Link>
                             </li>
                         </ul>

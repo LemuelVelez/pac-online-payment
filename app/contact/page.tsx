@@ -17,7 +17,8 @@ export default function ContactPage() {
                 />
 
                 <div className="mt-6 grid gap-6 md:grid-cols-2">
-                    <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-6">
+                    {/* Anchor target for footer link /contact#support */}
+                    <div id="support" className="bg-slate-800/60 border border-slate-700 rounded-lg p-6">
                         <h3 className="text-white font-semibold mb-2">Support</h3>
                         <p className="text-gray-300">
                             Email:{" "}
