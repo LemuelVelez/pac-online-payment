@@ -21,7 +21,7 @@ export default function Home() {
               A secure and convenient way to pay your tuition and other fees online. No more queues, no more waiting.
             </p>
             <div className="flex">
-              <Button className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8 py-6 text-lg">
+              <Button className="text-white bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8 py-6 text-lg">
                 <Link href="/auth">Get Started</Link>
               </Button>
             </div>
@@ -79,7 +79,7 @@ export default function Home() {
               title="Ready to Get Started?"
               description="Join hundreds of students who are already enjoying the convenience of our online payment system."
             />
-            <Button className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8 py-6 text-lg">
+            <Button className="text-white bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8 py-6 text-lg">
               <Link href="/auth">Login Now</Link>
               <ArrowRight className="ml-2 h-5 w-5" />
             </Button>

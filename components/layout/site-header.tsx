@@ -86,7 +86,7 @@ export function SiteHeader() {
                         <Button
                             asChild
                             className={cn(
-                                "bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600",
+                                "bg-gradient-to-r text-white from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600",
                                 isActive("/auth") && "ring-2 ring-white/30"
                             )}
                         >
