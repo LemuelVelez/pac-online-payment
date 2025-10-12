@@ -3,6 +3,7 @@
 "use client"
 
 import { useState } from "react"
+import Image from "next/image"
 import Link from "next/link"
 import { useSearchParams, useRouter } from "next/navigation"
 import { ArrowLeft, Lock, ShieldCheck } from "lucide-react"
@@ -20,7 +21,7 @@ export default function ResetPasswordPage() {
     const secret = sp.get("secret") ?? ""
 
     const [password, setPassword] = useState<string>("")
-    const [confirm, setConfirm] = useState<string>("") // const confirm: string
+    const [confirm, setConfirm] = useState<string>("")
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState("")
     const [success, setSuccess] = useState(false)
@@ -44,7 +45,6 @@ export default function ResetPasswordPage() {
         setIsLoading(true)
         try {
             const account = getAccount()
-            // FIX: updateRecovery expects (userId, secret, password) — 3 args
             await account.updateRecovery(userId, secret, password)
             setSuccess(true)
         } catch (err: any) {
@@ -66,9 +66,14 @@ export default function ResetPasswordPage() {
             <main className="flex-1 flex items-center justify-center p-4">
                 <div className="w-full max-w-md">
                     <div className="text-center mb-8">
-                        <div className="h-16 w-16 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-2xl mx-auto mb-4">
-                            P
-                        </div>
+                        <Image
+                            src="/images/logo.png"
+                            alt="PAC Salug Campus logo"
+                            width={64}
+                            height={64}
+                            className="h-16 w-16 object-contain mx-auto mb-4"
+                            priority
+                        />
                         <h1 className="text-2xl font-bold text-white">PAC Salug Campus</h1>
                         <p className="text-gray-300">Online Payment System</p>
                     </div>

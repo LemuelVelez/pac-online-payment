@@ -3,6 +3,7 @@
 
 import type React from "react"
 import { useState } from "react"
+import Image from "next/image"
 import Link from "next/link"
 import { ArrowLeft, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -47,9 +48,14 @@ export default function ForgotPasswordPage() {
             <main className="flex-1 flex items-center justify-center p-4">
                 <div className="w-full max-w-md">
                     <div className="text-center mb-8">
-                        <div className="h-16 w-16 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-2xl mx-auto mb-4">
-                            P
-                        </div>
+                        <Image
+                            src="/images/logo.png"
+                            alt="PAC Salug Campus logo"
+                            width={64}
+                            height={64}
+                            className="h-16 w-16 object-contain mx-auto mb-4"
+                            priority
+                        />
                         <h1 className="text-2xl font-bold text-white">PAC Salug Campus</h1>
                         <p className="text-gray-300">Online Payment System</p>
                     </div>

@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { Menu, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -13,8 +14,7 @@ export function SiteHeader() {
 
     const toggleMenu = () => setIsMenuOpen((v) => !v)
     const closeMenu = () => setIsMenuOpen(false)
-    const isActive = (href: string) =>
-        pathname === href || pathname.startsWith(href + "/")
+    const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/")
 
     const navBtnBase =
         "relative text-white hover:text-white transition-colors " +
@@ -29,38 +29,27 @@ export function SiteHeader() {
                 {/* Brand + Desktop Nav + Mobile Toggle */}
                 <div className="flex justify-between items-center">
                     <Link href="/" className="flex items-center gap-2 text-white" onClick={closeMenu}>
-                        <div className="h-10 w-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center font-bold text-xl">
-                            P
-                        </div>
+                        <Image
+                            src="/images/logo.png"
+                            alt="PAC Salug Campus logo"
+                            width={48}   // intrinsic size for crisper rendering on retina
+                            height={48}
+                            priority
+                            className="h-10 w-10 object-contain"
+                        />
                         <span className="text-xl font-bold">PAC Salug Campus</span>
                     </Link>
 
                     {/* Desktop Navigation */}
                     <nav className="hidden md:flex gap-4" aria-label="Primary">
-                        <Button
-                            asChild
-                            variant="ghost"
-                            className={cn(navBtnBase)}
-                            data-active={isActive("/about")}
-                        >
-                            <Link
-                                href="/about"
-                                aria-current={isActive("/about") ? "page" : undefined}
-                            >
+                        <Button asChild variant="ghost" className={cn(navBtnBase)} data-active={isActive("/about")}>
+                            <Link href="/about" aria-current={isActive("/about") ? "page" : undefined}>
                                 About
                             </Link>
                         </Button>
 
-                        <Button
-                            asChild
-                            variant="ghost"
-                            className={cn(navBtnBase)}
-                            data-active={isActive("/help")}
-                        >
-                            <Link
-                                href="/help"
-                                aria-current={isActive("/help") ? "page" : undefined}
-                            >
+                        <Button asChild variant="ghost" className={cn(navBtnBase)} data-active={isActive("/help")}>
+                            <Link href="/help" aria-current={isActive("/help") ? "page" : undefined}>
                                 Help
                             </Link>
                         </Button>
@@ -75,10 +64,7 @@ export function SiteHeader() {
                             )}
                             data-active={isActive("/contact")}
                         >
-                            <Link
-                                href="/contact"
-                                aria-current={isActive("/contact") ? "page" : undefined}
-                            >
+                            <Link href="/contact" aria-current={isActive("/contact") ? "page" : undefined}>
                                 Contact
                             </Link>
                         </Button>
@@ -90,10 +76,7 @@ export function SiteHeader() {
                                 isActive("/auth") && "ring-2 ring-white/30"
                             )}
                         >
-                            <Link
-                                href="/auth"
-                                aria-current={isActive("/auth") ? "page" : undefined}
-                            >
+                            <Link href="/auth" aria-current={isActive("/auth") ? "page" : undefined}>
                                 Login
                             </Link>
                         </Button>
@@ -116,53 +99,44 @@ export function SiteHeader() {
                     id="mobile-menu"
                     className={cn(
                         "absolute left-0 right-0 bg-slate-900/90 shadow-lg z-50 md:hidden transition-all duration-300 ease-in-out",
-                        isMenuOpen ? "top-full opacity-100" : "-top-96 opacity-0 pointer-events-none",
+                        isMenuOpen ? "top-full opacity-100" : "-top-96 opacity-0 pointer-events-none"
                     )}
                 >
                     <div className="flex flex-col p-4 space-y-3">
                         <Button
                             asChild
                             variant="ghost"
-                            className={cn(
-                                "justify-start",
-                                "text-white hover:text-white hover:bg-white/10",
-                                navBtnBase
-                            )}
+                            className={cn("justify-start", "text-white hover:text-white hover:bg-white/10", navBtnBase)}
                             data-active={isActive("/about")}
                         >
-                            <Link href="/about" onClick={closeMenu}>About</Link>
+                            <Link href="/about" onClick={closeMenu}>
+                                About
+                            </Link>
                         </Button>
 
                         <Button
                             asChild
                             variant="ghost"
-                            className={cn(
-                                "justify-start",
-                                "text-white hover:text-white hover:bg-white/10",
-                                navBtnBase
-                            )}
+                            className={cn("justify-start", "text-white hover:text-white hover:bg-white/10", navBtnBase)}
                             data-active={isActive("/help")}
                         >
-                            <Link href="/help" onClick={closeMenu}>Help</Link>
+                            <Link href="/help" onClick={closeMenu}>
+                                Help
+                            </Link>
                         </Button>
 
                         <Button
                             asChild
                             variant="ghost"
-                            className={cn(
-                                "justify-start",
-                                "text-white hover:text-white hover:bg-white/10",
-                                navBtnBase
-                            )}
+                            className={cn("justify-start", "text-white hover:text-white hover:bg-white/10", navBtnBase)}
                             data-active={isActive("/contact")}
                         >
-                            <Link href="/contact" onClick={closeMenu}>Contact</Link>
+                            <Link href="/contact" onClick={closeMenu}>
+                                Contact
+                            </Link>
                         </Button>
 
-                        <Button
-                            asChild
-                            className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 w-full"
-                        >
+                        <Button className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 w-full" asChild>
                             <Link href="/auth" onClick={closeMenu} className="w-full text-center">
                                 Login
                             </Link>

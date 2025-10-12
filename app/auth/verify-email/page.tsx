@@ -3,6 +3,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, BadgeCheck, MailCheck, Loader2 } from "lucide-react"
@@ -18,31 +19,24 @@ const RESEND_COOLDOWN_SECONDS = 60
 export default function VerifyEmailPage() {
     const router = useRouter()
 
-    // page + action states
-    const [loading, setLoading] = useState(true)         // initial page check state
-    const [refreshing, setRefreshing] = useState(false)  // button: refresh
-    const [sending, setSending] = useState(false)        // button: send email
-    const [continuing, setContinuing] = useState(false)  // button: continue to dashboard
-    const [updatingEmail, setUpdatingEmail] = useState(false) // button: change email
-    const [signingOut, setSigningOut] = useState(false)  // button: sign out
+    const [loading, setLoading] = useState(true)
+    const [refreshing, setRefreshing] = useState(false)
+    const [sending, setSending] = useState(false)
+    const [continuing, setContinuing] = useState(false)
+    const [updatingEmail, setUpdatingEmail] = useState(false)
+    const [signingOut, setSigningOut] = useState(false)
 
-    // messages and status
     const [error, setError] = useState<string>("")
     const [info, setInfo] = useState<string>("")
     const [needsLogin, setNeedsLogin] = useState(false)
     const [isVerified, setIsVerified] = useState<boolean | null>(null)
     const [email, setEmail] = useState<string>("")
 
-    // "wrong email" form
     const [newEmail, setNewEmail] = useState<string>("")
     const [currentPassword, setCurrentPassword] = useState<string>("")
 
-    // resend cooldown
     const [cooldown, setCooldown] = useState<number>(0)
-    const cooldownKey = useMemo(
-        () => (email ? `verifyEmailLastSentAt:${email}` : "verifyEmailLastSentAt"),
-        [email]
-    )
+    const cooldownKey = useMemo(() => (email ? `verifyEmailLastSentAt:${email}` : "verifyEmailLastSentAt"), [email])
 
     const computeSecondsLeft = (lastSentAtMs: number | null) => {
         if (!lastSentAtMs) return 0
@@ -68,7 +62,6 @@ export default function VerifyEmailPage() {
             const me = await getAccount().get()
             setEmail(me.email)
             setIsVerified(!!me.emailVerification)
-            // prefill "new email" with current (in case user just wants to adjust)
             setNewEmail(me.email)
         } catch (err: any) {
             setNeedsLogin(true)
@@ -78,7 +71,6 @@ export default function VerifyEmailPage() {
         }
     }
 
-    // initial status check
     useEffect(() => {
         ; (async () => {
             await refreshStatus()
@@ -86,14 +78,12 @@ export default function VerifyEmailPage() {
         })()
     }, [])
 
-    // Load cooldown whenever key (email) changes
     useEffect(() => {
         if (typeof window === "undefined") return
         loadCooldownFromStorage()
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [cooldownKey])
 
-    // tick down cooldown every second
     useEffect(() => {
         if (cooldown <= 0) return
         const id = setInterval(() => setCooldown((s) => (s > 1 ? s - 1 : 0)), 1000)
@@ -108,15 +98,10 @@ export default function VerifyEmailPage() {
             const origin = window.location.origin
             const verifyCallbackUrl = `${origin}/auth/verify-email/callback`
             await getAccount().createVerification(verifyCallbackUrl)
-
-            // Start cooldown
             try {
                 localStorage.setItem(cooldownKey, String(Date.now()))
-            } catch {
-                // ignore storage errors
-            }
+            } catch { }
             setCooldown(RESEND_COOLDOWN_SECONDS)
-
             setInfo("Verification email sent. Please check your inbox or spam folder.")
         } catch (err: any) {
             setError(err?.message ?? "Failed to send verification email.")
@@ -135,8 +120,6 @@ export default function VerifyEmailPage() {
         }
     }
 
-    // ✅ Allow users to fix a wrong address without leaving the page.
-    // Appwrite requires the *current password* to change email.
     const onChangeEmail = async () => {
         setError("")
         setInfo("")
@@ -152,26 +135,17 @@ export default function VerifyEmailPage() {
         setUpdatingEmail(true)
         try {
             await getAccount().updateEmail(newEmail, currentPassword)
-
-            // Refresh local state
             setEmail(newEmail)
             setIsVerified(false)
-
-            // Immediately send a verification to the new address
             try {
                 const origin = window.location.origin
                 const verifyCallbackUrl = `${origin}/auth/verify-email/callback`
                 await getAccount().createVerification(verifyCallbackUrl)
-
-                // Reset cooldown based on the new email
                 try {
                     localStorage.setItem(`verifyEmailLastSentAt:${newEmail}`, String(Date.now()))
                 } catch { }
                 setCooldown(RESEND_COOLDOWN_SECONDS)
-            } catch {
-                // If sending fails, that's OK; they can press the button.
-            }
-
+            } catch { }
             setInfo("Email updated. We've sent a new verification link to your new address.")
             setCurrentPassword("")
         } catch (err: any) {
@@ -192,7 +166,7 @@ export default function VerifyEmailPage() {
             }
             const role = await getOrCreateUserRole(me.$id, me.email, me.name)
             router.replace(roleToDashboard(role))
-        } catch (e) {
+        } catch {
             setError("Unable to route to dashboard.")
         } finally {
             setContinuing(false)
@@ -204,7 +178,6 @@ export default function VerifyEmailPage() {
         try {
             await getAccount().deleteSession("current")
         } catch {
-            // ignore
         } finally {
             setSigningOut(false)
             router.replace("/auth")
@@ -223,9 +196,14 @@ export default function VerifyEmailPage() {
             <main className="flex-1 flex items-center justify-center p-4">
                 <div className="w-full max-w-md">
                     <div className="text-center mb-8">
-                        <div className="h-16 w-16 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-2xl mx-auto mb-4">
-                            P
-                        </div>
+                        <Image
+                            src="/images/logo.png"
+                            alt="PAC Salug Campus logo"
+                            width={64}
+                            height={64}
+                            className="h-16 w-16 object-contain mx-auto mb-4"
+                            priority
+                        />
                         <h1 className="text-2xl font-bold text-white">PAC Salug Campus</h1>
                         <p className="text-gray-300">Online Payment System</p>
                     </div>
@@ -280,13 +258,14 @@ export default function VerifyEmailPage() {
                                 </div>
                             )}
 
-                            {/* Wrong email? Change it here (only when we have a session and not verified) */}
                             {!loading && !needsLogin && isVerified === false && (
                                 <div className="mt-6 rounded-md border border-slate-700 p-4 bg-slate-900/40">
                                     <h3 className="text-sm font-semibold text-white mb-3">Entered the wrong email?</h3>
                                     <div className="space-y-3">
                                         <div className="space-y-1">
-                                            <Label htmlFor="new-email" className="text-sm text-gray-200">New email</Label>
+                                            <Label htmlFor="new-email" className="text-sm text-gray-200">
+                                                New email
+                                            </Label>
                                             <Input
                                                 id="new-email"
                                                 type="email"
@@ -300,7 +279,9 @@ export default function VerifyEmailPage() {
                                             />
                                         </div>
                                         <div className="space-y-1">
-                                            <Label htmlFor="current-password" className="text-sm text-gray-200">Current password</Label>
+                                            <Label htmlFor="current-password" className="text-sm text-gray-200">
+                                                Current password
+                                            </Label>
                                             <Input
                                                 id="current-password"
                                                 type="password"
@@ -350,7 +331,6 @@ export default function VerifyEmailPage() {
                             )}
                         </CardContent>
 
-                        {/* Footer actions */}
                         <CardFooter className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between border-t border-slate-700 pt-6">
                             <Button
                                 variant="outline"
@@ -374,11 +354,7 @@ export default function VerifyEmailPage() {
                                     className="cursor-pointer w-full sm:w-auto bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 inline-flex items-center gap-2"
                                     onClick={sendVerification}
                                     disabled={loading || needsLogin || isVerified === true || sending || cooldown > 0}
-                                    title={
-                                        cooldown > 0
-                                            ? `You can resend in ${cooldown}s`
-                                            : "Send a verification email to your address"
-                                    }
+                                    title={cooldown > 0 ? `You can resend in ${cooldown}s` : "Send a verification email to your address"}
                                 >
                                     {sending ? (
                                         <>

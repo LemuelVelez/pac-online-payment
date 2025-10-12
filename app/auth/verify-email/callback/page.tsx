@@ -2,6 +2,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Image from "next/image"
 import Link from "next/link"
 import { useSearchParams, useRouter } from "next/navigation"
 import { ArrowLeft, ShieldCheck, XCircle } from "lucide-react"
@@ -29,17 +30,13 @@ export default function VerifyEmailCallbackPage() {
             try {
                 await getAccount().updateVerification(userId, secret)
                 setSuccess(true)
-
-                // Fetch session user and route based on role immediately
                 try {
                     const me = await getAccount().get()
                     const role = await getOrCreateUserRole(me.$id, me.email, me.name)
                     const dest = roleToDashboard(role)
                     router.replace(dest)
                     return
-                } catch {
-                    // If we can't resolve role/session, just fall through to show success UI
-                }
+                } catch { }
             } catch (err: any) {
                 setError(err?.message ?? "Verification failed. The link may have expired.")
             } finally {
@@ -60,9 +57,14 @@ export default function VerifyEmailCallbackPage() {
             <main className="flex-1 flex items-center justify-center p-4">
                 <div className="w-full max-w-md">
                     <div className="text-center mb-8">
-                        <div className="h-16 w-16 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-2xl mx-auto mb-4">
-                            P
-                        </div>
+                        <Image
+                            src="/images/logo.png"
+                            alt="PAC Salug Campus logo"
+                            width={64}
+                            height={64}
+                            className="h-16 w-16 object-contain mx-auto mb-4"
+                            priority
+                        />
                         <h1 className="text-2xl font-bold text-white">PAC Salug Campus</h1>
                         <p className="text-gray-300">Online Payment System</p>
                     </div>

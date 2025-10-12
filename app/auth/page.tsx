@@ -3,6 +3,7 @@
 
 import type React from "react"
 import { useState, useEffect } from "react"
+import Image from "next/image"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft, Eye, EyeOff, Lock, Mail, User, IdCard } from "lucide-react"
@@ -22,8 +23,6 @@ import {
     isStudentIdAvailable,
 } from "@/lib/appwrite"
 import { Select, SelectTrigger, SelectContent, SelectItem } from "@/components/ui/select"
-
-// Use the provider (now wired to Appwrite) for consistent auth state
 import { useAuth } from "@/components/auth/auth-provider"
 
 const DB_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string
@@ -37,7 +36,6 @@ const COURSES = [
 ] as const
 type CourseName = typeof COURSES[number]
 
-// Acronyms for display in the trigger (prevents overflow)
 const COURSE_ACRONYM: Record<CourseName, string> = {
     "BACHELOR OF SCIENCE IN EDUCATION": "BSED",
     "BACHELOR OF SCIENCE IN SOCIAL WORK": "BSSW",
@@ -49,16 +47,11 @@ const YEAR_LEVELS = ["1st", "2nd", "3rd", "4th", "5th"] as const
 type YearLevel = typeof YEAR_LEVELS[number]
 type AccountType = "student" | "other"
 
-/** Create the user-profile doc keyed by userId. Extras are optional. */
 async function ensureUserDoc(
     userId: string,
     email: string,
     fullName: string | undefined,
-    opts?: {
-        studentId?: string
-        course?: string
-        yearLevel?: string
-    }
+    opts?: { studentId?: string; course?: string; yearLevel?: string }
 ) {
     const databases = getDatabases()
     const payload: Record<string, any> = {
@@ -78,18 +71,11 @@ async function ensureUserDoc(
             USERS_COL_ID,
             userId,
             payload,
-            [
-                Permission.read(Role.user(userId)),
-                Permission.update(Role.user(userId)),
-                Permission.delete(Role.user(userId)),
-            ]
+            [Permission.read(Role.user(userId)), Permission.update(Role.user(userId)), Permission.delete(Role.user(userId))]
         )
     } catch (err: any) {
-        // Ignore "already exists"
         const code = err?.code ?? err?.response?.code
-        if (code !== 409) {
-            throw err
-        }
+        if (code !== 409) throw err
     }
 }
 
@@ -97,17 +83,15 @@ export default function LoginPage() {
     const [activeTab, setActiveTab] = useState("login")
     const [showPassword, setShowPassword] = useState(false)
 
-    // login state
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
     const [error, setError] = useState("")
     const [isLoading, setIsLoading] = useState(false)
 
-    // register state
     const [fullName, setFullName] = useState("")
     const [accountType, setAccountType] = useState<AccountType>("student")
-    const [studentId, setStudentId] = useState("") // optional
-    const [course, setCourse] = useState<CourseName | undefined>(undefined) // store full name; display acronym
+    const [studentId, setStudentId] = useState("")
+    const [course, setCourse] = useState<CourseName | undefined>(undefined)
     const [yearLevel, setYearLevel] = useState<YearLevel | undefined>(undefined)
     const [regEmail, setRegEmail] = useState("")
     const [regPassword, setRegPassword] = useState("")
@@ -123,21 +107,15 @@ export default function LoginPage() {
 
     const { login } = useAuth()
 
-    /**
-     * On mount:
-     * - If there is a session and email is UNVERIFIED -> redirect to verify-email page.
-     * - Else if there is a verified student session -> redirect to /dashboard.
-     */
     useEffect(() => {
         ; (async () => {
             try {
-                const me = await getAccount().get() // throws if no session
+                const me = await getAccount().get()
                 if (!me.emailVerification) {
                     const qs = `?email=${encodeURIComponent(me.email)}&needsVerification=1`
                     router.replace(`/auth/verify-email${qs}`)
                     return
                 }
-                // Verified -> allow role-based redirect for students
                 await redirectIfActiveStudent("/dashboard")
             } catch {
                 // no active session – stay on auth page
@@ -150,10 +128,8 @@ export default function LoginPage() {
         setError("")
         setIsLoading(true)
         try {
-            // ✅ Use provider login so the auth context is hydrated before navigating
             const target = redirect ? decodeURIComponent(redirect) : "/dashboard"
             await login(email, password, target)
-            // provider will router.replace(...) for us
         } catch (err: any) {
             setError(err?.message ?? "Invalid email or password. Please try again.")
         } finally {
@@ -167,7 +143,6 @@ export default function LoginPage() {
         e.preventDefault()
         setRegError("")
 
-        // Basic client validations (studentId is optional now)
         if (regPassword !== confirmPassword) {
             setRegError("Passwords do not match.")
             return
@@ -184,8 +159,6 @@ export default function LoginPage() {
         setIsRegistering(true)
         try {
             const account = getAccount()
-
-            // If user typed a studentId, check for duplicates first (best-effort)
             const trimmedStudentId = studentId.trim()
             if (accountType === "student" && trimmedStudentId) {
                 try {
@@ -195,11 +168,10 @@ export default function LoginPage() {
                         return
                     }
                 } catch {
-                    // If we can't check due to permissions, we continue and rely on DB unique index if present.
+                    // ignore best-effort check errors
                 }
             }
 
-            // Create Appwrite account (Appwrite enforces email uniqueness)
             try {
                 await account.create(ID.unique(), regEmail, regPassword, fullName || undefined)
             } catch (err: any) {
@@ -211,10 +183,8 @@ export default function LoginPage() {
                 throw err
             }
 
-            // Create a session so we can write the profile doc and send the verification email
             await account.createEmailPasswordSession(regEmail, regPassword)
 
-            // Create the profile document (include extras only when provided)
             const me = await account.get()
             try {
                 await ensureUserDoc(
@@ -224,13 +194,12 @@ export default function LoginPage() {
                     accountType === "student"
                         ? {
                             studentId: trimmedStudentId || undefined,
-                            course: course || undefined,      // save full name; show acronym in UI
+                            course: course || undefined,
                             yearLevel: yearLevel || undefined,
                         }
                         : undefined
                 )
             } catch (err: any) {
-                // If DB has unique index on studentId, catch 409 and abort gracefully
                 const code = err?.code ?? err?.response?.code
                 if (code === 409) {
                     try {
@@ -242,7 +211,6 @@ export default function LoginPage() {
                 throw err
             }
 
-            // Send verification email with callback (best-effort)
             const origin = window.location.origin
             const verifyCallbackUrl = `${origin}/auth/verify-email/callback`
             try {
@@ -251,7 +219,6 @@ export default function LoginPage() {
                 console.warn("createVerification failed:", e)
             }
 
-            // Redirect to verify email screen after registration
             router.push(`/auth/verify-email?email=${encodeURIComponent(regEmail)}&justRegistered=1`)
         } catch (err: any) {
             setRegError(err?.message ?? "Failed to register. Please try again.")
@@ -272,9 +239,14 @@ export default function LoginPage() {
             <main className="flex-1 flex items-center justify-center p-4">
                 <div className="w-full max-w-md">
                     <div className="text-center mb-8">
-                        <div className="h-16 w-16 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-2xl mx-auto mb-4">
-                            P
-                        </div>
+                        <Image
+                            src="/images/logo.png"
+                            alt="PAC Salug Campus logo"
+                            width={64}
+                            height={64}
+                            className="h-16 w-16 object-contain mx-auto mb-4"
+                            priority
+                        />
                         <h1 className="text-2xl font-bold text-white">PAC Salug Campus</h1>
                         <p className="text-gray-300">Online Payment System</p>
                     </div>
@@ -386,9 +358,9 @@ export default function LoginPage() {
                                 <CardFooter className="flex justify-center border-slate-700 pt-6">
                                     <p className="text-sm text-gray-400">
                                         Need help?{" "}
-                                        <a href="#" className="text-purple-400 hover:text-purple-300">
+                                        <Link href="/contact#support" className="text-purple-400 hover:text-purple-300">
                                             Contact support
-                                        </a>
+                                        </Link>
                                     </p>
                                 </CardFooter>
                             </Card>
@@ -427,13 +399,9 @@ export default function LoginPage() {
                                             </div>
                                         </div>
 
-                                        {/* NEW: Account Type Select */}
                                         <div className="space-y-2">
                                             <Label className="text-white">Account Type</Label>
-                                            <Select
-                                                value={accountType}
-                                                onValueChange={(v: AccountType) => setAccountType(v)}
-                                            >
+                                            <Select value={accountType} onValueChange={(v: AccountType) => setAccountType(v)}>
                                                 <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
                                                     <span className="truncate">
                                                         {accountType === "student" ? "Student" : "Other (Staff/Guest)"}
@@ -446,10 +414,8 @@ export default function LoginPage() {
                                             </Select>
                                         </div>
 
-                                        {/* Student-only fields */}
                                         {accountType === "student" && (
                                             <>
-                                                {/* Student ID (optional) */}
                                                 <div className="space-y-2">
                                                     <Label htmlFor="student-id" className="text-white">
                                                         Student ID <span className="text-xs text-gray-400">(optional)</span>
@@ -468,17 +434,11 @@ export default function LoginPage() {
                                                     </div>
                                                 </div>
 
-                                                {/* Course (Select) — show ACRONYM in the trigger to avoid overflow */}
                                                 <div className="space-y-2">
                                                     <Label className="text-white">Course</Label>
-                                                    <Select
-                                                        value={course}
-                                                        onValueChange={(v: CourseName) => setCourse(v)}
-                                                    >
+                                                    <Select value={course} onValueChange={(v: CourseName) => setCourse(v)}>
                                                         <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
-                                                            <span className="truncate">
-                                                                {course ? COURSE_ACRONYM[course] : "Select course"}
-                                                            </span>
+                                                            <span className="truncate">{course ? COURSE_ACRONYM[course] : "Select course"}</span>
                                                         </SelectTrigger>
                                                         <SelectContent className="bg-slate-900 text-white border-slate-700">
                                                             {COURSES.map((c) => (
@@ -493,21 +453,17 @@ export default function LoginPage() {
                                                     </Select>
                                                 </div>
 
-                                                {/* Year Level (Select) */}
                                                 <div className="space-y-2">
                                                     <Label className="text-white">Year Level</Label>
-                                                    <Select
-                                                        value={yearLevel}
-                                                        onValueChange={(v: YearLevel) => setYearLevel(v)}
-                                                    >
+                                                    <Select value={yearLevel} onValueChange={(v: YearLevel) => setYearLevel(v)}>
                                                         <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
-                                                            <span className="truncate">
-                                                                {yearLevel ?? "Select year level"}
-                                                            </span>
+                                                            <span className="truncate">{yearLevel ?? "Select year level"}</span>
                                                         </SelectTrigger>
                                                         <SelectContent className="bg-slate-900 text-white border-slate-700">
                                                             {YEAR_LEVELS.map((y) => (
-                                                                <SelectItem key={y} value={y}>{y}</SelectItem>
+                                                                <SelectItem key={y} value={y}>
+                                                                    {y}
+                                                                </SelectItem>
                                                             ))}
                                                         </SelectContent>
                                                     </Select>
@@ -537,7 +493,6 @@ export default function LoginPage() {
                                             </div>
                                         </div>
 
-                                        {/* Password with Eye/EyeOff toggle */}
                                         <div className="space-y-2">
                                             <Label htmlFor="reg-password" className="text-white">
                                                 Password
@@ -566,7 +521,6 @@ export default function LoginPage() {
                                             </div>
                                         </div>
 
-                                        {/* Confirm password with Eye/EyeOff toggle */}
                                         <div className="space-y-2">
                                             <Label htmlFor="confirm-password" className="text-white">
                                                 Confirm Password
