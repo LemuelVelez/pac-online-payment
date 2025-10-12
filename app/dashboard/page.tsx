@@ -1,11 +1,12 @@
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { CreditCard, Wallet, BookOpen } from "lucide-react"
+import { BadgeCheck, CreditCard, Wallet, BookOpen, GraduationCap } from "lucide-react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
 import { PaymentChart } from "@/components/dashboard/payment-chart"
 import { PaymentPieChart } from "@/components/dashboard/payment-pie-chart"
@@ -13,141 +14,125 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import type { UserRole } from "@/components/auth/auth-provider"
 
-// Appwrite backend
-import { getCurrentUserSafe } from "@/lib/appwrite"
-import { getPaidTotal, listRecentPayments, type PaymentRecord } from "@/lib/appwrite-payments"
+import { getCurrentUserSafe, getDatabases, getEnvIds } from "@/lib/appwrite"
+import {
+    getPaidTotal,
+    getPaidTotalForUser,
+    listRecentPayments,
+    type PaymentRecord,
+} from "@/lib/appwrite-payments"
+import type { Models } from "appwrite"
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Types
-type YearId = "1" | "2" | "3" | "4"
-type CourseId = "bsed" | "bscs" | "bssw" | "bsit"
-type FeeKey = "tuition" | "laboratory" | "library" | "miscellaneous"
-type FeeBreakdown = {
-    tuition: number
-    laboratory: number
-    library: number
-    miscellaneous: number
-    total: number
-    paid: number
-}
-type CourseConfig = Record<YearId, FeeBreakdown>
-type PaymentData = Record<CourseId, CourseConfig>
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Constants (from the provided fee slips)
-const PER_UNIT = 206.0
-const LIB_FEE = 157.65
-const OTHER_FEES = 5682.72
-
-// 18-unit slip (BSED, BSCS, BSSW)
-const UNITS_18 = 18
-const TUITION_18 = PER_UNIT * UNITS_18 // 3708.00
-const LAB_18 = 630.6
-const TOTAL_18 = 10178.97
-
-// 24-unit slip (BSIT)
-const UNITS_24 = 24
-const TUITION_24 = PER_UNIT * UNITS_24 // 4944.00
-const LAB_24 = 1260.6
-const TOTAL_24 = 12044.97
-
-// Courses
-const courses: { id: CourseId; name: string }[] = [
-    { id: "bsed", name: "BACHELOR OF SCIENCE IN EDUCATION" },
-    { id: "bscs", name: "BACHELOR OF SCIENCE IN COMPUTER SCIENCE" },
-    { id: "bssw", name: "BACHELOR OF SCIENCE IN SOCIAL WORK" },
-    { id: "bsit", name: "BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY" },
-] as const
-
-// Year levels
-const yearLevels: { id: YearId; name: string }[] = [
-    { id: "1", name: "First Year" },
-    { id: "2", name: "Second Year" },
-    { id: "3", name: "Third Year" },
-    { id: "4", name: "Fourth Year" },
-] as const
-
-// Fee templates
-const base18: FeeBreakdown = {
-    tuition: TUITION_18,
-    laboratory: LAB_18,
-    library: LIB_FEE,
-    miscellaneous: OTHER_FEES,
-    total: TOTAL_18,
-    paid: 0,
+type FeePlan = {
+    tuition?: number
+    laboratory?: number
+    library?: number
+    miscellaneous?: number
+    total?: number
 }
 
-const base24: FeeBreakdown = {
-    tuition: TUITION_24,
-    laboratory: LAB_24,
-    library: LIB_FEE,
-    miscellaneous: OTHER_FEES,
-    total: TOTAL_24,
-    paid: 0,
+/** Appwrite document-compliant user profile type */
+type UserProfileDoc = Models.Document & {
+    userId: string
+    email?: string
+    fullName?: string
+    role?: string
+    status?: string
+    course?: string
+    courseId?: "bsed" | "bscs" | "bssw" | "bsit"
+    yearLevel?: "1st" | "2nd" | "3rd" | "4th" | string
+    yearId?: "1" | "2" | "3" | "4"
+    feePlan?: FeePlan
+    totalFees?: number
 }
 
-// Payment data by course and year
-const paymentData: PaymentData = {
-    bsed: { "1": { ...base18 }, "2": { ...base18 }, "3": { ...base18 }, "4": { ...base18 } },
-    bscs: { "1": { ...base18 }, "2": { ...base18 }, "3": { ...base18 }, "4": { ...base18 } },
-    bssw: { "1": { ...base18 }, "2": { ...base18 }, "3": { ...base18 }, "4": { ...base18 } },
-    bsit: { "1": { ...base24 }, "2": { ...base24 }, "3": { ...base24 }, "4": { ...base24 } },
-}
-
-// Units per course (for display)
-const UNITS_BY_COURSE: Record<CourseId, number> = {
-    bsed: UNITS_18,
-    bscs: UNITS_18,
-    bssw: UNITS_18,
-    bsit: UNITS_24,
-}
-
+type MonthPoint = { month: string; amount: number }
 type TxnRow = { id: string; date: string; description: string; amount: number; status: string }
 
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const
+
+function normalizeCourseId(input?: string | null): UserProfileDoc["courseId"] | undefined {
+    if (!input) return undefined
+    const s = input.toLowerCase()
+    if (s.includes("education")) return "bsed"
+    if (s.includes("computer science")) return "bscs"
+    if (s.includes("social work")) return "bssw"
+    if (s.includes("information technology")) return "bsit"
+    if (["bsed", "bscs", "bssw", "bsit"].includes(s)) return s as UserProfileDoc["courseId"]
+    return undefined
+}
+
+function normalizeYearId(input?: string | null): UserProfileDoc["yearId"] | undefined {
+    if (!input) return undefined
+    const s = input.toLowerCase().trim()
+    if (["1", "1st", "first"].includes(s)) return "1"
+    if (["2", "2nd", "second"].includes(s)) return "2"
+    if (["3", "3rd", "third"].includes(s)) return "3"
+    if (["4", "4th", "fourth"].includes(s)) return "4"
+    return undefined
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+
 export default function DashboardPage() {
-    const [selectedCourse, setSelectedCourse] = useState<CourseId>("bsed")
-    const [selectedYear, setSelectedYear] = useState<YearId>("1")
-    const [currentPaymentData, setCurrentPaymentData] = useState<FeeBreakdown>(paymentData.bsed["1"])
+    const [error, setError] = useState<string>("")
+    const [profile, setProfile] = useState<UserProfileDoc | null>(null)
+
+    const [paidTotal, setPaidTotal] = useState<number>(0)
+    const [paymentHistory, setPaymentHistory] = useState<MonthPoint[]>([])
     const [transactions, setTransactions] = useState<TxnRow[]>([])
 
-    const paymentHistory = useMemo(
-        () => [
-            { month: "Jan", amount: 0 },
-            { month: "Feb", amount: 0 },
-            { month: "Mar", amount: 0 },
-            { month: "Apr", amount: 0 },
-            { month: "May", amount: 1500 },
-            { month: "Jun", amount: 500 },
-            { month: "Jul", amount: 800 },
-            { month: "Aug", amount: 0 },
-            { month: "Sep", amount: 0 },
-            { month: "Oct", amount: 0 },
-            { month: "Nov", amount: 0 },
-            { month: "Dec", amount: 0 },
-        ],
-        []
-    )
+    // Derived display strings
+    const courseLabel = profile?.course ?? (profile?.courseId ? profile.courseId.toUpperCase() : "—")
+    const yearLabel =
+        profile?.yearLevel ??
+        (profile?.yearId ? ({ "1": "1st", "2": "2nd", "3": "3rd", "4": "4th" } as const)[profile.yearId] : "—")
 
-    // Update base fee bundle on course/year change
-    useEffect(() => {
-        setCurrentPaymentData(paymentData[selectedCourse][selectedYear])
-    }, [selectedCourse, selectedYear])
+    const feePlan: FeePlan | undefined = profile?.feePlan ?? (profile?.totalFees ? { total: profile.totalFees } : undefined)
+    const totalFees = feePlan?.total
+    const balance = totalFees != null ? Math.max(0, (totalFees || 0) - paidTotal) : undefined
+    const progressPct = totalFees ? Math.min(100, Math.round((paidTotal / totalFees) * 100)) : undefined
 
-    // Pull paid total + recent txns from Appwrite for the signed-in user
     useEffect(() => {
         ; (async () => {
+            setError("")
             try {
                 const me = await getCurrentUserSafe()
-                if (!me) return
+                if (!me) {
+                    setError("No active session.")
+                    return
+                }
 
-                // Paid total for this course/year
-                const paid = await getPaidTotal(me.$id, selectedCourse, selectedYear)
+                // Read user profile from Users collection with correct Document-extended type
+                const { DB_ID, USERS_COL_ID } = getEnvIds()
+                const db = getDatabases()
+                const doc = await db.getDocument<UserProfileDoc>(DB_ID, USERS_COL_ID, me.$id).catch(() => null)
 
-                setCurrentPaymentData((prev) => ({ ...prev, paid }))
+                const normalized: UserProfileDoc | null = doc
+                    ? {
+                        ...doc,
+                        courseId: doc.courseId ?? normalizeCourseId(doc.course),
+                        yearId: doc.yearId ?? normalizeYearId(doc.yearLevel),
+                    }
+                    : null
 
-                // Recent transactions
-                const docs = await listRecentPayments(me.$id, 10)
-                const mapped: TxnRow[] = docs.map((d) => ({
+                setProfile(normalized)
+
+                // Compute paid total
+                let paid = 0
+                if (normalized?.courseId && normalized?.yearId) {
+                    paid = await getPaidTotal(me.$id, normalized.courseId, normalized.yearId)
+                } else {
+                    paid = await getPaidTotalForUser(me.$id)
+                }
+                setPaidTotal(paid)
+
+                // Recent transactions (limit 10)
+                const recents = await listRecentPayments(me.$id, 10)
+                const mapped: TxnRow[] = recents.map((d) => ({
                     id: d.reference || d.$id,
                     date: new Date(d.$createdAt).toLocaleDateString(),
                     description: prettyDescription(d),
@@ -155,107 +140,123 @@ export default function DashboardPage() {
                     status: d.status,
                 }))
                 setTransactions(mapped)
-            } catch {
-                // Silent fallback; keep local defaults if backend is unavailable.
+
+                // Payment history (current year, by month)
+                const now = new Date()
+                const year = now.getFullYear()
+                const many = await listRecentPayments(me.$id, 200)
+                const monthly: number[] = Array(12).fill(0)
+                for (const p of many) {
+                    const created = new Date(p.$createdAt)
+                    const okStatus = p.status === "Completed" || p.status === "Succeeded"
+                    if (okStatus && created.getFullYear() === year) {
+                        monthly[created.getMonth()] += Number(p.amount) || 0
+                    }
+                }
+                setPaymentHistory(MONTH_LABELS.map((m, i) => ({ month: m, amount: monthly[i] })))
+            } catch (e: any) {
+                setError(e?.message ?? "Failed to load dashboard data.")
             }
         })()
-    }, [selectedCourse, selectedYear])
+    }, [])
 
-    const paymentProgress = currentPaymentData.total
-        ? Math.round((currentPaymentData.paid / currentPaymentData.total) * 100)
-        : 0
-
-    const pieChartData = (["tuition", "laboratory", "library", "miscellaneous"] as FeeKey[]).map((k) => ({
-        name: k[0].toUpperCase() + k.slice(1),
-        value: currentPaymentData[k],
-    }))
-
-    const currentUnits = UNITS_BY_COURSE[selectedCourse]
+    // Build pie data only if a real fee plan is present
+    const pieChartData = useMemo(() => {
+        if (!feePlan) return []
+        const entries = [
+            ["Tuition", feePlan.tuition],
+            ["Laboratory", feePlan.laboratory],
+            ["Library", feePlan.library],
+            ["Miscellaneous", feePlan.miscellaneous],
+        ] as const
+        return entries
+            .filter(([, v]) => typeof v === "number")
+            .map(([name, value]) => ({ name, value: value as number }))
+    }, [feePlan])
 
     return (
         <DashboardLayout allowedRoles={["student"] as UserRole[]}>
             <div className="container mx-auto px-4 py-8">
-                <div className="mb-8">
+                <div className="mb-6 flex flex-col gap-2">
                     <h1 className="text-2xl font-bold text-white">Student Payment Dashboard</h1>
                     <p className="text-gray-300">Manage your payments and view your payment history</p>
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <span className="inline-flex items-center gap-2 rounded-md bg-white/5 px-2.5 py-1 text-sm text-white">
+                            <GraduationCap className="h-4 w-4" />
+                            <span className="font-medium">{courseLabel}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-2 rounded-md bg-white/5 px-2.5 py-1 text-sm text-white">
+                            <BadgeCheck className="h-4 w-4" />
+                            <span className="font-medium">Year: {yearLabel}</span>
+                        </span>
+                    </div>
                 </div>
 
-                {/* Course and Year Selection */}
-                <Card className="mb-8 bg-slate-800/60 border-slate-700 text-white">
-                    <CardHeader>
-                        <CardTitle>Course and Year Selection</CardTitle>
-                        <CardDescription className="text-gray-300">
-                            Select your course and year to view applicable fees
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                            <div className="space-y-2">
-                                <label htmlFor="course" className="text-sm font-medium">Course</label>
-                                <Select value={selectedCourse} onValueChange={(v: string) => setSelectedCourse(v as CourseId)}>
-                                    <SelectTrigger id="course" className="bg-slate-700 border-slate-600">
-                                        <SelectValue placeholder="Select course" />
-                                    </SelectTrigger>
-                                    <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                        {courses.map((course) => (
-                                            <SelectItem key={course.id} value={course.id}>{course.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <label htmlFor="year" className="text-sm font-medium">Year Level</label>
-                                <Select value={selectedYear} onValueChange={(v: string) => setSelectedYear(v as YearId)}>
-                                    <SelectTrigger id="year" className="bg-slate-700 border-slate-600">
-                                        <SelectValue placeholder="Select year level" />
-                                    </SelectTrigger>
-                                    <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                        {yearLevels.map((year) => (
-                                            <SelectItem key={year.id} value={year.id}>{year.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
+                {error && (
+                    <Alert className="mb-6 bg-red-500/20 border-red-500/50 text-red-200">
+                        <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                )}
 
                 {/* Payment Summary */}
                 <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-3">
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
-                        <CardHeader className="pb-2"><CardTitle className="text-lg">Total Fees</CardTitle></CardHeader>
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-lg">Total Fees</CardTitle>
+                            <CardDescription className="text-gray-300">Configured in your profile</CardDescription>
+                        </CardHeader>
                         <CardContent>
                             <div className="flex items-center">
-                                <div className="mr-4 rounded-lg bg-primary/20 p-3"><BookOpen className="size-6 text-primary" /></div>
+                                <div className="mr-4 rounded-lg bg-primary/20 p-3">
+                                    <BookOpen className="size-6 text-primary" />
+                                </div>
                                 <div>
-                                    <p className="text-3xl font-bold">₱{currentPaymentData.total.toLocaleString()}</p>
-                                    <p className="text-sm text-gray-300">{courses.find((c) => c.id === selectedCourse)?.name}</p>
+                                    <p className="text-3xl font-bold">
+                                        {typeof totalFees === "number" ? `₱${totalFees.toLocaleString()}` : "Not set"}
+                                    </p>
+                                    <p className="text-sm text-gray-300">{courseLabel}</p>
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
 
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
-                        <CardHeader className="pb-2"><CardTitle className="text-lg">Amount Paid</CardTitle></CardHeader>
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-lg">Amount Paid</CardTitle>
+                            <CardDescription className="text-gray-300">From completed payments</CardDescription>
+                        </CardHeader>
                         <CardContent>
                             <div className="flex items-center">
-                                <div className="mr-4 rounded-lg bg-green-500/20 p-3"><Wallet className="size-6 text-green-500" /></div>
+                                <div className="mr-4 rounded-lg bg-green-500/20 p-3">
+                                    <Wallet className="size-6 text-green-500" />
+                                </div>
                                 <div>
-                                    <p className="text-3xl font-bold">₱{currentPaymentData.paid.toLocaleString()}</p>
-                                    <p className="text-sm text-gray-300">{paymentProgress}% of total fees</p>
+                                    <p className="text-3xl font-bold">₱{paidTotal.toLocaleString()}</p>
+                                    <p className="text-sm text-gray-300">
+                                        {typeof progressPct === "number" ? `${progressPct}% of total fees` : "Awaiting fee setup"}
+                                    </p>
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
 
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
-                        <CardHeader className="pb-2"><CardTitle className="text-lg">Balance Due</CardTitle></CardHeader>
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-lg">Balance Due</CardTitle>
+                            <CardDescription className="text-gray-300">Total minus paid</CardDescription>
+                        </CardHeader>
                         <CardContent>
                             <div className="flex items-center">
-                                <div className="mr-4 rounded-lg bg-red-500/20 p-3"><CreditCard className="size-6 text-red-500" /></div>
+                                <div className="mr-4 rounded-lg bg-red-500/20 p-3">
+                                    <CreditCard className="size-6 text-red-500" />
+                                </div>
                                 <div>
-                                    <p className="text-3xl font-bold">₱{(currentPaymentData.total - currentPaymentData.paid).toLocaleString()}</p>
-                                    <p className="text-sm text-gray-300">{Math.max(0, 100 - paymentProgress)}% remaining</p>
+                                    <p className="text-3xl font-bold">
+                                        {typeof balance === "number" ? `₱${balance.toLocaleString()}` : "—"}
+                                    </p>
+                                    <p className="text-sm text-gray-300">
+                                        {typeof progressPct === "number" ? `${Math.max(0, 100 - progressPct)}% remaining` : "—"}
+                                    </p>
                                 </div>
                             </div>
                         </CardContent>
@@ -266,26 +267,34 @@ export default function DashboardPage() {
                 <Card className="mb-8 bg-slate-800/60 border-slate-700 text-white">
                     <CardHeader>
                         <CardTitle>Payment Progress</CardTitle>
-                        <CardDescription className="text-gray-300">Track your payment progress for the current semester</CardDescription>
+                        <CardDescription className="text-gray-300">
+                            {typeof progressPct === "number"
+                                ? "Track your payment progress for the current semester"
+                                : "Set your fee plan in the user profile to enable progress tracking"}
+                        </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-4">
                             <div className="flex items-center justify-between">
                                 <span className="text-sm font-medium">Overall Progress</span>
-                                <span className="text-sm font-medium">{paymentProgress}%</span>
+                                <span className="text-sm font-medium">{typeof progressPct === "number" ? `${progressPct}%` : "—"}</span>
                             </div>
-                            <Progress value={paymentProgress} className="h-2 bg-slate-700" />
-                            {paymentProgress < 100 && (
+                            <Progress value={progressPct ?? 0} className="h-2 bg-slate-700" />
+                            {typeof balance === "number" && balance > 0 && (
                                 <Alert className="mt-4 bg-amber-500/20 border-amber-500/50 text-amber-200">
                                     <AlertDescription>
-                                        You have a remaining balance of ₱{(currentPaymentData.total - currentPaymentData.paid).toLocaleString()}.
-                                        Please settle your payments before the deadline.
+                                        You have a remaining balance of ₱{balance.toLocaleString()}. Please settle your payments before the
+                                        deadline.
                                     </AlertDescription>
                                 </Alert>
                             )}
                             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <Link href="/make-payment"><Button className="w-full bg-primary hover:bg-primary/90">Make a Payment</Button></Link>
-                                <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">View Payment Schedule</Button>
+                                <Link href="/make-payment">
+                                    <Button className="w-full bg-primary hover:bg-primary/90">Make a Payment</Button>
+                                </Link>
+                                <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
+                                    View Payment Schedule
+                                </Button>
                             </div>
                         </div>
                     </CardContent>
@@ -293,76 +302,87 @@ export default function DashboardPage() {
 
                 {/* Charts */}
                 <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-                    <Card className="bg-slate-800/60 border-slate-700 text-white">
-                        <CardHeader>
-                            <CardTitle>Fee Breakdown</CardTitle>
-                            <CardDescription className="text-gray-300">Distribution of fees by category</CardDescription>
-                        </CardHeader>
-                        <CardContent><div className="h-80"><PaymentPieChart data={pieChartData} /></div></CardContent>
-                    </Card>
+                    {pieChartData.length > 0 ? (
+                        <Card className="bg-slate-800/60 border-slate-700 text-white">
+                            <CardHeader>
+                                <CardTitle>Fee Breakdown</CardTitle>
+                                <CardDescription className="text-gray-300">Distribution of configured fees</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="h-80">
+                                    <PaymentPieChart data={pieChartData} />
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <Card className="bg-slate-800/60 border-slate-700 text-white">
+                            <CardHeader>
+                                <CardTitle>Fee Breakdown</CardTitle>
+                                <CardDescription className="text-gray-300">
+                                    No fee plan found on your profile.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="h-80 flex items-center justify-center text-gray-400">
+                                    Add a <code className="mx-1">feePlan</code> to your user profile to visualize breakdowns.
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
 
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
                         <CardHeader>
                             <CardTitle>Payment History</CardTitle>
-                            <CardDescription className="text-gray-300">Monthly payment activity for the current year</CardDescription>
+                            <CardDescription className="text-gray-300">Monthly payment activity (this year)</CardDescription>
                         </CardHeader>
-                        <CardContent><div className="h-80"><PaymentChart data={paymentHistory} /></div></CardContent>
+                        <CardContent>
+                            <div className="h-80">
+                                <PaymentChart data={paymentHistory} />
+                            </div>
+                        </CardContent>
                     </Card>
                 </div>
 
                 {/* Fee Details */}
-                <Card className="mb-8 bg-slate-800/60 border-slate-700 text-white">
-                    <CardHeader>
-                        <CardTitle>Fee Details</CardTitle>
-                        <CardDescription className="text-gray-300">
-                            Breakdown of fees for {courses.find((c) => c.id === selectedCourse)?.name} – {yearLevels.find((y) => y.id === selectedYear)?.name}
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="overflow-hidden overflow-x-auto rounded-lg border border-slate-700">
-                            <table className="w-full">
-                                <thead>
-                                    <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
-                                        <th className="px-6 py-3">Fee Type</th><th className="px-6 py-3">Amount</th><th className="px-6 py-3">Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-700">
-                                    <tr className="text-sm">
-                                        <td className="px-6 py-4 font-medium">Tuition Fee (₱{PER_UNIT.toFixed(2)} × {currentUnits} units)</td>
-                                        <td className="px-6 py-4">₱{currentPaymentData.tuition.toLocaleString()}</td>
-                                        <td className="px-6 py-4">
-                                            {currentPaymentData.paid > 0 ? (
-                                                <span className="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-500">Partially Paid</span>
-                                            ) : (
-                                                <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-500">Unpaid</span>
-                                            )}
-                                        </td>
-                                    </tr>
-                                    <tr className="text-sm">
-                                        <td className="px-6 py-4 font-medium">Laboratory Fee</td>
-                                        <td className="px-6 py-4">₱{currentPaymentData.laboratory.toLocaleString()}</td>
-                                        <td className="px-6 py-4"><span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-500">Unpaid</span></td>
-                                    </tr>
-                                    <tr className="text-sm">
-                                        <td className="px-6 py-4 font-medium">Library Fee</td>
-                                        <td className="px-6 py-4">₱{currentPaymentData.library.toLocaleString()}</td>
-                                        <td className="px-6 py-4"><span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-500">Unpaid</span></td>
-                                    </tr>
-                                    <tr className="text-sm">
-                                        <td className="px-6 py-4 font-medium">Miscellaneous (Other Fees)</td>
-                                        <td className="px-6 py-4">₱{currentPaymentData.miscellaneous.toLocaleString()}</td>
-                                        <td className="px-6 py-4"><span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-500">Unpaid</span></td>
-                                    </tr>
-                                    <tr className="bg-slate-900/30 text-sm font-medium">
-                                        <td className="px-6 py-4">Total</td>
-                                        <td className="px-6 py-4">₱{currentPaymentData.total.toLocaleString()}</td>
-                                        <td className="px-6 py-4" />
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </CardContent>
-                </Card>
+                {feePlan && typeof feePlan.total === "number" ? (
+                    <Card className="mb-8 bg-slate-800/60 border-slate-700 text-white">
+                        <CardHeader>
+                            <CardTitle>Fee Details</CardTitle>
+                            <CardDescription className="text-gray-300">Breakdown of your configured fees</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="overflow-hidden overflow-x-auto rounded-lg border border-slate-700">
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
+                                            <th className="px-6 py-3">Fee Type</th>
+                                            <th className="px-6 py-3">Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-700 text-sm">
+                                        {[
+                                            ["Tuition Fee", feePlan.tuition],
+                                            ["Laboratory Fee", feePlan.laboratory],
+                                            ["Library Fee", feePlan.library],
+                                            ["Miscellaneous (Other Fees)", feePlan.miscellaneous],
+                                        ].map(([label, value]) =>
+                                            typeof value === "number" ? (
+                                                <tr key={label as string}>
+                                                    <td className="px-6 py-4 font-medium">{label}</td>
+                                                    <td className="px-6 py-4">₱{(value as number).toLocaleString()}</td>
+                                                </tr>
+                                            ) : null
+                                        )}
+                                        <tr className="bg-slate-900/30 text-sm font-semibold">
+                                            <td className="px-6 py-4">Total</td>
+                                            <td className="px-6 py-4">₱{feePlan.total!.toLocaleString()}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </CardContent>
+                    </Card>
+                ) : null}
 
                 {/* Recent Transactions */}
                 <Card className="bg-slate-800/60 border-slate-700 text-white">
@@ -371,7 +391,9 @@ export default function DashboardPage() {
                             <CardTitle>Recent Transactions</CardTitle>
                             <CardDescription className="text-gray-300">Your recent payment activities</CardDescription>
                         </div>
-                        <Link href="/payment-history" className="text-sm font-medium text-primary hover:underline">View All</Link>
+                        <Link href="/payment-history" className="text-sm font-medium text-primary hover:underline">
+                            View All
+                        </Link>
                     </CardHeader>
                     <CardContent>
                         <div className="overflow-hidden overflow-x-auto rounded-lg border border-slate-700">
@@ -388,7 +410,9 @@ export default function DashboardPage() {
                                 <tbody className="divide-y divide-slate-700">
                                     {transactions.length === 0 ? (
                                         <tr className="text-sm text-gray-400">
-                                            <td className="px-6 py-4" colSpan={5}>No transactions yet.</td>
+                                            <td className="px-6 py-4" colSpan={5}>
+                                                No transactions yet.
+                                            </td>
                                         </tr>
                                     ) : (
                                         transactions.map((t) => (
@@ -417,8 +441,9 @@ export default function DashboardPage() {
 
 /** Helper to make a user-friendly description from a payment record. */
 function prettyDescription(d: PaymentRecord) {
-    const parts = []
-    if (d.fees?.length) parts.push(d.fees.join(", "))
-    parts.push(d.courseId.toUpperCase(), `Y${d.yearId}`)
+    const parts: string[] = []
+    if (Array.isArray(d.fees) && d.fees.length) parts.push(d.fees.join(", "))
+    if (d.courseId) parts.push(d.courseId.toUpperCase())
+    if (d.yearId) parts.push(`Y${d.yearId}`)
     return parts.join(" • ")
 }

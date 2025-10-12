@@ -47,6 +47,9 @@ const YEAR_LEVELS = ["1st", "2nd", "3rd", "4th", "5th"] as const
 type YearLevel = typeof YEAR_LEVELS[number]
 type AccountType = "student" | "other"
 
+const REMEMBER_FLAG_KEY = "pac-auth:remember"
+const REMEMBER_EMAIL_KEY = "pac-auth:rememberEmail"
+
 async function ensureUserDoc(
     userId: string,
     email: string,
@@ -66,13 +69,11 @@ async function ensureUserDoc(
     if (opts?.yearLevel) payload.yearLevel = opts.yearLevel
 
     try {
-        await databases.createDocument(
-            DB_ID,
-            USERS_COL_ID,
-            userId,
-            payload,
-            [Permission.read(Role.user(userId)), Permission.update(Role.user(userId)), Permission.delete(Role.user(userId))]
-        )
+        await databases.createDocument(DB_ID, USERS_COL_ID, userId, payload, [
+            Permission.read(Role.user(userId)),
+            Permission.update(Role.user(userId)),
+            Permission.delete(Role.user(userId)),
+        ])
     } catch (err: any) {
         const code = err?.code ?? err?.response?.code
         if (code !== 409) throw err
@@ -83,11 +84,14 @@ export default function LoginPage() {
     const [activeTab, setActiveTab] = useState("login")
     const [showPassword, setShowPassword] = useState(false)
 
+    // login state
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
+    const [rememberMe, setRememberMe] = useState(false)
     const [error, setError] = useState("")
     const [isLoading, setIsLoading] = useState(false)
 
+    // register state
     const [fullName, setFullName] = useState("")
     const [accountType, setAccountType] = useState<AccountType>("student")
     const [studentId, setStudentId] = useState("")
@@ -107,6 +111,21 @@ export default function LoginPage() {
 
     const { login } = useAuth()
 
+    // Prefill email based on "Remember me"
+    useEffect(() => {
+        try {
+            const remembered = localStorage.getItem(REMEMBER_FLAG_KEY) === "1"
+            if (remembered) {
+                const savedEmail = localStorage.getItem(REMEMBER_EMAIL_KEY) || ""
+                setEmail(savedEmail)
+                setRememberMe(true)
+            }
+        } catch {
+            // ignore storage errors
+        }
+    }, [])
+
+    // If user is already logged in (and verified), redirect them off this page
     useEffect(() => {
         ; (async () => {
             try {
@@ -123,13 +142,56 @@ export default function LoginPage() {
         })()
     }, [router])
 
+    const handleRememberToggle: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+        const checked = e.currentTarget.checked
+        setRememberMe(checked)
+        try {
+            if (checked) {
+                localStorage.setItem(REMEMBER_FLAG_KEY, "1")
+                localStorage.setItem(REMEMBER_EMAIL_KEY, email)
+            } else {
+                localStorage.removeItem(REMEMBER_FLAG_KEY)
+                localStorage.removeItem(REMEMBER_EMAIL_KEY)
+            }
+        } catch {
+            // ignore storage errors
+        }
+    }
+
+    const handleEmailChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+        const value = e.target.value
+        setEmail(value)
+        // Keep saved email in sync when Remember me is enabled
+        if (rememberMe) {
+            try {
+                localStorage.setItem(REMEMBER_EMAIL_KEY, value)
+            } catch {
+                // ignore storage errors
+            }
+        }
+    }
+
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
         setError("")
         setIsLoading(true)
         try {
             const target = redirect ? decodeURIComponent(redirect) : "/dashboard"
+            // Provider performs the Appwrite sign-in and routing
             await login(email, password, target)
+
+            // Persist or clear remembered email based on the checkbox
+            try {
+                if (rememberMe) {
+                    localStorage.setItem(REMEMBER_FLAG_KEY, "1")
+                    localStorage.setItem(REMEMBER_EMAIL_KEY, email)
+                } else {
+                    localStorage.removeItem(REMEMBER_FLAG_KEY)
+                    localStorage.removeItem(REMEMBER_EMAIL_KEY)
+                }
+            } catch {
+                // ignore storage errors
+            }
         } catch (err: any) {
             setError(err?.message ?? "Invalid email or password. Please try again.")
         } finally {
@@ -295,7 +357,7 @@ export default function LoginPage() {
                                                     className="pl-10 bg-slate-900/50 border-slate-700 text-white"
                                                     required
                                                     value={email}
-                                                    onChange={(e) => setEmail(e.target.value)}
+                                                    onChange={handleEmailChange}
                                                     autoComplete="username"
                                                     autoCapitalize="none"
                                                     autoCorrect="off"
@@ -337,6 +399,9 @@ export default function LoginPage() {
                                                     id="remember"
                                                     name="remember"
                                                     className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                                    checked={rememberMe}
+                                                    onChange={handleRememberToggle}
+                                                    title="Stores your email on this device for faster sign-in."
                                                 />
                                                 <Label htmlFor="remember" className="text-sm cursor-pointer text-gray-300">
                                                     Remember me
@@ -403,9 +468,7 @@ export default function LoginPage() {
                                             <Label className="text-white">Account Type</Label>
                                             <Select value={accountType} onValueChange={(v: AccountType) => setAccountType(v)}>
                                                 <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
-                                                    <span className="truncate">
-                                                        {accountType === "student" ? "Student" : "Other (Staff/Guest)"}
-                                                    </span>
+                                                    <span className="truncate">{accountType === "student" ? "Student" : "Other (Staff/Guest)"}</span>
                                                 </SelectTrigger>
                                                 <SelectContent className="bg-slate-900 text-white border-slate-700">
                                                     <SelectItem value="student">Student</SelectItem>

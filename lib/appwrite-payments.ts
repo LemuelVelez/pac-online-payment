@@ -35,8 +35,6 @@ export async function createPayment(rec: PaymentRecord): Promise<PaymentDoc> {
   const { databaseId, paymentsCollectionId } = getIds();
   const databases = getDatabases();
 
-  // Generic is the *return type* (must extend Models.Document).
-  // The data shape is inferred as Omit<PaymentDoc, keyof Models.Document> -> PaymentRecord.
   const doc = await databases.createDocument<PaymentDoc>(
     databaseId,
     paymentsCollectionId,
@@ -117,6 +115,25 @@ export async function getPaidTotal(
       Query.equal("courseId", courseId),
       Query.equal("yearId", yearId),
       Query.equal("status", ["Completed", "Succeeded"]),
+      Query.limit(100),
+    ]
+  );
+
+  return (res.documents ?? []).reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+}
+
+/** NEW: Sum of completed/succeeded payments for the user across all course/year. */
+export async function getPaidTotalForUser(userId: string): Promise<number> {
+  const { databaseId, paymentsCollectionId } = getIds();
+  const databases = getDatabases();
+
+  const res = await databases.listDocuments<PaymentDoc>(
+    databaseId,
+    paymentsCollectionId,
+    [
+      Query.equal("userId", userId),
+      Query.equal("status", ["Completed", "Succeeded"]),
+      Query.orderDesc("$createdAt"),
       Query.limit(100),
     ]
   );
