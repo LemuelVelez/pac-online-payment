@@ -111,7 +111,6 @@ export default function LoginPage() {
 
     const { login } = useAuth()
 
-    // Prefill email based on "Remember me"
     useEffect(() => {
         try {
             const remembered = localStorage.getItem(REMEMBER_FLAG_KEY) === "1"
@@ -121,11 +120,10 @@ export default function LoginPage() {
                 setRememberMe(true)
             }
         } catch {
-            // ignore storage errors
+            /* ignore */
         }
     }, [])
 
-    // If user is already logged in (and verified), redirect them off this page
     useEffect(() => {
         ; (async () => {
             try {
@@ -137,7 +135,7 @@ export default function LoginPage() {
                 }
                 await redirectIfActiveStudent("/dashboard")
             } catch {
-                // no active session – stay on auth page
+                /* no active session */
             }
         })()
     }, [router])
@@ -154,19 +152,18 @@ export default function LoginPage() {
                 localStorage.removeItem(REMEMBER_EMAIL_KEY)
             }
         } catch {
-            // ignore storage errors
+            /* ignore */
         }
     }
 
     const handleEmailChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
         const value = e.target.value
         setEmail(value)
-        // Keep saved email in sync when Remember me is enabled
         if (rememberMe) {
             try {
                 localStorage.setItem(REMEMBER_EMAIL_KEY, value)
             } catch {
-                // ignore storage errors
+                /* ignore */
             }
         }
     }
@@ -177,10 +174,8 @@ export default function LoginPage() {
         setIsLoading(true)
         try {
             const target = redirect ? decodeURIComponent(redirect) : "/dashboard"
-            // Provider performs the Appwrite sign-in and routing
             await login(email, password, target)
 
-            // Persist or clear remembered email based on the checkbox
             try {
                 if (rememberMe) {
                     localStorage.setItem(REMEMBER_FLAG_KEY, "1")
@@ -190,7 +185,7 @@ export default function LoginPage() {
                     localStorage.removeItem(REMEMBER_EMAIL_KEY)
                 }
             } catch {
-                // ignore storage errors
+                /* ignore */
             }
         } catch (err: any) {
             setError(err?.message ?? "Invalid email or password. Please try again.")
@@ -221,8 +216,23 @@ export default function LoginPage() {
         setIsRegistering(true)
         try {
             const account = getAccount()
+
+            // --- Student fields are REQUIRED for student accounts ---
             const trimmedStudentId = studentId.trim()
-            if (accountType === "student" && trimmedStudentId) {
+            if (accountType === "student") {
+                if (!trimmedStudentId) {
+                    setRegError("Student ID is required for student accounts.")
+                    return
+                }
+                if (!course) {
+                    setRegError("Course is required for student accounts.")
+                    return
+                }
+                if (!yearLevel) {
+                    setRegError("Year level is required for student accounts.")
+                    return
+                }
+
                 try {
                     const available = await isStudentIdAvailable(trimmedStudentId)
                     if (!available) {
@@ -230,10 +240,11 @@ export default function LoginPage() {
                         return
                     }
                 } catch {
-                    // ignore best-effort check errors
+                    /* best-effort check */
                 }
             }
 
+            // Create account
             try {
                 await account.create(ID.unique(), regEmail, regPassword, fullName || undefined)
             } catch (err: any) {
@@ -245,8 +256,10 @@ export default function LoginPage() {
                 throw err
             }
 
+            // Auto-login
             await account.createEmailPasswordSession(regEmail, regPassword)
 
+            // Create/ensure user doc
             const me = await account.get()
             try {
                 await ensureUserDoc(
@@ -255,7 +268,7 @@ export default function LoginPage() {
                     fullName || me.name,
                     accountType === "student"
                         ? {
-                            studentId: trimmedStudentId || undefined,
+                            studentId: trimmedStudentId,
                             course: course || undefined,
                             yearLevel: yearLevel || undefined,
                         }
@@ -273,6 +286,7 @@ export default function LoginPage() {
                 throw err
             }
 
+            // Email verification (best-effort)
             const origin = window.location.origin
             const verifyCallbackUrl = `${origin}/auth/verify-email/callback`
             try {
@@ -481,7 +495,7 @@ export default function LoginPage() {
                                             <>
                                                 <div className="space-y-2">
                                                     <Label htmlFor="student-id" className="text-white">
-                                                        Student ID <span className="text-xs text-gray-400">(optional)</span>
+                                                        Student ID <span className="text-red-300">*</span>
                                                     </Label>
                                                     <div className="relative">
                                                         <IdCard className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
@@ -491,6 +505,8 @@ export default function LoginPage() {
                                                             className="pl-10 bg-slate-900/50 border-slate-700 text-white"
                                                             value={studentId}
                                                             onChange={(e) => setStudentId(e.target.value)}
+                                                            required
+                                                            aria-required="true"
                                                             autoComplete="off"
                                                             spellCheck={false}
                                                         />
@@ -498,9 +514,15 @@ export default function LoginPage() {
                                                 </div>
 
                                                 <div className="space-y-2">
-                                                    <Label className="text-white">Course</Label>
+                                                    <Label className="text-white">
+                                                        Course <span className="text-red-300">*</span>
+                                                    </Label>
                                                     <Select value={course} onValueChange={(v: CourseName) => setCourse(v)}>
-                                                        <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
+                                                        <SelectTrigger
+                                                            className="bg-slate-900/50 border-slate-700 text-white"
+                                                            aria-required="true"
+                                                            aria-invalid={accountType === "student" && !course ? true : undefined}
+                                                        >
                                                             <span className="truncate">{course ? COURSE_ACRONYM[course] : "Select course"}</span>
                                                         </SelectTrigger>
                                                         <SelectContent className="bg-slate-900 text-white border-slate-700">
@@ -517,9 +539,15 @@ export default function LoginPage() {
                                                 </div>
 
                                                 <div className="space-y-2">
-                                                    <Label className="text-white">Year Level</Label>
+                                                    <Label className="text-white">
+                                                        Year Level <span className="text-red-300">*</span>
+                                                    </Label>
                                                     <Select value={yearLevel} onValueChange={(v: YearLevel) => setYearLevel(v)}>
-                                                        <SelectTrigger className="bg-slate-900/50 border-slate-700 text-white">
+                                                        <SelectTrigger
+                                                            className="bg-slate-900/50 border-slate-700 text-white"
+                                                            aria-required="true"
+                                                            aria-invalid={accountType === "student" && !yearLevel ? true : undefined}
+                                                        >
                                                             <span className="truncate">{yearLevel ?? "Select year level"}</span>
                                                         </SelectTrigger>
                                                         <SelectContent className="bg-slate-900 text-white border-slate-700">
