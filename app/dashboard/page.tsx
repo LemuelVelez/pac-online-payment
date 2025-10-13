@@ -14,17 +14,9 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import type { UserRole } from "@/components/auth/auth-provider"
 
-import { getCurrentUserSafe, getDatabases, getEnvIds } from "@/lib/appwrite"
-import {
-    getPaidTotal,
-    getPaidTotalForUser,
-    listRecentPayments,
-    type PaymentRecord,
-} from "@/lib/appwrite-payments"
+import { getCurrentUserSafe, getDatabases, getEnvIds, Query } from "@/lib/appwrite"
+import type { PaymentRecord, PaymentDoc } from "@/lib/appwrite-payments"
 import type { Models } from "appwrite"
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Types
 
 type FeePlan = {
     tuition?: number
@@ -34,7 +26,6 @@ type FeePlan = {
     total?: number
 }
 
-/** Appwrite document-compliant user profile type */
 type UserProfileDoc = Models.Document & {
     userId: string
     email?: string
@@ -53,6 +44,7 @@ type MonthPoint = { month: string; amount: number }
 type TxnRow = { id: string; date: string; description: string; amount: number; status: string }
 
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const
+const PAYMENTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_PAYMENTS_COLLECTION_ID as string
 
 function normalizeCourseId(input?: string | null): UserProfileDoc["courseId"] | undefined {
     if (!input) return undefined
@@ -75,8 +67,6 @@ function normalizeYearId(input?: string | null): UserProfileDoc["yearId"] | unde
     return undefined
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-
 export default function DashboardPage() {
     const [error, setError] = useState<string>("")
     const [profile, setProfile] = useState<UserProfileDoc | null>(null)
@@ -85,11 +75,9 @@ export default function DashboardPage() {
     const [paymentHistory, setPaymentHistory] = useState<MonthPoint[]>([])
     const [transactions, setTransactions] = useState<TxnRow[]>([])
 
-    // Derived display strings
     const courseLabel = profile?.course ?? (profile?.courseId ? profile.courseId.toUpperCase() : "—")
     const yearLabel =
-        profile?.yearLevel ??
-        (profile?.yearId ? ({ "1": "1st", "2": "2nd", "3": "3rd", "4": "4th" } as const)[profile.yearId] : "—")
+        profile?.yearLevel ?? (profile?.yearId ? ({ "1": "1st", "2": "2nd", "3": "3rd", "4": "4th" } as const)[profile.yearId] : "—")
 
     const feePlan: FeePlan | undefined = profile?.feePlan ?? (profile?.totalFees ? { total: profile.totalFees } : undefined)
     const totalFees = feePlan?.total
@@ -106,7 +94,6 @@ export default function DashboardPage() {
                     return
                 }
 
-                // Read user profile from Users collection with correct Document-extended type
                 const { DB_ID, USERS_COL_ID } = getEnvIds()
                 const db = getDatabases()
                 const doc = await db.getDocument<UserProfileDoc>(DB_ID, USERS_COL_ID, me.$id).catch(() => null)
@@ -121,18 +108,22 @@ export default function DashboardPage() {
 
                 setProfile(normalized)
 
-                // Compute paid total
-                let paid = 0
-                if (normalized?.courseId && normalized?.yearId) {
-                    paid = await getPaidTotal(me.$id, normalized.courseId, normalized.yearId)
-                } else {
-                    paid = await getPaidTotalForUser(me.$id)
-                }
+                // Fetch ALL payments for this user (paginated, unlimited)
+                const allPayments = await listAllPaymentsForUser(me.$id)
+
+                // Compute paid total (Completed/Succeeded)
+                const isOk = (s: string) => s === "Completed" || s === "Succeeded"
+                const paid = normalized?.courseId && normalized?.yearId
+                    ? allPayments
+                        .filter((p) => p.courseId === normalized.courseId && p.yearId === normalized.yearId && isOk(p.status))
+                        .reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
+                    : allPayments
+                        .filter((p) => isOk(p.status))
+                        .reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
                 setPaidTotal(paid)
 
-                // Recent transactions (limit 10)
-                const recents = await listRecentPayments(me.$id, 10)
-                const mapped: TxnRow[] = recents.map((d) => ({
+                // Transactions table: show ALL (newest first already by query)
+                const mapped: TxnRow[] = allPayments.map((d) => ({
                     id: d.reference || d.$id,
                     date: new Date(d.$createdAt).toLocaleDateString(),
                     description: prettyDescription(d),
@@ -141,15 +132,13 @@ export default function DashboardPage() {
                 }))
                 setTransactions(mapped)
 
-                // Payment history (current year, by month)
+                // Payment history: current year monthly totals
                 const now = new Date()
                 const year = now.getFullYear()
-                const many = await listRecentPayments(me.$id, 200)
                 const monthly: number[] = Array(12).fill(0)
-                for (const p of many) {
+                for (const p of allPayments) {
                     const created = new Date(p.$createdAt)
-                    const okStatus = p.status === "Completed" || p.status === "Succeeded"
-                    if (okStatus && created.getFullYear() === year) {
+                    if ((p.status === "Completed" || p.status === "Succeeded") && created.getFullYear() === year) {
                         monthly[created.getMonth()] += Number(p.amount) || 0
                     }
                 }
@@ -160,7 +149,6 @@ export default function DashboardPage() {
         })()
     }, [])
 
-    // Build pie data only if a real fee plan is present
     const pieChartData = useMemo(() => {
         if (!feePlan) return []
         const entries = [
@@ -198,7 +186,6 @@ export default function DashboardPage() {
                     </Alert>
                 )}
 
-                {/* Payment Summary */}
                 <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-3">
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
                         <CardHeader className="pb-2">
@@ -263,7 +250,6 @@ export default function DashboardPage() {
                     </Card>
                 </div>
 
-                {/* Payment Progress */}
                 <Card className="mb-8 bg-slate-800/60 border-slate-700 text-white">
                     <CardHeader>
                         <CardTitle>Payment Progress</CardTitle>
@@ -300,7 +286,6 @@ export default function DashboardPage() {
                     </CardContent>
                 </Card>
 
-                {/* Charts */}
                 <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
                     {pieChartData.length > 0 ? (
                         <Card className="bg-slate-800/60 border-slate-700 text-white">
@@ -318,9 +303,7 @@ export default function DashboardPage() {
                         <Card className="bg-slate-800/60 border-slate-700 text-white">
                             <CardHeader>
                                 <CardTitle>Fee Breakdown</CardTitle>
-                                <CardDescription className="text-gray-300">
-                                    No fee plan found on your profile.
-                                </CardDescription>
+                                <CardDescription className="text-gray-300">No fee plan found on your profile.</CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <div className="h-80 flex items-center justify-center text-gray-400">
@@ -343,7 +326,6 @@ export default function DashboardPage() {
                     </Card>
                 </div>
 
-                {/* Fee Details */}
                 {feePlan && typeof feePlan.total === "number" ? (
                     <Card className="mb-8 bg-slate-800/60 border-slate-700 text-white">
                         <CardHeader>
@@ -384,12 +366,11 @@ export default function DashboardPage() {
                     </Card>
                 ) : null}
 
-                {/* Recent Transactions */}
                 <Card className="bg-slate-800/60 border-slate-700 text-white">
                     <CardHeader className="flex flex-row items-center justify-between">
                         <div>
                             <CardTitle>Recent Transactions</CardTitle>
-                            <CardDescription className="text-gray-300">Your recent payment activities</CardDescription>
+                            <CardDescription className="text-gray-300">Your payment activities</CardDescription>
                         </div>
                         <Link href="/payment-history" className="text-sm font-medium text-primary hover:underline">
                             View All
@@ -437,6 +418,26 @@ export default function DashboardPage() {
             </div>
         </DashboardLayout>
     )
+}
+
+async function listAllPaymentsForUser(userId: string): Promise<PaymentDoc[]> {
+    const { DB_ID } = getEnvIds()
+    const db = getDatabases()
+    const out: PaymentDoc[] = []
+    let cursor: string | undefined
+
+    // Fetch in pages of 100 until exhausted
+    for (; ;) {
+        const queries = [Query.equal("userId", userId), Query.orderDesc("$createdAt"), Query.limit(100)]
+        if (cursor) queries.push(Query.cursorAfter(cursor))
+
+        const res = await db.listDocuments<PaymentDoc>(DB_ID, PAYMENTS_COL_ID, queries)
+        const docs = res.documents ?? []
+        out.push(...docs)
+        if (docs.length < 100) break
+        cursor = docs[docs.length - 1].$id
+    }
+    return out
 }
 
 /** Helper to make a user-friendly description from a payment record. */
