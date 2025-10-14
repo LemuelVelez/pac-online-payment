@@ -7,32 +7,33 @@ import { usePathname } from "next/navigation"
 import { Menu, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useSessionRole } from "@/lib/appwrite-rbac"
 
 export function SiteHeader() {
     const pathname = usePathname()
     const [isMenuOpen, setIsMenuOpen] = useState(false)
+    const { loading, user, dashboardHref } = useSessionRole()
 
     const toggleMenu = () => setIsMenuOpen((v) => !v)
     const closeMenu = () => setIsMenuOpen(false)
     const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/")
 
     const navBtnBase =
-        "relative text-white hover:text-white transition-colors " +
-        "hover:bg-white/10 data-[active=true]:bg-white/10 " +
-        "after:absolute after:left-0 after:-bottom-2 after:h-0.5 after:w-0 " +
-        "after:bg-gradient-to-r after:from-purple-400 after:to-pink-400 " +
+        "relative text-white hover:text-white transition-colors hover:bg-white/10 data-[active=true]:bg-white/10 " +
+        "after:absolute after:left-0 after:-bottom-2 after:h-0.5 after:w-0 after:bg-gradient-to-r after:from-purple-400 after:to-pink-400 " +
         "data-[active=true]:after:w-full"
+
+    const isAuthed = !!user
 
     return (
         <header className="sticky top-0 z-50 bg-slate-900/60 supports-[backdrop-filter]:backdrop-blur-md border-b border-white/10">
             <div className="container mx-auto py-4 px-4">
-                {/* Brand + Desktop Nav + Mobile Toggle */}
                 <div className="flex justify-between items-center">
                     <Link href="/" className="flex items-center gap-2 text-white" onClick={closeMenu}>
                         <Image
                             src="/images/logo.png"
                             alt="PAC Salug Campus logo"
-                            width={48}   // intrinsic size for crisper rendering on retina
+                            width={48}
                             height={48}
                             priority
                             className="h-10 w-10 object-contain"
@@ -57,11 +58,7 @@ export function SiteHeader() {
                         <Button
                             asChild
                             variant="ghost"
-                            className={cn(
-                                "text-white border-white bg-transparent hover:bg-white/10",
-                                navBtnBase,
-                                "data-[active=true]:border-white/60"
-                            )}
+                            className={cn("text-white border-white bg-transparent hover:bg-white/10", navBtnBase, "data-[active=true]:border-white/60")}
                             data-active={isActive("/contact")}
                         >
                             <Link href="/contact" aria-current={isActive("/contact") ? "page" : undefined}>
@@ -73,11 +70,11 @@ export function SiteHeader() {
                             asChild
                             className={cn(
                                 "bg-gradient-to-r text-white from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600",
-                                isActive("/auth") && "ring-2 ring-white/30"
+                                isActive("/auth") && !isAuthed && "ring-2 ring-white/30"
                             )}
                         >
-                            <Link href="/auth" aria-current={isActive("/auth") ? "page" : undefined}>
-                                Login
+                            <Link href={isAuthed ? dashboardHref : "/auth"} aria-current={!isAuthed && isActive("/auth") ? "page" : undefined}>
+                                {loading ? "…" : isAuthed ? "Dashboard" : "Login"}
                             </Link>
                         </Button>
                     </nav>
@@ -136,9 +133,12 @@ export function SiteHeader() {
                             </Link>
                         </Button>
 
-                        <Button className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 w-full" asChild>
-                            <Link href="/auth" onClick={closeMenu} className="w-full text-center">
-                                Login
+                        <Button
+                            className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 w-full"
+                            asChild
+                        >
+                            <Link href={isAuthed ? dashboardHref : "/auth"} onClick={closeMenu} className="w-full text-center">
+                                {loading ? "…" : isAuthed ? "Dashboard" : "Login"}
                             </Link>
                         </Button>
                     </div>

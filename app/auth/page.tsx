@@ -2,7 +2,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -19,9 +19,9 @@ import {
     ID,
     Permission,
     Role,
-    redirectIfActiveStudent,
     isStudentIdAvailable,
 } from "@/lib/appwrite"
+import { getOrCreateUserRole, roleToDashboard } from "@/lib/appwrite"
 import { Select, SelectTrigger, SelectContent, SelectItem } from "@/components/ui/select"
 import { useAuth } from "@/components/auth/auth-provider"
 
@@ -49,6 +49,18 @@ type AccountType = "student" | "other"
 
 const REMEMBER_FLAG_KEY = "pac-auth:remember"
 const REMEMBER_EMAIL_KEY = "pac-auth:rememberEmail"
+
+function sanitizeRedirect(raw: string | null | undefined): string | null {
+    if (!raw) return null
+    try {
+        const url = decodeURIComponent(raw)
+        if (!url.startsWith("/")) return null
+        if (url.startsWith("/auth")) return null
+        return url
+    } catch {
+        return null
+    }
+}
 
 async function ensureUserDoc(
     userId: string,
@@ -107,10 +119,12 @@ export default function LoginPage() {
 
     const searchParams = useSearchParams()
     const router = useRouter()
-    const redirect = searchParams.get("redirect")
-
     const { login } = useAuth()
 
+    const redirectParam = sanitizeRedirect(searchParams.get("redirect") || searchParams.get("next"))
+    const bootRedirectedRef = useRef(false)
+
+    // preload remembered email
     useEffect(() => {
         try {
             const remembered = localStorage.getItem(REMEMBER_FLAG_KEY) === "1"
@@ -119,26 +133,30 @@ export default function LoginPage() {
                 setEmail(savedEmail)
                 setRememberMe(true)
             }
-        } catch {
-            /* ignore */
-        }
+        } catch { }
     }, [])
 
+    // Single, safe redirect if already logged in
     useEffect(() => {
-        ; (async () => {
-            try {
-                const me = await getAccount().get()
-                if (!me.emailVerification) {
-                    const qs = `?email=${encodeURIComponent(me.email)}&needsVerification=1`
-                    router.replace(`/auth/verify-email${qs}`)
-                    return
+        if (bootRedirectedRef.current) return
+            ; (async () => {
+                try {
+                    const me = await getAccount().get()
+                    if (!me.emailVerification) {
+                        const qs = `?email=${encodeURIComponent(me.email)}&needsVerification=1`
+                        router.replace(`/auth/verify-email${qs}`)
+                        bootRedirectedRef.current = true
+                        return
+                    }
+                    const role = await getOrCreateUserRole(me.$id, me.email, me.name)
+                    const dest = redirectParam || roleToDashboard(role)
+                    router.replace(dest)
+                    bootRedirectedRef.current = true
+                } catch {
+                    // not logged in – render login normally
                 }
-                await redirectIfActiveStudent("/dashboard")
-            } catch {
-                /* no active session */
-            }
-        })()
-    }, [router])
+            })()
+    }, [redirectParam, router])
 
     const handleRememberToggle: React.ChangeEventHandler<HTMLInputElement> = (e) => {
         const checked = e.currentTarget.checked
@@ -151,9 +169,7 @@ export default function LoginPage() {
                 localStorage.removeItem(REMEMBER_FLAG_KEY)
                 localStorage.removeItem(REMEMBER_EMAIL_KEY)
             }
-        } catch {
-            /* ignore */
-        }
+        } catch { }
     }
 
     const handleEmailChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
@@ -162,9 +178,7 @@ export default function LoginPage() {
         if (rememberMe) {
             try {
                 localStorage.setItem(REMEMBER_EMAIL_KEY, value)
-            } catch {
-                /* ignore */
-            }
+            } catch { }
         }
     }
 
@@ -173,7 +187,8 @@ export default function LoginPage() {
         setError("")
         setIsLoading(true)
         try {
-            const target = redirect ? decodeURIComponent(redirect) : "/dashboard"
+            // Prefer sanitized redirect target if present
+            const target = redirectParam ?? "/dashboard"
             await login(email, password, target)
 
             try {
@@ -184,9 +199,7 @@ export default function LoginPage() {
                     localStorage.removeItem(REMEMBER_FLAG_KEY)
                     localStorage.removeItem(REMEMBER_EMAIL_KEY)
                 }
-            } catch {
-                /* ignore */
-            }
+            } catch { }
         } catch (err: any) {
             setError(err?.message ?? "Invalid email or password. Please try again.")
         } finally {
@@ -217,7 +230,7 @@ export default function LoginPage() {
         try {
             const account = getAccount()
 
-            // --- Student fields are REQUIRED for student accounts ---
+            // Required for student accounts
             const trimmedStudentId = studentId.trim()
             if (accountType === "student") {
                 if (!trimmedStudentId) {
@@ -239,9 +252,7 @@ export default function LoginPage() {
                         setRegError("That Student ID is already in use. Please double-check and try another.")
                         return
                     }
-                } catch {
-                    /* best-effort check */
-                }
+                } catch { }
             }
 
             // Create account
@@ -259,7 +270,7 @@ export default function LoginPage() {
             // Auto-login
             await account.createEmailPasswordSession(regEmail, regPassword)
 
-            // Create/ensure user doc
+            // Ensure user doc
             const me = await account.get()
             try {
                 await ensureUserDoc(
@@ -291,11 +302,10 @@ export default function LoginPage() {
             const verifyCallbackUrl = `${origin}/auth/verify-email/callback`
             try {
                 await account.createVerification(verifyCallbackUrl)
-            } catch (e) {
-                console.warn("createVerification failed:", e)
-            }
+            } catch { }
 
-            router.push(`/auth/verify-email?email=${encodeURIComponent(regEmail)}&justRegistered=1`)
+            // Go to verify page
+            router.replace(`/auth/verify-email?email=${encodeURIComponent(regEmail)}&justRegistered=1`)
         } catch (err: any) {
             setRegError(err?.message ?? "Failed to register. Please try again.")
         } finally {

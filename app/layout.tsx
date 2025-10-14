@@ -2,6 +2,7 @@ import type React from "react"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { Providers } from "@/providers"
+import { RbacGate } from "@/lib/appwrite-rbac"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -18,7 +19,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <Providers>{children}</Providers>
+        <Providers>
+          <RbacGate>{children}</RbacGate>
+        </Providers>
       </body>
     </html>
   )

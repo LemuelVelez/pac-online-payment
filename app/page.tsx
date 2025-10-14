@@ -1,13 +1,24 @@
+"use client"
+
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link"
+import { useEffect, useState } from "react"
 import { ArrowRight, CreditCard, ShieldCheck, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { MainLayout } from "@/components/layout/main-layout"
 import { SectionHeading } from "@/components/ui/section-heading"
 import { FeatureCard } from "@/components/ui/feature-card"
 import { StepItem } from "@/components/ui/step-item"
+import { useSessionRole } from "@/lib/appwrite-rbac"
 
 export default function Home() {
+  const { loading, user, dashboardHref } = useSessionRole()
+  const [isAuthed, setIsAuthed] = useState(false)
+
+  useEffect(() => {
+    if (!loading) setIsAuthed(!!user)
+  }, [loading, user])
+
   return (
     <MainLayout>
       <div className="container mx-auto px-4 py-12">
@@ -15,15 +26,24 @@ export default function Home() {
           <div className="flex-1">
             <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
               Pay Your Fees{" "}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">Online</span>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">
+                Online
+              </span>
             </h2>
             <p className="text-gray-300 text-lg mb-8">
               A secure and convenient way to pay your tuition and other fees online. No more queues, no more waiting.
             </p>
             <div className="flex">
-              <Button className="text-white bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8 py-6 text-lg">
-                <Link href="/auth">Get Started</Link>
-              </Button>
+              {!isAuthed && (
+                <Button className="text-white bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8 py-6 text-lg">
+                  <Link href="/auth">Get Started</Link>
+                </Button>
+              )}
+              {isAuthed && (
+                <Button className="text-white bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8 py-6 text-lg">
+                  <Link href={dashboardHref}>Go to Dashboard</Link>
+                </Button>
+              )}
             </div>
           </div>
           <div className="flex-1">
@@ -80,7 +100,9 @@ export default function Home() {
               description="Join hundreds of students who are already enjoying the convenience of our online payment system."
             />
             <Button className="text-white bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8 py-6 text-lg">
-              <Link href="/auth">Login Now</Link>
+              <Link href={isAuthed ? dashboardHref : "/auth"}>
+                {isAuthed ? "Go to Dashboard" : "Login Now"}
+              </Link>
               <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
           </div>
