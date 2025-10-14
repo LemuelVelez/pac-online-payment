@@ -77,7 +77,7 @@ export default function ForgotPasswordPage() {
                             {success ? (
                                 <Alert className="mb-4 bg-green-500/20 border-green-500/50 text-green-200">
                                     <AlertDescription>
-                                        Password reset link has been sent to your email. Please check your inbox.
+                                        Password reset link has been sent to your email. Please check your inbox or spam folder.
                                     </AlertDescription>
                                 </Alert>
                             ) : (

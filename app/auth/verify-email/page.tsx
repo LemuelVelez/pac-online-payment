@@ -253,7 +253,7 @@ export default function VerifyEmailPage() {
                                         <span>Your email ({email}) is not verified.</span>
                                     </div>
                                     <p className="text-sm text-gray-300">
-                                        Click the button below and follow the link in your inbox to complete verification.
+                                        Click the button below and follow the link in your inbox or spam folder to complete verification.
                                     </p>
                                 </div>
                             )}
