@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useMemo, useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { StatCard } from "@/components/dashboard/stat-card"
@@ -7,55 +8,52 @@ import { CreditCard, DollarSign, Receipt, Users, TrendingUp, Clock } from "lucid
 import { PaymentChart } from "@/components/dashboard/payment-chart"
 import { TransactionItem } from "@/components/dashboard/transaction-item"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { listTodayPayments, paymentsToHourlySeries } from "@/lib/appwrite-cashier"
+import type { PaymentDoc } from "@/lib/appwrite-payments"
+
+type ChartPoint = { month: string; amount: number }
 
 export default function CashierDashboardPage() {
-  // Mock data for daily transactions
-  const dailyTransactions = [
-    { month: "6AM", amount: 5000 },
-    { month: "8AM", amount: 12000 },
-    { month: "10AM", amount: 25000 },
-    { month: "12PM", amount: 18000 },
-    { month: "2PM", amount: 32000 },
-    { month: "4PM", amount: 28000 },
-    { month: "6PM", amount: 15000 },
-    { month: "8PM", amount: 0 },
-  ]
+  const [loading, setLoading] = useState(true)
+  const [today, setToday] = useState<PaymentDoc[]>([])
 
-  // Recent transactions
-  const recentTransactions = [
-    {
-      icon: CreditCard,
-      iconColor: "text-green-500",
-      iconBgColor: "bg-green-500/20",
-      title: "Tuition Payment",
-      date: "John Smith - 5 mins ago",
-      amount: "₱25,000",
-      status: "Completed",
-      statusColor: "text-green-500 text-sm",
-    },
-    {
-      icon: Receipt,
-      iconColor: "text-blue-500",
-      iconBgColor: "bg-blue-500/20",
-      title: "Laboratory Fee",
-      date: "Maria Garcia - 15 mins ago",
-      amount: "₱5,000",
-      status: "Processing",
-      statusColor: "text-blue-500 text-sm",
-    },
-    {
-      icon: CreditCard,
-      iconColor: "text-green-500",
-      iconBgColor: "bg-green-500/20",
-      title: "Miscellaneous Fee",
-      date: "Robert Chen - 1 hour ago",
-      amount: "₱3,500",
-      status: "Completed",
-      statusColor: "text-green-500 text-sm",
-    },
-  ]
+  useEffect(() => {
+    ; (async () => {
+      setLoading(true)
+      try {
+        const docs = await listTodayPayments()
+        setToday(docs)
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [])
+
+  const totals = useMemo(() => {
+    let collected = 0
+    let count = 0
+    let pending = 0
+    const users = new Set<string>()
+    for (const p of today) {
+      users.add(p.userId)
+      count++
+      if (p.status === "Pending") pending++
+      if (p.status === "Completed" || p.status === "Succeeded") {
+        collected += Number(p.amount) || 0
+      }
+    }
+    return { collected, count, pending, students: users.size }
+  }, [today])
+
+  // Map hourly series to the shape expected by <PaymentChart />
+  const chartData = useMemo<ChartPoint[]>(
+    () =>
+      paymentsToHourlySeries(today).map((d) => ({
+        month: d.label, // e.g. "09:00"
+        amount: d.amount,
+      })),
+    [today]
+  )
 
   return (
     <DashboardLayout allowedRoles={["cashier"]}>
@@ -65,72 +63,46 @@ export default function CashierDashboardPage() {
           <p className="text-gray-300">Process payments and manage transactions</p>
         </div>
 
-        {/* Quick Actions */}
-        <Card className="mb-8 bg-slate-800/60 border-slate-700 text-white">
-          <CardHeader>
-            <CardTitle>Quick Payment Processing</CardTitle>
-            <CardDescription className="text-gray-300">Process a new payment quickly</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <div className="space-y-2">
-                <Label htmlFor="student-id">Student ID</Label>
-                <Input id="student-id" placeholder="Enter student ID" className="bg-slate-700 border-slate-600" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="amount">Amount (₱)</Label>
-                <Input id="amount" type="number" placeholder="Enter amount" className="bg-slate-700 border-slate-600" />
-              </div>
-              <div className="space-y-2">
-                <Label>&nbsp;</Label>
-                <Button className="w-full bg-primary hover:bg-primary/90">Process Payment</Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Stats Grid */}
         <div className="grid grid-cols-1 gap-6 mb-8 md:grid-cols-2 lg:grid-cols-4">
           <StatCard
             title="Today's Collections"
-            value="₱135,000"
+            value={`₱${totals.collected.toLocaleString()}`}
             icon={DollarSign}
             iconColor="text-green-500"
             iconBgColor="bg-green-500/20"
             footer={
               <div className="flex items-center text-green-500 text-sm">
                 <TrendingUp className="h-4 w-4 mr-1" />
-                <span>8% from yesterday</span>
+                <span>{totals.pending} pending</span>
               </div>
             }
           />
           <StatCard
             title="Transactions Today"
-            value="47"
+            value={String(totals.count)}
             icon={Receipt}
             iconColor="text-blue-500"
             iconBgColor="bg-blue-500/20"
-            footer={<p className="text-gray-400 text-sm">12 pending</p>}
+            footer={<p className="text-gray-400 text-sm">{totals.pending} require verification</p>}
           />
           <StatCard
             title="Students Served"
-            value="42"
+            value={String(totals.students)}
             icon={Users}
             iconColor="text-purple-500"
             iconBgColor="bg-purple-500/20"
-            footer={<p className="text-gray-400 text-sm">5 in queue</p>}
+            footer={<p className="text-gray-400 text-sm">unique payers</p>}
           />
           <StatCard
             title="Avg. Processing Time"
-            value="3.5 min"
+            value="—"
             icon={Clock}
             iconColor="text-yellow-500"
             iconBgColor="bg-yellow-500/20"
-            footer={<p className="text-gray-400 text-sm">Target: 5 min</p>}
+            footer={<p className="text-gray-400 text-sm">coming soon</p>}
           />
         </div>
 
-        {/* Charts and Recent Transactions */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card className="bg-slate-800/60 border-slate-700 text-white">
             <CardHeader>
@@ -139,7 +111,7 @@ export default function CashierDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="h-80">
-                <PaymentChart data={dailyTransactions} />
+                <PaymentChart data={chartData} />
               </div>
             </CardContent>
           </Card>
@@ -156,9 +128,25 @@ export default function CashierDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {recentTransactions.map((transaction, index) => (
-                  <TransactionItem key={index} {...transaction} />
-                ))}
+                {loading ? (
+                  <div className="text-gray-400">Loading…</div>
+                ) : today.length === 0 ? (
+                  <div className="text-gray-400">No transactions today.</div>
+                ) : (
+                  today.slice(0, 8).map((p) => (
+                    <TransactionItem
+                      key={p.$id}
+                      icon={p.method === "credit-card" ? CreditCard : Receipt}
+                      iconColor={p.status === "Completed" ? "text-green-500" : "text-blue-500"}
+                      iconBgColor={p.status === "Completed" ? "bg-green-500/20" : "bg-blue-500/20"}
+                      title={Array.isArray(p.fees) && p.fees.length ? `${p.fees.join(", ")} Fee` : "Payment"}
+                      date={`${new Date(p.$createdAt).toLocaleString()}`}
+                      amount={`₱${Number(p.amount || 0).toLocaleString()}`}
+                      status={p.status}
+                      statusColor={p.status === "Completed" ? "text-green-500 text-sm" : "text-blue-500 text-sm"}
+                    />
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
