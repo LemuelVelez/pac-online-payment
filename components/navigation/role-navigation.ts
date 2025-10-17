@@ -25,6 +25,7 @@ export const navigationConfig = {
   admin: [
     { name: "Dashboard", href: "/admin/dashboard", icon: Home },
     { name: "Users", href: "/admin/users", icon: Users },
+    { name: "Fee Plans", href: "/admin/fee-plans", icon: Calculator },
     { name: "Reports", href: "/admin/reports", icon: FileText },
     { name: "Analytics", href: "/admin/analytics", icon: BarChart4 },
     { name: "Settings", href: "/admin/settings", icon: Settings },

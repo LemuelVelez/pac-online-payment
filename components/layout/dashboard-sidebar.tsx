@@ -1,7 +1,9 @@
+// components/layout/dashboard-sidebar.tsx
 /* eslint-disable react-hooks/exhaustive-deps */
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { LogOut, Power, Loader2 } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
@@ -30,45 +32,34 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
     const sidebarRef = useRef<HTMLDivElement>(null)
     const { user, logout } = useAuth()
 
-    // Loading + dialog control states
     const [isLoggingOut, setIsLoggingOut] = useState(false)
     const [isLoggingOutAll, setIsLoggingOutAll] = useState(false)
     const [confirmLogoutOpen, setConfirmLogoutOpen] = useState(false)
     const [confirmLogoutAllOpen, setConfirmLogoutAllOpen] = useState(false)
 
-    // Get navigation items based on user role
     const navigation = user?.role ? navigationConfig[user.role] || [] : []
     const displayName = user?.role ? roleDisplayNames[user.role] : "PAC Payment"
 
-    // Sync internal state with prop
     useEffect(() => {
         if (isOpen !== undefined) {
             setIsMobileMenuOpen(isOpen)
         }
     }, [isOpen])
 
-    // Handle close with callback
     const handleClose = () => {
         setIsMobileMenuOpen(false)
-        if (onClose) {
-            onClose()
-        }
+        if (onClose) onClose()
     }
 
-    // Handle click outside to close sidebar
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (isMobileMenuOpen && sidebarRef.current && !sidebarRef.current.contains(event.target as Node)) {
                 handleClose()
             }
         }
-
-        // Add event listener when sidebar is open
         if (isMobileMenuOpen) {
             document.addEventListener("mousedown", handleClickOutside)
         }
-
-        // Cleanup event listener
         return () => {
             document.removeEventListener("mousedown", handleClickOutside)
         }
@@ -98,9 +89,14 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                 <div className="flex h-full flex-col">
                     <div className="flex h-[65px] items-center border-b border-gray-200 px-6 dark:border-gray-800">
                         <Link href={navigation[0]?.href || "/"} className="flex items-center">
-                            <div className="h-8 w-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-lg mr-2">
-                                P
-                            </div>
+                            <Image
+                                src="/images/logo.png"
+                                alt="App Logo"
+                                width={32}
+                                height={32}
+                                className="mr-2 h-8 w-8 rounded-md object-contain"
+                                priority
+                            />
                             <span className="text-xl font-bold text-primary">{displayName}</span>
                         </Link>
                     </div>
@@ -154,10 +150,7 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                                     </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                    <AlertDialogCancel
-                                        className="bg-slate-800 text-white border-slate-700"
-                                        disabled={isLoggingOutAll}
-                                    >
+                                    <AlertDialogCancel className="bg-slate-800 text-white border-slate-700" disabled={isLoggingOutAll}>
                                         Cancel
                                     </AlertDialogCancel>
                                     <AlertDialogAction
@@ -206,10 +199,7 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                                     </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                    <AlertDialogCancel
-                                        className="bg-slate-800 text-white border-slate-700"
-                                        disabled={isLoggingOut}
-                                    >
+                                    <AlertDialogCancel className="bg-slate-800 text-white border-slate-700" disabled={isLoggingOut}>
                                         Cancel
                                     </AlertDialogCancel>
                                     <AlertDialogAction
@@ -246,9 +236,14 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                 <div className="flex h-full flex-col">
                     <div className="flex h-16 items-center border-b border-gray-200 px-6 dark:border-gray-800">
                         <Link href={navigation[0]?.href || "/"} className="flex items-center">
-                            <div className="h-8 w-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-lg mr-2">
-                                P
-                            </div>
+                            <Image
+                                src="/images/logo.png"
+                                alt="App Logo"
+                                width={32}
+                                height={32}
+                                className="mr-2 h-8 w-8 rounded-md object-contain"
+                                priority
+                            />
                             <span className="text-xl font-bold text-primary">{displayName}</span>
                         </Link>
                     </div>
@@ -302,10 +297,7 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                                     </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                    <AlertDialogCancel
-                                        className="bg-slate-800 text-white border-slate-700"
-                                        disabled={isLoggingOutAll}
-                                    >
+                                    <AlertDialogCancel className="bg-slate-800 text-white border-slate-700" disabled={isLoggingOutAll}>
                                         Cancel
                                     </AlertDialogCancel>
                                     <AlertDialogAction
@@ -354,10 +346,7 @@ export function DashboardSidebar({ isOpen, onClose }: DashboardSidebarProps) {
                                     </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                    <AlertDialogCancel
-                                        className="bg-slate-800 text-white border-slate-700"
-                                        disabled={isLoggingOut}
-                                    >
+                                    <AlertDialogCancel className="bg-slate-800 text-white border-slate-700" disabled={isLoggingOut}>
                                         Cancel
                                     </AlertDialogCancel>
                                     <AlertDialogAction
