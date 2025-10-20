@@ -102,7 +102,7 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
             <DropdownMenuTrigger asChild>
               <Avatar className="h-8 w-8 cursor-pointer border border-slate-600">
-                <AvatarImage src={user?.avatar || "/placeholder.svg"} alt={user?.name} />
+                <AvatarImage src={user?.avatar || ""} alt={user?.name} />
                 <AvatarFallback className="bg-slate-700 text-white">
                   {user?.name?.split(" ").map((n) => n[0]).join("") || "U"}
                 </AvatarFallback>

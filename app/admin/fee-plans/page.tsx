@@ -1,7 +1,8 @@
-// app\admin\fee-plans\page.tsx
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import {
     ColumnDef,
     ColumnFiltersState,
@@ -15,7 +16,6 @@ import {
     VisibilityState,
 } from "@tanstack/react-table"
 import { ArrowUpDown, ChevronDown, Copy, Edit, Eye, MoreHorizontal, Plus, Trash2, X } from "lucide-react"
-
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -46,13 +46,12 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Item, ItemContent, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { Spinner } from "@/components/ui/spinner"
-
-/* =========================================================
-   Types & Helpers
-========================================================= */
+import type { FeePlanDoc, FeePlanRecord } from "@/lib/fee-plan"
+import { computeTotals, createFeePlan, deleteFeePlan, duplicateFeePlan, listAllFeePlans, updateFeePlan } from "@/lib/fee-plan"
 
 type FeeItem = { id: string; name: string; amount: number }
-type FeePlan = {
+
+type FeePlanVM = {
     id: string
     program: string
     units: number
@@ -61,6 +60,7 @@ type FeePlan = {
     feeItems: FeeItem[]
     createdAt: string
     updatedAt: string
+    isActive?: boolean
 }
 
 type PlanRow = {
@@ -73,75 +73,22 @@ type PlanRow = {
     others: number
     total: number
     updatedAt: string
-    _plan: FeePlan
+    _plan: FeePlanVM
 }
 
-const LS_KEY = "admin-fee-plans"
+const php = (n: number) => `₱${(isNaN(n) ? 0 : n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-const php = (n: number) =>
-    `₱${(isNaN(n) ? 0 : n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-
-function calcTotals(plan: FeePlan) {
-    const tuition = plan.units * plan.tuitionPerUnit
-    const others = plan.feeItems.reduce((s, f) => s + (Number.isFinite(f.amount) ? f.amount : 0), 0)
-    const total = plan.registrationFee + tuition + others
-    return { tuition, others, total }
-}
-
-function uid() {
-    if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID()
-    return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
-}
-
-function loadInitial(): FeePlan[] {
-    try {
-        const raw = localStorage.getItem(LS_KEY)
-        if (raw) return JSON.parse(raw) as FeePlan[]
-    } catch { }
-    const now = new Date().toISOString()
-    return [
-        {
-            id: uid(),
-            program: "BS Program (24 Units)",
-            units: 24,
-            tuitionPerUnit: 206.0,
-            registrationFee: 1000,
-            feeItems: [
-                { id: uid(), name: "Passbook", amount: 52.55 },
-                { id: uid(), name: "Library Fee", amount: 157.65 },
-                { id: uid(), name: "Development Fee", amount: 157.65 },
-                { id: uid(), name: "Laboratory Fee", amount: 1260.6 },
-                { id: uid(), name: "Student Association", amount: 210.2 },
-                { id: uid(), name: "Medical Fee", amount: 656.88 },
-                { id: uid(), name: "Others School Fees", amount: 3605.44 },
-            ],
-            createdAt: now,
-            updatedAt: now,
-        },
-        {
-            id: uid(),
-            program: "BS Program (18 Units)",
-            units: 18,
-            tuitionPerUnit: 206.0,
-            registrationFee: 1000,
-            feeItems: [
-                { id: uid(), name: "Passbook", amount: 52.55 },
-                { id: uid(), name: "Library Fee", amount: 157.65 },
-                { id: uid(), name: "Development Fee", amount: 157.65 },
-                { id: uid(), name: "Laboratory Fee", amount: 630.6 },
-                { id: uid(), name: "Student Association", amount: 210.2 },
-                { id: uid(), name: "Medical Fee", amount: 656.88 },
-                { id: uid(), name: "Others School Fees", amount: 3605.44 },
-            ],
-            createdAt: now,
-            updatedAt: now,
-        },
-    ]
-}
-
-/* =========================================================
-   Generic DataTable Shell (shadcn pattern)
-========================================================= */
+const toVM = (doc: FeePlanDoc): FeePlanVM => ({
+    id: doc.$id,
+    program: doc.program,
+    units: Number(doc.units || 0),
+    tuitionPerUnit: Number(doc.tuitionPerUnit || 0),
+    registrationFee: Number(doc.registrationFee || 0),
+    feeItems: (doc.feeItems ?? []).map((f) => ({ id: f.id, name: f.name, amount: Number(f.amount || 0) })),
+    createdAt: doc.createdAt || doc.$createdAt,
+    updatedAt: doc.updatedAt || doc.$updatedAt,
+    isActive: doc.isActive,
+})
 
 type DataTableShellProps<TData, TValue> = {
     columns: ColumnDef<TData, TValue>[]
@@ -149,15 +96,10 @@ type DataTableShellProps<TData, TValue> = {
     filterColumnId?: string
     filterPlaceholder?: string
     className?: string
+    getRowId?: (originalRow: TData, index: number, parent?: any) => string
 }
 
-function DataTableShell<TData, TValue>({
-    columns,
-    data,
-    filterColumnId,
-    filterPlaceholder = "Filter...",
-    className,
-}: DataTableShellProps<TData, TValue>) {
+function DataTableShell<TData, TValue>({ columns, data, filterColumnId, filterPlaceholder = "Filter...", className, getRowId }: DataTableShellProps<TData, TValue>) {
     const [sorting, setSorting] = useState<SortingState>([])
     const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
     const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
@@ -166,6 +108,7 @@ function DataTableShell<TData, TValue>({
     const table = useReactTable({
         data,
         columns,
+        ...(getRowId ? { getRowId } : {}),
         onSortingChange: setSorting,
         onColumnFiltersChange: setColumnFilters,
         getCoreRowModel: getCoreRowModel(),
@@ -274,97 +217,159 @@ function DataTableShell<TData, TValue>({
     )
 }
 
-/* =========================================================
-   Page
-========================================================= */
+type FieldErrors = Partial<Record<"program" | "units" | "tuitionPerUnit" | "registrationFee", string>>
+
+function validateRequired(w: FeePlanVM | null): FieldErrors {
+    const e: FieldErrors = {}
+    if (!w) return e
+    if (!w.program || !w.program.trim()) e.program = "Program / Course is required."
+    if (!Number.isFinite(w.units) || w.units < 1) e.units = "Units is required (min 1)."
+    if (!Number.isFinite(w.tuitionPerUnit) || w.tuitionPerUnit < 0) e.tuitionPerUnit = "Tuition Per Unit is required (≥ 0)."
+    if (!Number.isFinite(w.registrationFee) || w.registrationFee < 0) e.registrationFee = "Registration Fee is required (≥ 0)."
+    return e
+}
+
+function hasErrors(e: FieldErrors) {
+    return Object.keys(e).length > 0
+}
+
+function errorInputClass(err?: string) {
+    return err ? "border-red-500 focus-visible:ring-red-500" : "border-slate-600"
+}
 
 export default function AdminFeePlansPage() {
-    const [plans, setPlans] = useState<FeePlan[]>([])
+    const [plans, setPlans] = useState<FeePlanVM[]>([])
+    const [loading, setLoading] = useState(true)
     const [dialogOpen, setDialogOpen] = useState(false)
     const [mode, setMode] = useState<"create" | "edit">("create")
-    const [working, setWorking] = useState<FeePlan | null>(null)
-    const [viewPlan, setViewPlan] = useState<FeePlan | null>(null)
-
-    // confirmation + loading states for actions
-    const [confirm, setConfirm] = useState<{ type: "duplicate" | "delete"; plan: FeePlan } | null>(null)
+    const [working, setWorking] = useState<FeePlanVM | null>(null)
+    const [viewPlan, setViewPlan] = useState<FeePlanVM | null>(null)
+    const [confirm, setConfirm] = useState<{ type: "duplicate" | "delete"; plan: FeePlanVM } | null>(null)
     const [busy, setBusy] = useState<string | null>(null)
-
-    // optional loading for save
     const [saving, setSaving] = useState(false)
+    const [errors, setErrors] = useState<FieldErrors>({})
+    const [focusItemId, setFocusItemId] = useState<string | null>(null)
+    const focusItemIdRef = useRef<string | null>(null)
 
     useEffect(() => {
-        setPlans(loadInitial())
+        focusItemIdRef.current = focusItemId
+    }, [focusItemId])
+
+    useEffect(() => {
+        let mounted = true
+            ; (async () => {
+                try {
+                    const docs = await listAllFeePlans()
+                    if (!mounted) return
+                    setPlans(docs.map(toVM))
+                } finally {
+                    if (mounted) setLoading(false)
+                }
+            })()
+        return () => {
+            mounted = false
+        }
     }, [])
 
     useEffect(() => {
-        try {
-            localStorage.setItem(LS_KEY, JSON.stringify(plans))
-        } catch { }
-    }, [plans])
+        setErrors(validateRequired(working))
+    }, [working?.program, working?.units, working?.tuitionPerUnit, working?.registrationFee])
 
     const openCreate = () => {
-        const now = new Date().toISOString()
+        const iso = new Date().toISOString()
         setWorking({
-            id: uid(),
+            id: "__new__",
             program: "",
             units: 0,
             tuitionPerUnit: 0,
             registrationFee: 0,
             feeItems: [],
-            createdAt: now,
-            updatedAt: now,
+            createdAt: iso,
+            updatedAt: iso,
+            isActive: true,
         })
         setMode("create")
         setDialogOpen(true)
+        setErrors({})
     }
 
-    const openEdit = (plan: FeePlan) => {
+    const openEdit = (plan: FeePlanVM) => {
         setWorking(JSON.parse(JSON.stringify(plan)))
         setMode("edit")
         setDialogOpen(true)
+        setErrors(validateRequired(plan))
     }
 
-    const duplicatePlan = (plan: FeePlan) => {
-        const copy: FeePlan = {
-            ...plan,
-            id: uid(),
-            program: `${plan.program} (Copy)`,
-            feeItems: plan.feeItems.map((f) => ({ ...f, id: uid() })),
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-        }
-        setPlans((p) => [copy, ...p])
-    }
+    const removePlanLocal = (id: string) => setPlans((p) => p.filter((x) => x.id !== id))
 
-    const removePlan = (id: string) => setPlans((p) => p.filter((x) => x.id !== id))
-
-    const saveWorking = () => {
+    const saveWorking = async () => {
         if (!working) return
+        const currentErrors = validateRequired(working)
+        setErrors(currentErrors)
+        if (hasErrors(currentErrors)) return
         setSaving(true)
-        const cleaned: FeePlan = {
-            ...working,
-            program: working.program.trim() || "Untitled Fee Plan",
-            units: Number(working.units) || 0,
-            tuitionPerUnit: Number(working.tuitionPerUnit) || 0,
-            registrationFee: Number(working.registrationFee) || 0,
-            feeItems: working.feeItems.map((f) => ({
-                ...f,
-                name: f.name.trim() || "Misc. Fee",
-                amount: Number(f.amount) || 0,
-            })),
-            updatedAt: new Date().toISOString(),
+        try {
+            if (mode === "create") {
+                const payload: Omit<FeePlanRecord, "createdAt" | "updatedAt"> = {
+                    program: working.program.trim(),
+                    units: working.units,
+                    tuitionPerUnit: working.tuitionPerUnit,
+                    registrationFee: working.registrationFee,
+                    feeItems: working.feeItems,
+                    isActive: working.isActive ?? true,
+                }
+                const created = await createFeePlan(payload)
+                const vm = toVM(created)
+                setPlans((p) => [vm, ...p])
+            } else {
+                const patch: Partial<FeePlanRecord> = {
+                    program: working.program.trim(),
+                    units: working.units,
+                    tuitionPerUnit: working.tuitionPerUnit,
+                    registrationFee: working.registrationFee,
+                    feeItems: working.feeItems,
+                    isActive: working.isActive,
+                }
+                const updated = await updateFeePlan(working.id, patch)
+                const vm = toVM(updated)
+                setPlans((p) => p.map((x) => (x.id === vm.id ? vm : x)))
+            }
+            setDialogOpen(false)
+        } finally {
+            setSaving(false)
         }
-        setPlans((p) => (mode === "create" ? [cleaned, ...p] : p.map((x) => (x.id === cleaned.id ? cleaned : x))))
-        setSaving(false)
-        setDialogOpen(false)
     }
 
-    /* ---------- Plans table ---------- */
+    const handleDuplicate = async (plan: FeePlanVM) => {
+        setBusy("Duplicating fee plan...")
+        try {
+            const created = await duplicateFeePlan(plan.id)
+            const vm = toVM(created)
+            setPlans((p) => [vm, ...p])
+        } finally {
+            setBusy(null)
+        }
+    }
+
+    const handleDelete = async (plan: FeePlanVM) => {
+        setBusy("Deleting fee plan...")
+        try {
+            await deleteFeePlan(plan.id)
+            removePlanLocal(plan.id)
+        } finally {
+            setBusy(null)
+        }
+    }
 
     const planRows: PlanRow[] = useMemo(
         () =>
             plans.map((p) => {
-                const { tuition, others, total } = calcTotals(p)
+                const { tuition, others, total } = computeTotals({
+                    units: p.units,
+                    tuitionPerUnit: p.tuitionPerUnit,
+                    registrationFee: p.registrationFee,
+                    feeItems: p.feeItems,
+                })
                 return {
                     id: p.id,
                     program: p.program,
@@ -378,7 +383,7 @@ export default function AdminFeePlansPage() {
                     _plan: p,
                 }
             }),
-        [plans],
+        [plans]
     )
 
     const planColumns: ColumnDef<PlanRow>[] = [
@@ -393,9 +398,13 @@ export default function AdminFeePlansPage() {
             cell: ({ row }) => {
                 const prog = row.getValue("program") as string
                 const updatedAt = row.original.updatedAt
+                const active = row.original._plan.isActive ?? true
                 return (
                     <div className="flex flex-col">
-                        <span className="font-medium">{prog}</span>
+                        <div className="flex items-center gap-2">
+                            <span className="font-medium">{prog}</span>
+                            {!active && <Badge variant="secondary">Inactive</Badge>}
+                        </div>
                         <span className="text-xs text-gray-400">Updated {new Date(updatedAt).toLocaleString()}</span>
                     </div>
                 )
@@ -447,26 +456,16 @@ export default function AdminFeePlansPage() {
                                 <Edit className="mr-2 h-4 w-4" />
                                 Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem
-                                onClick={() => {
-                                    navigator.clipboard.writeText(plan.id)
-                                }}
-                            >
+                            <DropdownMenuItem onClick={() => navigator.clipboard.writeText(plan.id)}>
                                 <Copy className="mr-2 h-4 w-4" />
                                 Copy plan ID
                             </DropdownMenuItem>
                             <DropdownMenuSeparator className="bg-slate-700" />
-                            <DropdownMenuItem
-                                onClick={() => setConfirm({ type: "duplicate", plan })}
-                                className="text-blue-300 focus:text-blue-200"
-                            >
+                            <DropdownMenuItem onClick={() => setConfirm({ type: "duplicate", plan })} className="text-blue-300 focus:text-blue-200">
                                 <Copy className="mr-2 h-4 w-4" />
                                 Duplicate…
                             </DropdownMenuItem>
-                            <DropdownMenuItem
-                                onClick={() => setConfirm({ type: "delete", plan })}
-                                className="text-red-400 focus:text-red-300"
-                            >
+                            <DropdownMenuItem onClick={() => setConfirm({ type: "delete", plan })} className="text-red-400 focus:text-red-300">
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 Delete…
                             </DropdownMenuItem>
@@ -477,132 +476,213 @@ export default function AdminFeePlansPage() {
         },
     ]
 
-    /* ---------- Fee items editor table ---------- */
+    const FeeItemsEditor = ({ current }: { current: FeePlanVM }) => {
+        const [filter, setFilter] = useState("")
+        const [drafts, setDrafts] = useState<Record<string, { name: string; amount: string }>>({})
 
-    const FeeItemsEditor = ({ current }: { current: FeePlan }) => {
-        type Row = { id: string; name: string; amount: number }
-        const rows: Row[] = current.feeItems.map((f) => ({ id: f.id, name: f.name, amount: f.amount }))
+        useEffect(() => {
+            setDrafts((prev) => {
+                const next: Record<string, { name: string; amount: string }> = {}
+                for (const f of current.feeItems) {
+                    const p = prev[f.id]
+                    next[f.id] = {
+                        name: p?.name ?? (f.name ?? ""),
+                        amount: p?.amount ?? (Number.isFinite(f.amount) ? String(f.amount) : ""),
+                    }
+                }
+                return next
+            })
+        }, [current.feeItems])
 
-        const cols: ColumnDef<Row>[] = [
-            {
-                accessorKey: "name",
-                header: "Description",
-                cell: ({ row }) => (
-                    <Input
-                        value={row.getValue("name") as string}
-                        onChange={(e) => {
-                            const next = current.feeItems.map((x) => (x.id === row.original.id ? { ...x, name: e.target.value } : x))
-                            setWorking({ ...current, feeItems: next })
-                        }}
-                        placeholder="e.g., Library Fee"
-                        className="bg-slate-700 border-slate-600"
-                    />
-                ),
+        const items = useMemo(() => {
+            const q = filter.trim().toLowerCase()
+            const source = current.feeItems
+            if (!q) return source
+            return source.filter((f) => (drafts[f.id]?.name ?? f.name ?? "").toLowerCase().includes(q))
+        }, [current.feeItems, drafts, filter])
+
+        const commit = useCallback(
+            (id: string) => {
+                const d = drafts[id]
+                if (!d) return
+                const parsed = d.amount.trim() === "" ? 0 : Number(d.amount)
+                const safeAmount = Number.isFinite(parsed) ? parsed : 0
+                setWorking((prev) => {
+                    if (!prev) return prev
+                    const feeItems = prev.feeItems.map((x) => (x.id === id ? { ...x, name: d.name, amount: safeAmount } : x))
+                    return { ...prev, feeItems }
+                })
             },
-            {
-                accessorKey: "amount",
-                header: "Amount",
-                cell: ({ row }) => (
-                    <Input
-                        type="number"
-                        step="0.01"
-                        value={row.getValue("amount") as number}
-                        onChange={(e) => {
-                            const val = Number(e.target.value)
-                            const next = current.feeItems.map((x) => (x.id === row.original.id ? { ...x, amount: val } : x))
-                            setWorking({ ...current, feeItems: next })
-                        }}
-                        className="bg-slate-700 border-slate-600"
-                    />
-                ),
-            },
-            {
-                id: "remove",
-                enableHiding: false,
-                header: "Remove",
-                cell: ({ row }) => (
-                    <Button
-                        size="icon"
-                        variant="outline"
-                        className="h-8 w-8 border-red-600 text-red-400 hover:bg-red-900/20"
-                        onClick={() => {
-                            const next = current.feeItems.filter((x) => x.id !== row.original.id)
-                            setWorking({ ...current, feeItems: next })
-                        }}
-                    >
-                        <X className="h-4 w-4" />
-                    </Button>
-                ),
-            },
-        ]
+            [drafts]
+        )
+
+        const updateDraft = useCallback((id: string, patch: Partial<{ name: string; amount: string }>) => {
+            setDrafts((prev) => ({ ...prev, [id]: { name: prev[id]?.name ?? "", amount: prev[id]?.amount ?? "", ...patch } }))
+        }, [])
+
+        const removeItem = useCallback((id: string) => {
+            setWorking((prev) => {
+                if (!prev) return prev
+                return { ...prev, feeItems: prev.feeItems.filter((x) => x.id !== id) }
+            })
+            setDrafts((prev) => {
+                const { ...rest } = prev
+                return rest
+            })
+            if (focusItemIdRef.current === id) setFocusItemId(null)
+        }, [])
 
         return (
-            <DataTableShell<Row, unknown>
-                columns={cols}
-                data={rows}
-                filterColumnId="name"
-                filterPlaceholder="Filter fee items..."
-            />
+            <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                    <Input
+                        value={filter}
+                        onChange={(e) => setFilter(e.target.value)}
+                        placeholder="Filter fee items..."
+                        className="max-w-sm bg-slate-700 border-slate-600"
+                        onKeyDown={(e) => e.stopPropagation()}
+                    />
+                </div>
+
+                <div className="overflow-hidden rounded-md border border-slate-700">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Description</TableHead>
+                                <TableHead>Amount</TableHead>
+                                <TableHead>Remove</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {items.length ? (
+                                items.map((fi) => (
+                                    <TableRow key={fi.id}>
+                                        <TableCell>
+                                            <Input
+                                                value={drafts[fi.id]?.name ?? ""}
+                                                onChange={(e) => updateDraft(fi.id, { name: e.target.value })}
+                                                onBlur={() => commit(fi.id)}
+                                                onKeyDown={(e) => {
+                                                    e.stopPropagation()
+                                                    if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur()
+                                                }}
+                                                placeholder="e.g., Alumni Fee"
+                                                className="bg-slate-700 border-slate-600"
+                                                onPointerDown={(e) => e.stopPropagation()}
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                                onClick={(e) => e.stopPropagation()}
+                                                onFocus={() => {
+                                                    if (focusItemIdRef.current === fi.id) setFocusItemId(null)
+                                                }}
+                                                autoFocus={fi.id === focusItemIdRef.current}
+                                                spellCheck={false}
+                                            />
+                                        </TableCell>
+                                        <TableCell>
+                                            <Input
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={drafts[fi.id]?.amount ?? ""}
+                                                onChange={(e) => {
+                                                    updateDraft(fi.id, { amount: e.currentTarget.value })
+                                                }}
+                                                onBlur={() => commit(fi.id)}
+                                                onKeyDown={(e) => {
+                                                    e.stopPropagation()
+                                                    if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur()
+                                                }}
+                                                placeholder="0.00"
+                                                className="bg-slate-700 border-slate-600"
+                                                onPointerDown={(e) => e.stopPropagation()}
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                                onClick={(e) => e.stopPropagation()}
+                                            />
+                                        </TableCell>
+                                        <TableCell className="w-[1%]">
+                                            <Button
+                                                size="icon"
+                                                variant="outline"
+                                                className="h-8 w-8 border-red-600 text-red-400 hover:bg-red-900/20"
+                                                onClick={() => removeItem(fi.id)}
+                                            >
+                                                <X className="h-4 w-4" />
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            ) : (
+                                <TableRow>
+                                    <TableCell colSpan={3} className="h-24 text-center">
+                                        No fee items.
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
+            </div>
         )
     }
 
-    /* ---------- Breakdown table (view) ---------- */
-
-    const BreakdownTable = ({ plan }: { plan: FeePlan }) => {
+    const BreakdownTable = ({ plan }: { plan: FeePlanVM }) => {
         type Row = { id: string; desc: string; amount: number }
+        const totals = computeTotals({
+            units: plan.units,
+            tuitionPerUnit: plan.tuitionPerUnit,
+            registrationFee: plan.registrationFee,
+            feeItems: plan.feeItems,
+        })
         const rows: Row[] = [
             { id: "reg", desc: "Registration Fee", amount: plan.registrationFee },
             {
                 id: "tuition",
                 desc: `Tuition Per Unit × Units (${plan.units} × ${php(plan.tuitionPerUnit)})`,
-                amount: calcTotals(plan).tuition,
+                amount: totals.tuition,
             },
             ...plan.feeItems.map((f) => ({ id: f.id, desc: f.name, amount: f.amount })),
-            { id: "sub", desc: "Other Fees Subtotal", amount: calcTotals(plan).others },
+            { id: "sub", desc: "Other Fees Subtotal", amount: totals.others },
         ]
-
         const cols: ColumnDef<Row>[] = [
             { accessorKey: "desc", header: "Description" },
             { accessorKey: "amount", header: "Amount", cell: ({ row }) => php(row.getValue("amount") as number) },
         ]
-
-        return <DataTableShell<Row, unknown> columns={cols} data={rows} />
+        return <DataTableShell<Row, unknown> columns={cols} data={rows} getRowId={(r) => r.id} />
     }
 
-    const othersSubtotal = (w: FeePlan | null) =>
-        php((w?.feeItems ?? []).reduce((s, f) => s + (Number.isFinite(f.amount) ? f.amount : 0), 0))
+    const othersSubtotal = (w: FeePlanVM | null) => php((w?.feeItems ?? []).reduce((s, f) => s + (Number.isFinite(f.amount) ? f.amount : 0), 0))
 
-    const grandTotal = (w: FeePlan | null) =>
-        php(
-            (w?.units || 0) * (w?.tuitionPerUnit || 0) +
-            (w?.registrationFee || 0) +
-            (w?.feeItems || []).reduce((s, f) => s + (Number.isFinite(f.amount) ? f.amount : 0), 0),
-        )
+    const grandTotal = (w: FeePlanVM | null) => {
+        const totals = computeTotals({
+            units: w?.units || 0,
+            tuitionPerUnit: w?.tuitionPerUnit || 0,
+            registrationFee: w?.registrationFee || 0,
+            feeItems: w?.feeItems || [],
+        })
+        return php(totals.total)
+    }
 
-    const handleConfirm = () => {
+    const handleConfirm = async () => {
         if (!confirm) return
         const isDelete = confirm.type === "delete"
-        const label = isDelete ? "Deleting fee plan..." : "Duplicating fee plan..."
-        setBusy(label)
         if (isDelete) {
-            removePlan(confirm.plan.id)
+            await handleDelete(confirm.plan)
         } else {
-            duplicatePlan(confirm.plan)
+            await handleDuplicate(confirm.plan)
         }
-        setBusy(null)
         setConfirm(null)
     }
+
+    const creatingOrEditingInvalid = hasErrors(errors)
 
     return (
         <DashboardLayout allowedRoles={["admin"]}>
             <div className="container mx-auto px-4 py-8">
-                {/* Mobile: vertical; Desktop: horizontal */}
                 <div className="mb-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="w-full">
                         <h1 className="text-2xl font-bold text-white">Fee Plans</h1>
                         <p className="text-gray-300">Create, customize, and manage tuition &amp; fees per program.</p>
                     </div>
-                    <Button className="w-full sm:w-auto bg-primary hover:bg-primary/90" onClick={openCreate}>
+                    <Button className="w-full sm:w-auto bg-primary hover:bg-primary/90" onClick={openCreate} disabled={loading}>
                         <Plus className="mr-2 h-4 w-4" />
                         Add Fee Plan
                     </Button>
@@ -612,7 +692,7 @@ export default function AdminFeePlansPage() {
                     <CardHeader>
                         <CardTitle>All Plans</CardTitle>
                         <CardDescription className="text-gray-300">
-                            Total: {plans.length} {plans.length === 1 ? "plan" : "plans"}
+                            {loading ? "Loading…" : <>Total: {plans.length} {plans.length === 1 ? "plan" : "plans"}</>}
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -621,14 +701,17 @@ export default function AdminFeePlansPage() {
                             data={planRows}
                             filterColumnId="program"
                             filterPlaceholder="Filter programs..."
+                            getRowId={(r) => r.id}
                         />
                     </CardContent>
                 </Card>
             </div>
 
-            {/* Create / Edit */}
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                <DialogContent className="bg-slate-800 border-slate-700 text-white w-[min(100vw-2rem,920px)] sm:max-w-3xl max-h-[90dvh] overflow-y-auto">
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen} modal={false}>
+                <DialogContent
+                    className="bg-slate-800 border-slate-700 text-white w-[min(100vw-2rem,920px)] sm:max-w-3xl max-h-[90dvh] overflow-y-auto"
+                    onOpenAutoFocus={(e) => e.preventDefault()}
+                >
                     <DialogHeader>
                         <DialogTitle>{mode === "create" ? "Create Fee Plan" : "Edit Fee Plan"}</DialogTitle>
                         <DialogDescription className="text-gray-300">
@@ -643,43 +726,97 @@ export default function AdminFeePlansPage() {
                                     <Label htmlFor="program">Program / Course</Label>
                                     <Input
                                         id="program"
+                                        required
                                         value={working.program}
-                                        onChange={(e) => setWorking({ ...working, program: e.target.value })}
+                                        onChange={(e) => setWorking((prev) => (prev ? { ...prev, program: e.target.value } : prev))}
                                         placeholder="e.g., BSED, BSCS, BSSW, BSIT"
-                                        className="bg-slate-700 border-slate-600"
+                                        className={`bg-slate-700 ${errorInputClass(errors.program)}`}
+                                        onKeyDown={(e) => e.stopPropagation()}
+                                        aria-invalid={!!errors.program}
+                                        aria-errormessage="program-error"
                                     />
+                                    {errors.program && (
+                                        <p id="program-error" className="text-xs text-red-400">
+                                            {errors.program}
+                                        </p>
+                                    )}
                                 </div>
+
                                 <div className="space-y-2">
                                     <Label htmlFor="units">Units</Label>
                                     <Input
                                         id="units"
                                         type="number"
-                                        value={working.units}
-                                        onChange={(e) => setWorking({ ...working, units: Number(e.target.value) })}
-                                        className="bg-slate-700 border-slate-600"
+                                        required
+                                        min={1}
+                                        value={Number.isFinite(working.units) ? working.units : 0}
+                                        onChange={(e) => setWorking((prev) => (prev ? { ...prev, units: Number(e.target.value) } : prev))}
+                                        className={`bg-slate-700 ${errorInputClass(errors.units)}`}
+                                        onKeyDown={(e) => e.stopPropagation()}
+                                        aria-invalid={!!errors.units}
+                                        aria-errormessage="units-error"
                                     />
+                                    {errors.units && (
+                                        <p id="units-error" className="text-xs text-red-400">
+                                            {errors.units}
+                                        </p>
+                                    )}
                                 </div>
+
                                 <div className="space-y-2">
                                     <Label htmlFor="perUnit">Tuition Per Unit</Label>
                                     <Input
                                         id="perUnit"
                                         type="number"
+                                        required
                                         step="0.01"
-                                        value={working.tuitionPerUnit}
-                                        onChange={(e) => setWorking({ ...working, tuitionPerUnit: Number(e.target.value) })}
-                                        className="bg-slate-700 border-slate-600"
+                                        min={0}
+                                        value={Number.isFinite(working.tuitionPerUnit) ? working.tuitionPerUnit : 0}
+                                        onChange={(e) => setWorking((prev) => (prev ? { ...prev, tuitionPerUnit: Number(e.target.value) } : prev))}
+                                        className={`bg-slate-700 ${errorInputClass(errors.tuitionPerUnit)}`}
+                                        onKeyDown={(e) => e.stopPropagation()}
+                                        aria-invalid={!!errors.tuitionPerUnit}
+                                        aria-errormessage="perunit-error"
                                     />
+                                    {errors.tuitionPerUnit && (
+                                        <p id="perunit-error" className="text-xs text-red-400">
+                                            {errors.tuitionPerUnit}
+                                        </p>
+                                    )}
                                 </div>
+
                                 <div className="space-y-2">
                                     <Label htmlFor="reg">Registration Fee</Label>
                                     <Input
                                         id="reg"
                                         type="number"
-                                        step="0.01"
-                                        value={working.registrationFee}
-                                        onChange={(e) => setWorking({ ...working, registrationFee: Number(e.target.value) })}
-                                        className="bg-slate-700 border-slate-600"
+                                        required
+                                        step={0.01}
+                                        min={0}
+                                        value={Number.isFinite(working.registrationFee) ? working.registrationFee : 0}
+                                        onChange={(e) => setWorking((prev) => (prev ? { ...prev, registrationFee: Number(e.target.value) } : prev))}
+                                        className={`bg-slate-700 ${errorInputClass(errors.registrationFee)}`}
+                                        onKeyDown={(e) => e.stopPropagation()}
+                                        aria-invalid={!!errors.registrationFee}
+                                        aria-errormessage="regfee-error"
                                     />
+                                    {errors.registrationFee && (
+                                        <p id="regfee-error" className="text-xs text-red-400">
+                                            {errors.registrationFee}
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="sm:col-span-2">
+                                    <label className="inline-flex items-center gap-2 select-none">
+                                        <input
+                                            type="checkbox"
+                                            checked={!!working.isActive}
+                                            onChange={(e) => setWorking((prev) => (prev ? { ...prev, isActive: e.target.checked } : prev))}
+                                            className="h-4 w-4 accent-primary"
+                                        />
+                                        <span>Active</span>
+                                    </label>
                                 </div>
                             </div>
 
@@ -695,12 +832,11 @@ export default function AdminFeePlansPage() {
                                         size="sm"
                                         variant="outline"
                                         className="border-slate-600 text-white hover:bg-slate-700"
-                                        onClick={() =>
-                                            setWorking({
-                                                ...working,
-                                                feeItems: [...working.feeItems, { id: uid(), name: "", amount: 0 }],
-                                            })
-                                        }
+                                        onClick={() => {
+                                            const id = crypto.randomUUID?.() ?? String(Date.now())
+                                            setWorking((prev) => (prev ? { ...prev, feeItems: [...prev.feeItems, { id, name: "", amount: 0 }] } : prev))
+                                            setFocusItemId(id)
+                                        }}
                                     >
                                         <Plus className="mr-2 h-4 w-4" />
                                         Add Fee Item
@@ -744,7 +880,12 @@ export default function AdminFeePlansPage() {
                         >
                             Cancel
                         </Button>
-                        <Button className="bg-primary hover:bg-primary/90" onClick={saveWorking} disabled={saving}>
+                        <Button
+                            className="bg-primary hover:bg-primary/90 disabled:opacity-60"
+                            onClick={saveWorking}
+                            disabled={saving || creatingOrEditingInvalid}
+                            title={creatingOrEditingInvalid ? "Please fix the required fields." : undefined}
+                        >
                             {saving ? (
                                 <span className="inline-flex items-center gap-2">
                                     <Spinner className="h-4 w-4" />
@@ -760,7 +901,6 @@ export default function AdminFeePlansPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* View breakdown */}
             <Dialog open={!!viewPlan} onOpenChange={(o) => !o && setViewPlan(null)}>
                 <DialogContent className="bg-slate-800 border-slate-700 text-white w-[min(100vw-2rem,720px)] max-h-[90dvh] overflow-y-auto">
                     <DialogHeader>
@@ -772,30 +912,33 @@ export default function AdminFeePlansPage() {
                         <div className="space-y-3">
                             <BreakdownTable plan={viewPlan} />
                             <div className="mt-2 flex justify-end">
-                                <span className="text-sm font-semibold">TOTAL: {php(calcTotals(viewPlan).total)}</span>
+                                <span className="text-sm font-semibold">
+                                    TOTAL:{" "}
+                                    {php(
+                                        computeTotals({
+                                            units: viewPlan.units,
+                                            tuitionPerUnit: viewPlan.tuitionPerUnit,
+                                            registrationFee: viewPlan.registrationFee,
+                                            feeItems: viewPlan.feeItems,
+                                        }).total
+                                    )}
+                                </span>
                             </div>
                         </div>
                     )}
 
                     <DialogFooter className="flex flex-col gap-2 sm:flex-row">
-                        <Button
-                            variant="outline"
-                            className="border-slate-600 text-white hover:bg-slate-700"
-                            onClick={() => setViewPlan(null)}
-                        >
+                        <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700" onClick={() => setViewPlan(null)}>
                             Close
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
-            {/* Confirm duplicate/delete */}
             <AlertDialog open={!!confirm} onOpenChange={(o) => (!o && !busy ? setConfirm(null) : null)}>
                 <AlertDialogContent className="bg-slate-800 border-slate-700 text-white">
                     <AlertDialogHeader>
-                        <AlertDialogTitle>
-                            {confirm?.type === "delete" ? "Delete Fee Plan?" : "Duplicate Fee Plan?"}
-                        </AlertDialogTitle>
+                        <AlertDialogTitle>{confirm?.type === "delete" ? "Delete Fee Plan?" : "Duplicate Fee Plan?"}</AlertDialogTitle>
                         <AlertDialogDescription className="text-gray-300">
                             {confirm?.type === "delete"
                                 ? `This will permanently remove "${confirm?.plan.program}". This action cannot be undone.`
@@ -826,15 +969,14 @@ export default function AdminFeePlansPage() {
                 </AlertDialogContent>
             </AlertDialog>
 
-            {/* Floating spinner indicator while busy */}
-            {busy && (
+            {(busy || loading) && (
                 <div className="fixed bottom-4 right-4 z-50">
                     <Item variant="muted" className="[--radius:1rem] shadow-lg">
                         <ItemMedia>
                             <Spinner />
                         </ItemMedia>
                         <ItemContent>
-                            <ItemTitle className="line-clamp-1">{busy}</ItemTitle>
+                            <ItemTitle className="line-clamp-1">{busy || "Loading fee plans…"}</ItemTitle>
                         </ItemContent>
                     </Item>
                 </div>
