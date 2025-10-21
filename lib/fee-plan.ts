@@ -103,13 +103,13 @@ export async function createFeePlan(input: Omit<FeePlanRecord, "createdAt" | "up
     feeItemsJson: JSON.stringify(norm.feeItems ?? []),
     isActive: input.isActive ?? true,
   }
-  const doc = await db.createDocument<FeePlanStorageDoc>(
-    DB_ID,
-    FEE_PLANS_COL_ID,
-    ID.unique(),
-    storagePayload,
-    [Permission.read(Role.any()), Permission.update(Role.users()), Permission.delete(Role.users())]
-  )
+  const doc = await db.createDocument<FeePlanStorageDoc>({
+    databaseId: DB_ID,
+    collectionId: FEE_PLANS_COL_ID,
+    documentId: ID.unique(),
+    data: storagePayload,
+    permissions: [Permission.read(Role.any()), Permission.update(Role.users()), Permission.delete(Role.users())],
+  })
   return fromStorage(doc)
 }
 
@@ -120,41 +120,52 @@ export async function updateFeePlan(id: string, patch: Partial<FeePlanRecord>): 
     ...patch,
     program: typeof patch.program === "string" ? patch.program.trim() : undefined,
   })
-  const doc = await db.updateDocument<FeePlanStorageDoc>(DB_ID, FEE_PLANS_COL_ID, id, storagePatch)
+  const doc = await db.updateDocument<FeePlanStorageDoc>({
+    databaseId: DB_ID,
+    collectionId: FEE_PLANS_COL_ID,
+    documentId: id,
+    data: storagePatch,
+  })
   return fromStorage(doc)
 }
 
 export async function deleteFeePlan(id: string): Promise<void> {
   const db = getDatabases()
   const { DB_ID, FEE_PLANS_COL_ID } = ids()
-  await db.deleteDocument(DB_ID, FEE_PLANS_COL_ID, id)
+  await db.deleteDocument({
+    databaseId: DB_ID,
+    collectionId: FEE_PLANS_COL_ID,
+    documentId: id,
+  })
 }
 
 export async function getFeePlan(id: string): Promise<FeePlanDoc> {
   const db = getDatabases()
   const { DB_ID, FEE_PLANS_COL_ID } = ids()
-  const doc = await db.getDocument<FeePlanStorageDoc>(DB_ID, FEE_PLANS_COL_ID, id)
+  const doc = await db.getDocument<FeePlanStorageDoc>({
+    databaseId: DB_ID,
+    collectionId: FEE_PLANS_COL_ID,
+    documentId: id,
+  })
   return fromStorage(doc)
 }
 
-/**
- * Single page fetch (default max=100). Uses cursorAfter for stable, unlimited pagination.
- */
 export async function listFeePlansPage(limit = 100, cursorAfter?: string) {
   const db = getDatabases()
   const { DB_ID, FEE_PLANS_COL_ID } = ids()
   const pageLimit = Math.max(1, Math.min(100, limit))
   const queries: string[] = [Query.orderDesc("$updatedAt"), Query.limit(pageLimit)]
   if (cursorAfter) queries.push(Query.cursorAfter(cursorAfter))
-  const res = await db.listDocuments<FeePlanStorageDoc>(DB_ID, FEE_PLANS_COL_ID, queries)
+  const res = await db.listDocuments<FeePlanStorageDoc>({
+    databaseId: DB_ID,
+    collectionId: FEE_PLANS_COL_ID,
+    queries,
+  })
   const docs = (res.documents ?? []).map(fromStorage)
   const nextCursor = docs.length === pageLimit ? docs[docs.length - 1].$id : undefined
   return { docs, nextCursor }
 }
 
-/**
- * Fetch all fee plans (no server-side cap), returning a complete array.
- */
 export async function listAllFeePlans(): Promise<FeePlanDoc[]> {
   const all: FeePlanDoc[] = []
   let cursor: string | undefined
