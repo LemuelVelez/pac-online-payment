@@ -45,6 +45,7 @@ async function adminFetch(
       "X-Appwrite-Project": projectId,
       "X-Appwrite-Key": apiKey,
       "X-Appwrite-Mode": "admin",
+      "X-Appwrite-Response-Format": "1.8.0",
     },
     body: body ? JSON.stringify(body) : undefined,
     cache: "no-store",
@@ -64,7 +65,7 @@ async function adminFetch(
     }
     const scopeHint =
       res.status === 401 || res.status === 403
-        ? " (Check APPWRITE_API_KEY scopes: databases.read, databases.write)"
+        ? " (Check APPWRITE_API_KEY scopes: databases.read, databases.write, users.read, users.write)"
         : "";
     throw new Error(
       detail ||
@@ -143,13 +144,40 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
 
     const { id } = await context.params;
 
-    await adminFetch(
-      endpoint,
-      projectId,
-      apiKey,
-      `/databases/${DB_ID}/collections/${USERS_COL_ID}/documents/${id}`,
-      "DELETE"
-    );
+    // Try deleting the Appwrite Account (Users API) **and** the profile document.
+    // We ignore 404s so deletes are idempotent.
+    const ignoreNotFound = (err: unknown) =>
+      err instanceof Error && /404|not\s*found/i.test(err.message);
+
+    let accountErr: Error | null = null;
+    try {
+      await adminFetch(endpoint, projectId, apiKey, `/users/${id}`, "DELETE");
+    } catch (e) {
+      if (!ignoreNotFound(e)) accountErr = e as Error;
+    }
+
+    let docErr: Error | null = null;
+    try {
+      await adminFetch(
+        endpoint,
+        projectId,
+        apiKey,
+        `/databases/${DB_ID}/collections/${USERS_COL_ID}/documents/${id}`,
+        "DELETE"
+      );
+    } catch (e) {
+      if (!ignoreNotFound(e)) docErr = e as Error;
+    }
+
+    if (accountErr || docErr) {
+      const messages = [
+        accountErr ? `Account delete failed: ${accountErr.message}` : null,
+        docErr ? `Profile doc delete failed: ${docErr.message}` : null,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+      return NextResponse.json({ ok: false, error: messages }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e) {
@@ -158,7 +186,7 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
         ok: false,
         error:
           toMessage(e) ||
-          "Failed to delete user profile (server). Check API key scopes.",
+          "Failed to delete user (server). Check users/databases scopes.",
       },
       { status: 500 }
     );
