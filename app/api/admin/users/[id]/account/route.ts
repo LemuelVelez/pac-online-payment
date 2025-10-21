@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import "server-only";
 import { NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
 
 function envOrThrow(key: string) {
   const v = process.env[key];
@@ -40,17 +43,31 @@ async function adminCall(
       "Content-Type": "application/json",
       "X-Appwrite-Project": projectId,
       "X-Appwrite-Key": apiKey,
-      // "X-Appwrite-Mode": "admin", // optional; keys generally imply admin
+      // Lock response schema to current cloud version (helps some deployments)
+      "X-Appwrite-Response-Format": "1.8.0",
+      // Force elevated privileges for server-to-server calls
+      "X-Appwrite-Mode": "admin",
     },
     body: JSON.stringify(body),
     cache: "no-store",
   });
+
   if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(
-      txt || `Appwrite admin PATCH ${path} failed (${res.status})`
-    );
+    let detail = "";
+    try {
+      const j = await res.json();
+      detail = (j && (j.message || j.error)) || "";
+    } catch {
+      try {
+        detail = await res.text();
+      } catch {
+        /* noop */
+      }
+    }
+    const msg = detail || `Appwrite admin PATCH ${path} failed (${res.status})`;
+    throw new Error(msg);
   }
+
   return res.json().catch(() => ({}));
 }
 
@@ -72,36 +89,30 @@ export async function PATCH(
       return NextResponse.json({ ok: true, skipped: true });
     }
 
-    const ops: Promise<unknown>[] = [];
+    // Apply updates in sequence so we can surface precise errors
     if (typeof fullName === "string") {
-      ops.push(
-        adminCall(endpoint, projectId, apiKey, `/users/${params.id}/name`, {
-          name: fullName,
-        })
-      );
-    }
-    if (typeof email === "string") {
-      ops.push(
-        adminCall(endpoint, projectId, apiKey, `/users/${params.id}/email`, {
-          email,
-        })
-      );
+      await adminCall(endpoint, projectId, apiKey, `/users/${params.id}/name`, {
+        name: fullName,
+      });
     }
 
-    const results = await Promise.allSettled(ops);
-    const failed = results.find((r) => r.status === "rejected");
-    if (failed) {
-      const reason = (failed as PromiseRejectedResult).reason;
-      return NextResponse.json(
-        { ok: false, error: toMessage(reason) || "Failed to update account" },
-        { status: 500 }
+    if (typeof email === "string") {
+      await adminCall(
+        endpoint,
+        projectId,
+        apiKey,
+        `/users/${params.id}/email`,
+        { email }
       );
+      // NOTE: After changing email, Appwrite resets email verification.
+      // If you want to explicitly set verification, you can call:
+      // await adminCall(endpoint, projectId, apiKey, `/users/${params.id}/verification`, { emailVerification: false });
     }
 
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json(
-      { ok: false, error: toMessage(e) || "Server error" },
+      { ok: false, error: toMessage(e) || "Failed to update account" },
       { status: 500 }
     );
   }

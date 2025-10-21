@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Models } from "appwrite"
-import { getDatabases, ID, Query, Permission, Role, getEnvIds } from "@/lib/appwrite"
+import { getDatabases, ID, getEnvIds } from "@/lib/appwrite"
 
 export type UserRecord = {
   userId?: string
@@ -49,37 +49,62 @@ function toStorage(input: Partial<UserRecord>) {
   return out
 }
 
+/* ====== Client-side non-admin helpers (still available if you need them elsewhere) ====== */
+
 export async function createUserProfile(input: Omit<UserRecord, "createdAt" | "updatedAt">): Promise<UserDoc> {
   const db = getDatabases()
   const { DB_ID, USERS_COL_ID } = ids()
   const data = toStorage(input) as UserRecord
-  const doc = await db.createDocument<UserDoc>({
-    databaseId: DB_ID,
-    collectionId: USERS_COL_ID,
-    documentId: ID.unique(),
-    data,
-    permissions: [Permission.read(Role.any()), Permission.update(Role.users()), Permission.delete(Role.users())],
-  })
+  const doc = await db.createDocument<UserDoc>(DB_ID, USERS_COL_ID, ID.unique(), data)
   return fromStorage(doc)
 }
 
-export async function updateUserProfile(id: string, patch: Partial<UserRecord>): Promise<UserDoc> {
+export async function createUserProfileWithId(
+  userId: string,
+  input: Omit<UserRecord, "createdAt" | "updatedAt" | "userId">
+): Promise<UserDoc> {
   const db = getDatabases()
   const { DB_ID, USERS_COL_ID } = ids()
-  const data = toStorage(patch)
-  const doc = await db.updateDocument<UserDoc>({
-    databaseId: DB_ID,
-    collectionId: USERS_COL_ID,
-    documentId: id,
-    data,
+  const data = toStorage({ ...input, userId }) as UserRecord
+  const doc = await db.createDocument<UserDoc>(DB_ID, USERS_COL_ID, userId, data)
+  return fromStorage(doc)
+}
+
+/* ====== Admin operations now go through our server routes (API key) ====== */
+
+export async function updateUserProfile(id: string, patch: Partial<UserRecord>): Promise<UserDoc> {
+  const res = await fetch(`/api/admin/users/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(toStorage(patch)),
+    cache: "no-store",
   })
+  if (!res.ok) {
+    let msg = "Failed to update user profile"
+    try {
+      const j = (await res.json()) as any
+      if (j?.error) msg = j.error
+    } catch {}
+    throw new Error(msg)
+  }
+  const j = (await res.json()) as any
+  const doc = (j?.document ?? {}) as Models.Document & Partial<UserRecord>
   return fromStorage(doc)
 }
 
 export async function deleteUserProfile(id: string): Promise<void> {
-  const db = getDatabases()
-  const { DB_ID, USERS_COL_ID } = ids()
-  await db.deleteDocument({ databaseId: DB_ID, collectionId: USERS_COL_ID, documentId: id })
+  const res = await fetch(`/api/admin/users/${id}`, {
+    method: "DELETE",
+    cache: "no-store",
+  })
+  if (!res.ok) {
+    let msg = "Failed to delete user profile"
+    try {
+      const j = (await res.json()) as any
+      if (j?.error) msg = j.error
+    } catch {}
+    throw new Error(msg)
+  }
 }
 
 export async function getUserProfile(id: string): Promise<UserDoc> {
@@ -89,35 +114,73 @@ export async function getUserProfile(id: string): Promise<UserDoc> {
   return fromStorage(doc)
 }
 
+/** Server-paginated page via admin GET route */
 export async function listUsersPage(limit = 100, cursorAfter?: string) {
-  const db = getDatabases()
-  const { DB_ID, USERS_COL_ID } = ids()
-  const pageLimit = Math.max(1, Math.min(100, limit))
-  const queries: string[] = [Query.orderDesc("$updatedAt"), Query.limit(pageLimit)]
-  if (cursorAfter) queries.push(Query.cursorAfter(cursorAfter))
-  const res = await db.listDocuments<UserDoc>({ databaseId: DB_ID, collectionId: USERS_COL_ID, queries })
-  const docs = (res.documents ?? []).map(fromStorage)
-  const nextCursor = docs.length === pageLimit ? docs[docs.length - 1].$id : undefined
-  return { docs, nextCursor }
+  const usp = new URLSearchParams()
+  usp.set("limit", String(Math.max(1, Math.min(100, limit))))
+  if (cursorAfter) usp.set("cursor", cursorAfter)
+
+  const res = await fetch(`/api/admin/users?${usp.toString()}`, { method: "GET", cache: "no-store" })
+  if (!res.ok) {
+    let msg = "Failed to list users"
+    try {
+      const j = (await res.json()) as any
+      if (j?.error) msg = j.error
+    } catch {}
+    throw new Error(msg)
+  }
+  const j = (await res.json()) as any
+  const docs = (j?.documents ?? []) as (Models.Document & Partial<UserRecord>)[]
+  const mapped = docs.map(fromStorage)
+  const nextCursor = j?.nextCursor as string | undefined
+  return { docs: mapped, nextCursor }
 }
 
 export async function listAllUsers(): Promise<UserDoc[]> {
-  const all: UserDoc[] = []
-  let cursor: string | undefined
-  for (;;) {
-    const { docs, nextCursor } = await listUsersPage(100, cursor)
-    all.push(...docs)
-    if (!nextCursor) break
-    cursor = nextCursor
+  const res = await fetch(`/api/admin/users?all=1`, { method: "GET", cache: "no-store" })
+  if (!res.ok) {
+    let msg = "Failed to list users"
+    try {
+      const j = (await res.json()) as any
+      if (j?.error) msg = j.error
+    } catch {}
+    throw new Error(msg)
   }
-  return all
+  const j = (await res.json()) as any
+  const docs = (j?.documents ?? []) as (Models.Document & Partial<UserRecord>)[]
+  return docs.map(fromStorage)
 }
 
-/** Admin: update Appwrite Account (Users API) for a given userId. Updates name/email. */
+/** Admin: create Appwrite Account (Users API) and the profile document via our API route */
+export async function adminCreateUserAccount(input: {
+  fullName: string
+  email: string
+  password?: string
+  role?: UserRecord["role"]
+  status?: UserRecord["status"]
+  studentId?: string
+}): Promise<any> {
+  const res = await fetch(`/api/admin/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+    cache: "no-store",
+  })
+  if (!res.ok) {
+    let msg = "Failed to create Appwrite Account"
+    try {
+      const j = (await res.json()) as any
+      if (j?.error) msg = j.error
+    } catch {}
+    throw new Error(msg)
+  }
+  return res.json()
+}
+
 export async function adminUpdateUserAccount(
   userId: string,
   patch: { fullName?: string; email?: string }
-): Promise<void> {
+): Promise<any> {
   const res = await fetch(`/api/admin/users/${userId}/account`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -129,9 +192,13 @@ export async function adminUpdateUserAccount(
     try {
       const j = (await res.json()) as any
       if (j?.error) msg = j.error
-    } catch {
-      /* noop */
-    }
+    } catch {}
     throw new Error(msg)
+  }
+  // Return the server response (may include User payload on some deployments)
+  try {
+    return await res.json()
+  } catch {
+    return {}
   }
 }
