@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import "server-only";
 import { NextResponse } from "next/server";
+import { Query } from "appwrite"; // ✅ use official builders
 import { randomBytes } from "crypto";
 
 export const dynamic = "force-dynamic";
@@ -60,8 +61,8 @@ async function adminFetch(
       "Content-Type": "application/json",
       "X-Appwrite-Project": projectId,
       "X-Appwrite-Key": apiKey,
-      // elevated privileges for server-to-server
       "X-Appwrite-Mode": "admin",
+      "X-Appwrite-Response-Format": "1.8.0", // ✅ keep response shape stable
     },
     body: body ? JSON.stringify(body) : undefined,
     cache: "no-store",
@@ -80,7 +81,6 @@ async function adminFetch(
       }
     }
 
-    // Enrich common permission/scope issues
     const scopeHint =
       res.status === 401 || res.status === 403
         ? " (Check APPWRITE_API_KEY scopes: users.read, users.write, databases.read, databases.write)"
@@ -92,7 +92,6 @@ async function adminFetch(
     throw new Error(msg);
   }
 
-  // Some admin endpoints return no JSON
   try {
     return await res.json();
   } catch {
@@ -127,8 +126,12 @@ export async function GET(req: Request) {
     let total: number | undefined;
 
     const fetchOnce = async (cur?: string) => {
-      const queries: string[] = [`orderDesc("$updatedAt")`, `limit(${limit})`];
-      if (cur) queries.push(`cursorAfter("${cur}")`);
+      // ✅ Build queries with Appwrite's Query helpers (prevents syntax errors)
+      const queries: string[] = [
+        Query.limit(limit),
+        Query.orderDesc("$updatedAt"),
+      ];
+      if (cur) queries.push(Query.cursorAfter(cur));
 
       const res = await adminFetch(
         endpoint,
@@ -148,7 +151,6 @@ export async function GET(req: Request) {
           ? res.documents.length
           : 0;
 
-      // Track total on first page if provided
       if (total === undefined) total = pageTotal;
 
       if (docs.length === limit) {

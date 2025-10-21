@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import "server-only";
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
 
@@ -43,9 +43,7 @@ async function adminCall(
       "Content-Type": "application/json",
       "X-Appwrite-Project": projectId,
       "X-Appwrite-Key": apiKey,
-      // Lock response schema to current cloud version (helps some deployments)
       "X-Appwrite-Response-Format": "1.8.0",
-      // Force elevated privileges for server-to-server calls
       "X-Appwrite-Mode": "admin",
     },
     body: JSON.stringify(body),
@@ -71,14 +69,15 @@ async function adminCall(
   return res.json().catch(() => ({}));
 }
 
-export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+type RouteContext = { params: Promise<{ id: string }> };
+
+export async function PATCH(req: NextRequest, context: RouteContext) {
   try {
     const endpoint = envOrThrow("NEXT_PUBLIC_APPWRITE_ENDPOINT");
     const projectId = envOrThrow("NEXT_PUBLIC_APPWRITE_PROJECT_ID");
     const apiKey = envOrThrow("APPWRITE_API_KEY");
+
+    const { id } = await context.params;
 
     const { fullName, email } = (await req.json()) as {
       fullName?: string;
@@ -89,24 +88,19 @@ export async function PATCH(
       return NextResponse.json({ ok: true, skipped: true });
     }
 
-    // Apply updates in sequence so we can surface precise errors
     if (typeof fullName === "string") {
-      await adminCall(endpoint, projectId, apiKey, `/users/${params.id}/name`, {
+      await adminCall(endpoint, projectId, apiKey, `/users/${id}/name`, {
         name: fullName,
       });
     }
 
     if (typeof email === "string") {
-      await adminCall(
-        endpoint,
-        projectId,
-        apiKey,
-        `/users/${params.id}/email`,
-        { email }
-      );
-      // NOTE: After changing email, Appwrite resets email verification.
-      // If you want to explicitly set verification, you can call:
-      // await adminCall(endpoint, projectId, apiKey, `/users/${params.id}/verification`, { emailVerification: false });
+      await adminCall(endpoint, projectId, apiKey, `/users/${id}/email`, {
+        email,
+      });
+      // NOTE: Changing email resets email verification on Appwrite.
+      // Optionally control it with:
+      // await adminCall(endpoint, projectId, apiKey, `/users/${id}/verification`, { emailVerification: false });
     }
 
     return NextResponse.json({ ok: true });

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import "server-only";
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
 
@@ -79,16 +79,17 @@ async function adminFetch(
   }
 }
 
-export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+type RouteContext = { params: Promise<{ id: string }> };
+
+export async function PATCH(req: NextRequest, context: RouteContext) {
   try {
     const endpoint = envOrThrow("NEXT_PUBLIC_APPWRITE_ENDPOINT");
     const projectId = envOrThrow("NEXT_PUBLIC_APPWRITE_PROJECT_ID");
     const apiKey = envOrThrow("APPWRITE_API_KEY");
     const DB_ID = envOrThrow("NEXT_PUBLIC_APPWRITE_DATABASE_ID");
     const USERS_COL_ID = envOrThrow("NEXT_PUBLIC_APPWRITE_USERS_COLLECTION_ID");
+
+    const { id } = await context.params;
 
     const patch = (await req.json()) as {
       fullName?: string;
@@ -113,7 +114,7 @@ export async function PATCH(
       endpoint,
       projectId,
       apiKey,
-      `/databases/${DB_ID}/collections/${USERS_COL_ID}/documents/${params.id}`,
+      `/databases/${DB_ID}/collections/${USERS_COL_ID}/documents/${id}`,
       "PATCH",
       { data }
     );
@@ -132,10 +133,7 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
-  _req: Request,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(_req: NextRequest, context: RouteContext) {
   try {
     const endpoint = envOrThrow("NEXT_PUBLIC_APPWRITE_ENDPOINT");
     const projectId = envOrThrow("NEXT_PUBLIC_APPWRITE_PROJECT_ID");
@@ -143,11 +141,13 @@ export async function DELETE(
     const DB_ID = envOrThrow("NEXT_PUBLIC_APPWRITE_DATABASE_ID");
     const USERS_COL_ID = envOrThrow("NEXT_PUBLIC_APPWRITE_USERS_COLLECTION_ID");
 
+    const { id } = await context.params;
+
     await adminFetch(
       endpoint,
       projectId,
       apiKey,
-      `/databases/${DB_ID}/collections/${USERS_COL_ID}/documents/${params.id}`,
+      `/databases/${DB_ID}/collections/${USERS_COL_ID}/documents/${id}`,
       "DELETE"
     );
 
