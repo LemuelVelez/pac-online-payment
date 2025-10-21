@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Models } from "appwrite"
 import { getDatabases, ID, Query, Permission, Role, getEnvIds } from "@/lib/appwrite"
 
@@ -57,25 +56,27 @@ function normalizeNumbers<T extends Partial<FeePlanRecord>>(v: T): T {
 function fromStorage(doc: FeePlanStorageDoc): FeePlanDoc {
   let feeItems: FeeItemRecord[] = []
   try {
-    const raw = (doc as any).feeItemsJson ?? "[]"
-    const parsed = JSON.parse(raw)
+    const parsed = JSON.parse(doc.feeItemsJson ?? "[]")
     if (Array.isArray(parsed)) {
-      feeItems = parsed.map((f) => ({
-        id: f.id ?? uid(),
-        name: (f.name ?? "").trim(),
-        amount: Number(f.amount ?? 0),
-      }))
+      feeItems = parsed.map((f: unknown) => {
+        const p = f as Partial<FeeItemRecord>
+        return {
+          id: p.id ?? uid(),
+          name: (p.name ?? "").trim(),
+          amount: Number(p.amount ?? 0),
+        }
+      })
     }
   } catch {
     feeItems = []
   }
-  const { ...rest } = doc as any
+
   return {
-    ...rest,
+    ...doc,
     feeItems,
     createdAt: doc.$createdAt,
     updatedAt: doc.$updatedAt,
-  } as FeePlanDoc
+  } as unknown as FeePlanDoc
 }
 
 function toStoragePayload(input: Partial<FeePlanRecord>): Partial<FeePlanStorage> {
@@ -136,17 +137,24 @@ export async function getFeePlan(id: string): Promise<FeePlanDoc> {
   return fromStorage(doc)
 }
 
-export async function listFeePlansPage(limit = 50, cursorAfter?: string) {
+/**
+ * Single page fetch (default max=100). Uses cursorAfter for stable, unlimited pagination.
+ */
+export async function listFeePlansPage(limit = 100, cursorAfter?: string) {
   const db = getDatabases()
   const { DB_ID, FEE_PLANS_COL_ID } = ids()
-  const queries: string[] = [Query.orderDesc("$updatedAt"), Query.limit(Math.max(1, Math.min(100, limit)))]
+  const pageLimit = Math.max(1, Math.min(100, limit))
+  const queries: string[] = [Query.orderDesc("$updatedAt"), Query.limit(pageLimit)]
   if (cursorAfter) queries.push(Query.cursorAfter(cursorAfter))
   const res = await db.listDocuments<FeePlanStorageDoc>(DB_ID, FEE_PLANS_COL_ID, queries)
   const docs = (res.documents ?? []).map(fromStorage)
-  const nextCursor = docs.length >= limit ? docs[docs.length - 1].$id : undefined
+  const nextCursor = docs.length === pageLimit ? docs[docs.length - 1].$id : undefined
   return { docs, nextCursor }
 }
 
+/**
+ * Fetch all fee plans (no server-side cap), returning a complete array.
+ */
 export async function listAllFeePlans(): Promise<FeePlanDoc[]> {
   const all: FeePlanDoc[] = []
   let cursor: string | undefined
