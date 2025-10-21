@@ -1,8 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import "server-only";
 import { NextResponse } from "next/server";
-import { Query } from "appwrite"; // ✅ use official builders
-import { randomBytes } from "crypto";
+import { Query } from "appwrite"; // use official builders
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +61,7 @@ async function adminFetch(
       "X-Appwrite-Project": projectId,
       "X-Appwrite-Key": apiKey,
       "X-Appwrite-Mode": "admin",
-      "X-Appwrite-Response-Format": "1.8.0", // ✅ keep response shape stable
+      "X-Appwrite-Response-Format": "1.8.0",
     },
     body: body ? JSON.stringify(body) : undefined,
     cache: "no-store",
@@ -99,10 +98,6 @@ async function adminFetch(
   }
 }
 
-function randomPassword(len: number = 16) {
-  return randomBytes(len).toString("base64url");
-}
-
 /** GET /api/admin/users
  *  - ?limit=100&cursor={id} for paginated fetch
  *  - ?all=1 to fetch-and-aggregate all (server side)
@@ -126,7 +121,6 @@ export async function GET(req: Request) {
     let total: number | undefined;
 
     const fetchOnce = async (cur?: string) => {
-      // ✅ Build queries with Appwrite's Query helpers (prevents syntax errors)
       const queries: string[] = [
         Query.limit(limit),
         Query.orderDesc("$updatedAt"),
@@ -228,8 +222,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const pwd =
-      password && password.length >= 8 ? password : randomPassword(12);
+    // ✅ Default password when absent/invalid
+    const pwd = password && password.length >= 8 ? password : "PAC12345678";
 
     // 1) Create Appwrite Account (Users API)
     const createdUser = await adminFetch(
@@ -279,6 +273,7 @@ export async function POST(req: Request) {
       $id: userId,
       email: createdUser?.email ?? email,
       name: createdUser?.name ?? fullName,
+      // Expose the temp password only if the caller didn't provide one
       tempPassword: password ? undefined : pwd,
       profile: profileDoc,
     });
