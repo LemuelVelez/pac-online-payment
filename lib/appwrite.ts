@@ -68,10 +68,6 @@ export function roleToDashboard(role: string | null | undefined) {
   }
 }
 
-/**
- * Get the user's role from the Users collection.
- * If the profile doc doesn't exist yet, create it with default role=student and safe user-scoped permissions.
- */
 type UserProfileDoc = Models.Document & {
   role?: string
   userId?: string
@@ -79,8 +75,10 @@ type UserProfileDoc = Models.Document & {
   fullName?: string
   status?: string
   studentId?: string
+  lastLogin?: string
 }
 
+/** Create or read the user's profile doc; returns role. Seeds lastLogin on first create. */
 export async function getOrCreateUserRole(userId: string, email?: string, fullName?: string) {
   const { DB_ID, USERS_COL_ID } = getEnvIds()
   const databases = getDatabases()
@@ -104,6 +102,7 @@ export async function getOrCreateUserRole(userId: string, email?: string, fullNa
           fullName: fullName ?? "",
           role: "student",
           status: "active",
+          lastLogin: new Date().toISOString(),
         },
         permissions: [
           Permission.read(Role.user(userId)),
@@ -112,7 +111,7 @@ export async function getOrCreateUserRole(userId: string, email?: string, fullNa
         ],
       })
     } catch {
-      // ignore create errors; we'll still fall back to student
+      /* noop */
     }
     return "student"
   }
@@ -120,9 +119,20 @@ export async function getOrCreateUserRole(userId: string, email?: string, fullNa
 
 /* ========================= Session helpers & redirect ========================= */
 
+const LAST_LOGIN_TOUCH_KEY = "app_last_login_touch_ms"
+
+/** Safely get the current session user; also (throttled) update lastLogin on the profile doc. */
 export async function getCurrentUserSafe() {
   try {
     const me = await getAccount().get()
+    if (typeof window !== "undefined") {
+      const lastTouch = Number(localStorage.getItem(LAST_LOGIN_TOUCH_KEY) || 0)
+      const now = Date.now()
+      if (now - lastTouch > 10 * 60 * 1000) {
+        updateMyLastLogin().catch(() => {})
+        localStorage.setItem(LAST_LOGIN_TOUCH_KEY, String(now))
+      }
+    }
     return me
   } catch {
     return null
@@ -188,5 +198,24 @@ export async function isStudentIdAvailable(studentId: string): Promise<boolean> 
     return total === 0
   } catch (e) {
     throw e
+  }
+}
+
+/* ========================= Last-login updater (profile doc) ========================= */
+
+export async function updateMyLastLogin(): Promise<void> {
+  const me = await getAccount().get().catch(() => null)
+  if (!me) return
+  const { DB_ID, USERS_COL_ID } = getEnvIds()
+  const databases = getDatabases()
+  try {
+    await databases.updateDocument<UserProfileDoc>({
+      databaseId: DB_ID,
+      collectionId: USERS_COL_ID,
+      documentId: me.$id,
+      data: { lastLogin: new Date().toISOString() },
+    })
+  } catch {
+    /* noop */
   }
 }

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DataTable } from "@/components/ui/data-table"
@@ -15,173 +15,307 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Search, Download, Edit, Trash2 } from "lucide-react"
+import type { ColumnDef } from "@tanstack/react-table"
+import { Spinner } from "@/components/ui/spinner"
+import type { UserDoc, UserRecord } from "@/lib/users"
+import {
+    createUserProfile,
+    deleteUserProfile,
+    listAllUsers,
+    updateUserProfile,
+    adminUpdateUserAccount,
+} from "@/lib/users"
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+
+type UserVM = {
+    id: string
+    name: string
+    email: string
+    role: UserRecord["role"]
+    status: UserRecord["status"]
+    lastLogin?: string
+    createdAt: string
+    studentId?: string
+    _doc: UserDoc
+}
+
+const roleLabel = (r: UserRecord["role"]) =>
+    r === "business-office" ? "Business Office" : r.charAt(0).toUpperCase() + r.slice(1)
+
+const fmtDT = (s?: string) => (s ? new Date(s).toLocaleString() : "—")
 
 export default function AdminUsersPage() {
+    const [users, setUsers] = useState<UserVM[]>([])
+    const [loading, setLoading] = useState(true)
+
     const [searchQuery, setSearchQuery] = useState("")
-    const [roleFilter, setRoleFilter] = useState("all")
-    const [statusFilter, setStatusFilter] = useState("all")
+    const [roleFilter, setRoleFilter] = useState<"all" | UserRecord["role"]>("all")
+    const [statusFilter, setStatusFilter] = useState<"all" | UserRecord["status"]>("all")
 
-    // Form states for add user dialog
-    const [selectedRole, setSelectedRole] = useState("")
-    const [formData, setFormData] = useState({
-        name: "",
-        email: "",
-        password: "",
-        studentId: "",
-    })
+    const [dialogOpen, setDialogOpen] = useState(false)
+    const [mode, setMode] = useState<"create" | "edit">("create")
+    const [working, setWorking] = useState<{
+        id?: string
+        fullName: string
+        email: string
+        role: UserRecord["role"]
+        status: UserRecord["status"]
+        studentId?: string
+    }>({ fullName: "", email: "", role: "student", status: "active", studentId: "" })
 
-    // Mock user data
-    const users = [
-        {
-            id: "1",
-            name: "John Smith",
-            email: "john.smith@example.com",
-            role: "Student",
-            status: "Active",
-            lastLogin: "2024-01-15 10:30 AM",
-            createdAt: "2023-08-20",
-            studentId: "STU001",
-        },
-        {
-            id: "2",
-            name: "Maria Garcia",
-            email: "maria.garcia@example.com",
-            role: "Cashier",
-            status: "Active",
-            lastLogin: "2024-01-15 09:15 AM",
-            createdAt: "2023-06-10",
-        },
-        {
-            id: "3",
-            name: "Robert Chen",
-            email: "robert.chen@example.com",
-            role: "Business Office",
-            status: "Active",
-            lastLogin: "2024-01-14 04:45 PM",
-            createdAt: "2023-05-15",
-        },
-        {
-            id: "4",
-            name: "Sarah Johnson",
-            email: "sarah.johnson@example.com",
-            role: "Admin",
-            status: "Active",
-            lastLogin: "2024-01-15 11:00 AM",
-            createdAt: "2023-01-10",
-        },
-        {
-            id: "5",
-            name: "Michael Brown",
-            email: "michael.brown@example.com",
-            role: "Student",
-            status: "Inactive",
-            lastLogin: "2023-12-20 02:30 PM",
-            createdAt: "2023-09-05",
-            studentId: "STU002",
-        },
-    ]
+    const [confirmUser, setConfirmUser] = useState<UserVM | null>(null)
+    const [deleting, setDeleting] = useState(false)
 
-    const columns = [
-        {
-            accessorKey: "name",
-            header: "Name",
-        },
-        {
-            accessorKey: "email",
-            header: "Email",
-        },
-        {
-            accessorKey: "role",
-            header: "Role",
-            cell: ({ row }: { row: any }) => {
-                const role = row.getValue("role") as string
-                const variant =
-                    role === "Admin"
-                        ? "destructive"
-                        : role === "Cashier"
-                            ? "default"
-                            : role === "Business Office"
-                                ? "secondary"
-                                : "outline"
-                return <Badge variant={variant}>{role}</Badge>
-            },
-        },
-        {
-            accessorKey: "status",
-            header: "Status",
-            cell: ({ row }: { row: any }) => {
-                const status = row.getValue("status") as string
-                const variant = status === "Active" ? "default" : "secondary"
-                return <Badge variant={variant}>{status}</Badge>
-            },
-        },
-        {
-            accessorKey: "lastLogin",
-            header: "Last Login",
-        },
-        {
-            id: "actions",
-            header: "Actions",
-            cell: ({ row }: { row: any }) => {
-                const user = row.original
-                return (
-                    <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => console.log("Edit user:", user.id)}>
-                            <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-red-500 hover:text-red-600"
-                            onClick={() => console.log("Delete user:", user.id)}
-                        >
-                            <Trash2 className="h-4 w-4" />
-                        </Button>
-                    </div>
-                )
-            },
-        },
-    ]
+    const [saving, setSaving] = useState(false)
+    const [saveError, setSaveError] = useState<string | null>(null)
 
-    // Filter users based on search and filters
-    const filteredUsers = users.filter((user) => {
-        const matchesSearch =
-            user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            user.email.toLowerCase().includes(searchQuery.toLowerCase())
-        const matchesRole = roleFilter === "all" || user.role.toLowerCase().replace(" ", "-") === roleFilter
-        const matchesStatus = statusFilter === "all" || user.status.toLowerCase() === statusFilter
-
-        return matchesSearch && matchesRole && matchesStatus
-    })
-
-    const handleRoleChange = (value: string) => {
-        setSelectedRole(value)
-        // Clear student ID if role is not student
-        if (value !== "student") {
-            setFormData((prev) => ({ ...prev, studentId: "" }))
+    const load = async () => {
+        setLoading(true)
+        try {
+            const docs = await listAllUsers()
+            setUsers(
+                docs.map((d) => ({
+                    id: d.$id,
+                    name: d.fullName ?? "",
+                    email: d.email ?? "",
+                    role: d.role ?? "student",
+                    status: d.status ?? "active",
+                    lastLogin: d.lastLogin,
+                    createdAt: d.createdAt ?? d.$createdAt,
+                    studentId: d.studentId,
+                    _doc: d,
+                }))
+            )
+        } finally {
+            setLoading(false)
         }
     }
 
-    const handleInputChange = (field: string, value: string) => {
-        setFormData((prev) => ({ ...prev, [field]: value }))
+    useEffect(() => {
+        load()
+    }, [])
+
+    const columns: ColumnDef<UserVM>[] = useMemo(
+        () => [
+            { accessorKey: "name", header: "Name" },
+            { accessorKey: "email", header: "Email" },
+            {
+                accessorKey: "role",
+                header: "Role",
+                cell: ({ row }) => {
+                    const r = row.getValue("role") as UserRecord["role"]
+                    const variant =
+                        r === "admin" ? "destructive" : r === "cashier" ? "default" : r === "business-office" ? "secondary" : "outline"
+                    return <Badge variant={variant}>{roleLabel(r)}</Badge>
+                },
+            },
+            {
+                accessorKey: "status",
+                header: "Status",
+                cell: ({ row }) => {
+                    const s = row.getValue("status") as UserRecord["status"]
+                    const variant = s === "active" ? "default" : "secondary"
+                    return <Badge variant={variant}>{s === "active" ? "Active" : "Inactive"}</Badge>
+                },
+            },
+            {
+                id: "lastLogin",
+                header: "Last Login",
+                cell: ({ row }) => fmtDT(row.original.lastLogin),
+            },
+            {
+                id: "actions",
+                header: "Actions",
+                cell: ({ row }) => {
+                    const u = row.original
+                    return (
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => {
+                                    setMode("edit")
+                                    setWorking({
+                                        id: u.id,
+                                        fullName: u.name,
+                                        email: u.email,
+                                        role: u.role,
+                                        status: u.status,
+                                        studentId: u.studentId ?? "",
+                                    })
+                                    setSaveError(null)
+                                    setDialogOpen(true)
+                                }}
+                            >
+                                <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-red-500 hover:text-red-600"
+                                onClick={() => setConfirmUser(u)}
+                            >
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    )
+                },
+            },
+        ],
+        []
+    )
+
+    const filteredUsers = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase()
+        return users.filter((u) => {
+            const matchesSearch = !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
+            const matchesRole = roleFilter === "all" || u.role === roleFilter
+            const matchesStatus = statusFilter === "all" || u.status === statusFilter
+            return matchesSearch && matchesRole && matchesStatus
+        })
+    }, [users, searchQuery, roleFilter, statusFilter])
+
+    const resetForm = () =>
+        setWorking({ fullName: "", email: "", role: "student", status: "active", studentId: "" })
+
+    const openCreate = () => {
+        setMode("create")
+        resetForm()
+        setSaveError(null)
+        setDialogOpen(true)
     }
 
-    const handleCreateUser = () => {
-        const userData = {
-            ...formData,
-            role: selectedRole,
-            ...(selectedRole === "student" && { studentId: formData.studentId }),
-        }
-        console.log("Creating user:", userData)
+    const handleSave = async () => {
+        setSaving(true)
+        setSaveError(null)
 
-        // Reset form
-        setFormData({ name: "", email: "", password: "", studentId: "" })
-        setSelectedRole("")
+        const payload: Omit<UserRecord, "createdAt" | "updatedAt"> = {
+            fullName: working.fullName.trim(),
+            email: working.email.trim(),
+            role: working.role,
+            status: working.status,
+            studentId: (working.studentId ?? "").trim() || undefined,
+        }
+
+        try {
+            if (mode === "create") {
+                const created = await createUserProfile(payload)
+                const vm: UserVM = {
+                    id: created.$id,
+                    name: created.fullName,
+                    email: created.email,
+                    role: created.role,
+                    status: created.status,
+                    lastLogin: created.lastLogin,
+                    createdAt: created.createdAt ?? created.$createdAt,
+                    studentId: created.studentId,
+                    _doc: created,
+                }
+                setUsers((prev) => [vm, ...prev])
+                setDialogOpen(false)
+            } else {
+                const id = working.id!
+                const [dbRes, accountRes] = await Promise.allSettled([
+                    updateUserProfile(id, payload),
+                    adminUpdateUserAccount(id, { fullName: payload.fullName, email: payload.email }),
+                ])
+
+                if (dbRes.status === "fulfilled") {
+                    const updated = dbRes.value
+                    setUsers((prev) =>
+                        prev.map((x) =>
+                            x.id === id
+                                ? {
+                                    ...x,
+                                    name: updated.fullName,
+                                    email: updated.email,
+                                    role: updated.role,
+                                    status: updated.status,
+                                    studentId: updated.studentId,
+                                    lastLogin: updated.lastLogin ?? x.lastLogin,
+                                    _doc: updated,
+                                }
+                                : x
+                        )
+                    )
+                }
+
+                if (accountRes.status === "rejected") {
+                    setSaveError(accountRes.reason?.message || "Failed to update Appwrite Account")
+                    setSaving(false)
+                    return
+                }
+
+                setDialogOpen(false)
+            }
+        } catch (e: any) {
+            setSaveError(e?.message || "Save failed")
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const exportCSV = () => {
+        if (!filteredUsers.length) return
+        const headers = ["Name", "Email", "Role", "Status", "Student ID", "Last Login", "Created At"]
+        const rows = filteredUsers.map((u) => [
+            u.name,
+            u.email,
+            roleLabel(u.role),
+            u.status === "active" ? "Active" : "Inactive",
+            u.studentId ?? "",
+            fmtDT(u.lastLogin),
+            new Date(u.createdAt).toLocaleString(),
+        ])
+
+        const csv = [headers, ...rows]
+            .map((r) =>
+                r
+                    .map((v) => {
+                        const s = String(v ?? "")
+                        const needsQuote = /[",\n]/.test(s)
+                        const escaped = s.replace(/"/g, '""')
+                        return needsQuote ? `"${escaped}"` : escaped
+                    })
+                    .join(",")
+            )
+            .join("\n")
+
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `users_export_${new Date().toISOString().replace(/[:.]/g, "-")}.csv`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+    }
+
+    const confirmDelete = async () => {
+        if (!confirmUser) return
+        setDeleting(true)
+        try {
+            await deleteUserProfile(confirmUser.id)
+            setUsers((prev) => prev.filter((x) => x.id !== confirmUser.id))
+            setConfirmUser(null)
+        } finally {
+            setDeleting(false)
+        }
     }
 
     return (
@@ -197,101 +331,21 @@ export default function AdminUsersPage() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <CardTitle>All Users</CardTitle>
-                                <CardDescription className="text-gray-300">Total: {filteredUsers.length} users</CardDescription>
+                                <CardDescription className="text-gray-300">
+                                    {loading ? "Loading…" : `Total: ${filteredUsers.length} user${filteredUsers.length === 1 ? "" : "s"}`}
+                                </CardDescription>
                             </div>
-                            <Dialog>
-                                <DialogTrigger asChild>
-                                    <Button className="bg-primary hover:bg-primary/90">
-                                        <Plus className="mr-2 h-4 w-4" />
-                                        Add User
-                                    </Button>
-                                </DialogTrigger>
-                                <DialogContent className="bg-slate-800 border-slate-700 text-white">
-                                    <DialogHeader>
-                                        <DialogTitle>Add New User</DialogTitle>
-                                        <DialogDescription className="text-gray-300">Create a new user account</DialogDescription>
-                                    </DialogHeader>
-                                    <div className="space-y-4 py-4">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="name">Full Name</Label>
-                                            <Input
-                                                id="name"
-                                                placeholder="Enter full name"
-                                                className="bg-slate-700 border-slate-600"
-                                                value={formData.name}
-                                                onChange={(e) => handleInputChange("name", e.target.value)}
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="email">Email</Label>
-                                            <Input
-                                                id="email"
-                                                type="email"
-                                                placeholder="Enter email"
-                                                className="bg-slate-700 border-slate-600"
-                                                value={formData.email}
-                                                onChange={(e) => handleInputChange("email", e.target.value)}
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="role">Role</Label>
-                                            <Select value={selectedRole} onValueChange={handleRoleChange}>
-                                                <SelectTrigger className="bg-slate-700 border-slate-600">
-                                                    <SelectValue placeholder="Select role" />
-                                                </SelectTrigger>
-                                                <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                                    <SelectItem value="student">Student</SelectItem>
-                                                    <SelectItem value="cashier">Cashier</SelectItem>
-                                                    <SelectItem value="business-office">Business Office</SelectItem>
-                                                    <SelectItem value="admin">Admin</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-
-                                        {/* Conditional Student ID field */}
-                                        {selectedRole === "student" && (
-                                            <div className="space-y-2">
-                                                <Label htmlFor="studentId">Student ID</Label>
-                                                <Input
-                                                    id="studentId"
-                                                    placeholder="Enter student ID"
-                                                    className="bg-slate-700 border-slate-600"
-                                                    value={formData.studentId}
-                                                    onChange={(e) => handleInputChange("studentId", e.target.value)}
-                                                />
-                                            </div>
-                                        )}
-
-                                        <div className="space-y-2">
-                                            <Label htmlFor="password">Password</Label>
-                                            <Input
-                                                id="password"
-                                                type="password"
-                                                placeholder="Enter password"
-                                                className="bg-slate-700 border-slate-600"
-                                                value={formData.password}
-                                                onChange={(e) => handleInputChange("password", e.target.value)}
-                                            />
-                                        </div>
-                                    </div>
-                                    <DialogFooter>
-                                        <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700">
-                                            Cancel
-                                        </Button>
-                                        <Button className="bg-primary hover:bg-primary/90" onClick={handleCreateUser}>
-                                            Create User
-                                        </Button>
-                                    </DialogFooter>
-                                </DialogContent>
-                            </Dialog>
+                            <Button className="bg-primary hover:bg-primary/90" onClick={openCreate} disabled={loading}>
+                                <Plus className="mr-2 h-4 w-4" />
+                                Add User
+                            </Button>
                         </div>
                     </CardHeader>
                     <CardContent>
-                        {/* Filters */}
                         <div className="flex flex-col gap-4 mb-6 md:flex-row md:items-center">
                             <div className="flex-1">
                                 <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                                     <Input
                                         placeholder="Search users..."
                                         value={searchQuery}
@@ -301,7 +355,7 @@ export default function AdminUsersPage() {
                                 </div>
                             </div>
                             <div className="flex flex-col gap-3 sm:flex-row sm:gap-2 sm:overflow-x-auto">
-                                <Select value={roleFilter} onValueChange={setRoleFilter}>
+                                <Select value={roleFilter} onValueChange={(v) => setRoleFilter(v as typeof roleFilter)}>
                                     <SelectTrigger className="w-full sm:w-[150px] bg-slate-700 border-slate-600">
                                         <SelectValue placeholder="Filter by role" />
                                     </SelectTrigger>
@@ -314,7 +368,7 @@ export default function AdminUsersPage() {
                                     </SelectContent>
                                 </Select>
 
-                                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
                                     <SelectTrigger className="w-full sm:w-[150px] bg-slate-700 border-slate-600">
                                         <SelectValue placeholder="Filter by status" />
                                     </SelectTrigger>
@@ -325,18 +379,167 @@ export default function AdminUsersPage() {
                                     </SelectContent>
                                 </Select>
 
-                                <Button variant="outline" className="w-full sm:w-auto border-slate-600 text-white hover:bg-slate-700">
+                                <Button
+                                    variant="outline"
+                                    className="w-full sm:w-auto border-slate-600 text-white hover:bg-slate-700"
+                                    onClick={exportCSV}
+                                    disabled={loading || filteredUsers.length === 0}
+                                    title={filteredUsers.length === 0 ? "No users to export" : undefined}
+                                >
                                     <Download className="mr-2 h-4 w-4" />
                                     Export
                                 </Button>
                             </div>
                         </div>
 
-                        {/* Users Table */}
-                        <DataTable columns={columns} data={filteredUsers} />
+                        {loading ? (
+                            <div className="flex items-center gap-2 text-gray-300">
+                                <Spinner className="h-4 w-4" />
+                                Loading users…
+                            </div>
+                        ) : (
+                            <DataTable columns={columns} data={filteredUsers} />
+                        )}
                     </CardContent>
                 </Card>
             </div>
+
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <DialogContent className="bg-slate-800 border-slate-700 text-white">
+                    <DialogHeader>
+                        <DialogTitle>{mode === "create" ? "Add New User" : "Edit User"}</DialogTitle>
+                        <DialogDescription className="text-gray-300">
+                            {mode === "create" ? "Create a new user profile" : "Update user profile"}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {!!saveError && (
+                        <div className="mb-2 rounded-md border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-200">
+                            {saveError}
+                        </div>
+                    )}
+
+                    <div className="space-y-4 py-2">
+                        <div className="space-y-2">
+                            <Label htmlFor="name">Full Name</Label>
+                            <Input
+                                id="name"
+                                placeholder="Enter full name"
+                                className="bg-slate-700 border-slate-600"
+                                value={working.fullName}
+                                onChange={(e) => setWorking((p) => ({ ...p, fullName: e.target.value }))}
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="email">Email</Label>
+                            <Input
+                                id="email"
+                                type="email"
+                                placeholder="Enter email"
+                                className="bg-slate-700 border-slate-600"
+                                value={working.email}
+                                onChange={(e) => setWorking((p) => ({ ...p, email: e.target.value }))}
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="role">Role</Label>
+                            <Select
+                                value={working.role}
+                                onValueChange={(v) =>
+                                    setWorking((p) => ({ ...p, role: v as UserRecord["role"], studentId: v === "student" ? p.studentId : "" }))
+                                }
+                            >
+                                <SelectTrigger className="bg-slate-700 border-slate-600">
+                                    <SelectValue placeholder="Select role" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                                    <SelectItem value="student">Student</SelectItem>
+                                    <SelectItem value="cashier">Cashier</SelectItem>
+                                    <SelectItem value="business-office">Business Office</SelectItem>
+                                    <SelectItem value="admin">Admin</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {working.role === "student" && (
+                            <div className="space-y-2">
+                                <Label htmlFor="studentId">Student ID</Label>
+                                <Input
+                                    id="studentId"
+                                    placeholder="Enter student ID"
+                                    className="bg-slate-700 border-slate-600"
+                                    value={working.studentId ?? ""}
+                                    onChange={(e) => setWorking((p) => ({ ...p, studentId: e.target.value }))}
+                                />
+                            </div>
+                        )}
+
+                        <div className="space-y-2">
+                            <Label htmlFor="status">Status</Label>
+                            <Select value={working.status} onValueChange={(v) => setWorking((p) => ({ ...p, status: v as UserRecord["status"] }))}>
+                                <SelectTrigger className="bg-slate-700 border-slate-600">
+                                    <SelectValue placeholder="Select status" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-slate-700 border-slate-600 text-white">
+                                    <SelectItem value="active">Active</SelectItem>
+                                    <SelectItem value="inactive">Inactive</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            className="border-slate-600 text-white hover:bg-slate-700"
+                            onClick={() => setDialogOpen(false)}
+                            disabled={saving}
+                        >
+                            Cancel
+                        </Button>
+                        <Button className="bg-primary hover:bg-primary/90" onClick={handleSave} disabled={saving}>
+                            {saving ? (
+                                <span className="inline-flex items-center gap-2">
+                                    <Spinner className="h-4 w-4" />
+                                    Saving…
+                                </span>
+                            ) : mode === "create" ? (
+                                "Create User"
+                            ) : (
+                                "Save Changes"
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <AlertDialog open={!!confirmUser} onOpenChange={(o) => (!o && !deleting ? setConfirmUser(null) : null)}>
+                <AlertDialogContent className="bg-slate-800 border-slate-700 text-white">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete User?</AlertDialogTitle>
+                        <AlertDialogDescription className="text-gray-300">
+                            {confirmUser ? `This will permanently remove "${confirmUser.name}". This action cannot be undone.` : ""}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel className="border-slate-600 text-white hover:bg-slate-700" disabled={deleting}>
+                            Cancel
+                        </AlertDialogCancel>
+                        <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={confirmDelete} disabled={deleting}>
+                            {deleting ? (
+                                <span className="inline-flex items-center gap-2">
+                                    <Spinner className="h-4 w-4" />
+                                    Deleting…
+                                </span>
+                            ) : (
+                                "Delete"
+                            )}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </DashboardLayout>
     )
 }
