@@ -46,7 +46,6 @@ type UserVM = {
     email: string
     role: UserRecord["role"]
     status: UserRecord["status"]
-    lastLogin?: string
     createdAt: string
     studentId?: string
     _doc: UserDoc
@@ -54,8 +53,6 @@ type UserVM = {
 
 const roleLabel = (r: UserRecord["role"]) =>
     r === "business-office" ? "Business Office" : r.charAt(0).toUpperCase() + r.slice(1)
-
-const fmtDT = (s?: string) => (s ? new Date(s).toLocaleString() : "—")
 
 export default function AdminUsersPage() {
     const [users, setUsers] = useState<UserVM[]>([])
@@ -93,7 +90,6 @@ export default function AdminUsersPage() {
                     email: d.email ?? "",
                     role: d.role ?? "student",
                     status: d.status ?? "active",
-                    lastLogin: d.lastLogin,
                     createdAt: d.createdAt ?? d.$createdAt,
                     studentId: d.studentId,
                     _doc: d,
@@ -118,7 +114,13 @@ export default function AdminUsersPage() {
                 cell: ({ row }) => {
                     const r = row.getValue("role") as UserRecord["role"]
                     const variant =
-                        r === "admin" ? "destructive" : r === "cashier" ? "default" : r === "business-office" ? "secondary" : "outline"
+                        r === "admin"
+                            ? "destructive"
+                            : r === "cashier"
+                                ? "default"
+                                : r === "business-office"
+                                    ? "secondary"
+                                    : "outline"
                     return <Badge variant={variant}>{roleLabel(r)}</Badge>
                 },
             },
@@ -130,11 +132,6 @@ export default function AdminUsersPage() {
                     const variant = s === "active" ? "default" : "secondary"
                     return <Badge variant={variant}>{s === "active" ? "Active" : "Inactive"}</Badge>
                 },
-            },
-            {
-                id: "lastLogin",
-                header: "Last Login",
-                cell: ({ row }) => fmtDT(row.original.lastLogin),
             },
             {
                 id: "actions",
@@ -220,7 +217,6 @@ export default function AdminUsersPage() {
                     email: created.email,
                     role: created.role,
                     status: created.status,
-                    lastLogin: created.lastLogin,
                     createdAt: created.createdAt ?? created.$createdAt,
                     studentId: created.studentId,
                     _doc: created,
@@ -246,7 +242,6 @@ export default function AdminUsersPage() {
                                     role: updated.role,
                                     status: updated.status,
                                     studentId: updated.studentId,
-                                    lastLogin: updated.lastLogin ?? x.lastLogin,
                                     _doc: updated,
                                 }
                                 : x
@@ -271,14 +266,13 @@ export default function AdminUsersPage() {
 
     const exportCSV = () => {
         if (!filteredUsers.length) return
-        const headers = ["Name", "Email", "Role", "Status", "Student ID", "Last Login", "Created At"]
+        const headers = ["Name", "Email", "Role", "Status", "Student ID", "Created At"]
         const rows = filteredUsers.map((u) => [
             u.name,
             u.email,
             roleLabel(u.role),
             u.status === "active" ? "Active" : "Inactive",
             u.studentId ?? "",
-            fmtDT(u.lastLogin),
             new Date(u.createdAt).toLocaleString(),
         ])
 
