@@ -1,89 +1,525 @@
-import { CalendarIcon, FileText } from "lucide-react"
-import Link from "next/link"
-import { DashboardLayout } from "@/components/layout/dashboard-layout"
+/* eslint-disable @typescript-eslint/no-explicit-any */
+"use client"
 
-// Mock payment history data
-const paymentHistory = [
-  {
-    id: "PAY-123456",
-    date: "2023-05-15",
-    description: "Tuition Fee - 1st Semester",
-    amount: 1500.0,
-    status: "Completed",
-  },
-  {
-    id: "PAY-123457",
-    date: "2023-06-10",
-    description: "Library Fee",
-    amount: 500.0,
-    status: "Completed",
-  },
-  {
-    id: "PAY-123458",
-    date: "2023-07-05",
-    description: "Laboratory Fee",
-    amount: 800.0,
-    status: "Completed",
-  },
-]
+import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
+import {
+  CalendarIcon,
+  FileText,
+  Loader2,
+  RefreshCw,
+  CheckCircle,
+  Paperclip,
+  Send,
+  AlertCircle,
+} from "lucide-react"
+
+import { DashboardLayout } from "@/components/layout/dashboard-layout"
+import { Button } from "@/components/ui/button"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
+
+import { getCurrentUserSafe, getDatabases, getEnvIds, getStorage, ID, Query } from "@/lib/appwrite"
+import { listRecentPayments, type PaymentDoc } from "@/lib/appwrite-payments"
+import type { Models } from "appwrite" // ✅ Fix: use Appwrite Document base
+
+type PaymentWithExtras = PaymentDoc & {
+  /** Optional: uploaded by cashier when available */
+  receiptUrl?: string | null
+  receiptLink?: string | null
+
+  /** Request-to-cashier metadata set when user clicks Send */
+  receiptRequestStatus?: "Queued" | "Pending" | "Sent" | "Completed" | "Cancelled" | string | null
+  receiptRequestTo?: string | null
+  receiptRequestToName?: string | null
+  receiptRequestMessage?: string | null
+  receiptRequestedAt?: string | null
+
+  /** Proof-of-payment attachment (user uploaded) */
+  receiptProofBucketId?: string | null
+  receiptProofFileId?: string | null
+  receiptProofFileName?: string | null
+}
+
+/** ✅ Fix: extend Models.Document so it satisfies Appwrite generics */
+type UserProfileDoc = Models.Document & {
+  fullName?: string
+  email?: string
+  role?: string
+}
+
+const COMPLETED_STATES = new Set<PaymentDoc["status"]>(["Completed", "Succeeded"])
+const PROOF_BUCKET_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPT_PROOF_BUCKET_ID as string | undefined
+
+function peso(n: number | string) {
+  const v = typeof n === "string" ? Number(n || 0) : n
+  return `₱${(v || 0).toLocaleString()}`
+}
+
+function formatDate(iso: string) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return "—"
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" })
+}
 
 export default function PaymentHistoryPage() {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string>("")
+  const [notice, setNotice] = useState<string>("")
+  const [payments, setPayments] = useState<PaymentWithExtras[]>([])
+
+  // Cashiers
+  const [cashiers, setCashiers] = useState<UserProfileDoc[]>([])
+  const [cashiersLoading, setCashiersLoading] = useState(true)
+
+  // Dialog state
+  const [askDialogFor, setAskDialogFor] = useState<PaymentWithExtras | null>(null)
+  const [selectedCashierId, setSelectedCashierId] = useState<string>("")
+  const [message, setMessage] = useState<string>("")
+  const [proofFile, setProofFile] = useState<File | null>(null)
+  const [sending, setSending] = useState(false)
+
+  const totalPaid = useMemo(
+    () =>
+      payments
+        .filter((p) => COMPLETED_STATES.has(p.status))
+        .reduce((s, p) => s + (Number(p.amount) || 0), 0),
+    [payments]
+  )
+
+  const loadPayments = async () => {
+    setLoading(true)
+    setError("")
+    try {
+      const me = await getCurrentUserSafe()
+      if (!me) {
+        setError("You need to sign in to view your payment history.")
+        setPayments([])
+        return
+      }
+      const docs = await listRecentPayments(me.$id, 100)
+      setPayments(docs as PaymentWithExtras[])
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to load payment history.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadCashiers = async () => {
+    setCashiersLoading(true)
+    try {
+      const { DB_ID, USERS_COL_ID } = getEnvIds()
+      const db = getDatabases()
+      // Include common business office role variants, too
+      const res = await db.listDocuments<UserProfileDoc>({
+        databaseId: DB_ID,
+        collectionId: USERS_COL_ID,
+        queries: [Query.equal("role", ["cashier", "business-office", "business_office", "businessoffice"]), Query.limit(100)],
+      })
+      setCashiers((res.documents as unknown as UserProfileDoc[]) ?? [])
+    } catch {
+      setCashiers([])
+    } finally {
+      setCashiersLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadPayments()
+    loadCashiers()
+  }, [])
+
+  // When opening the dialog, prefill message
+  useEffect(() => {
+    if (!askDialogFor) return
+    const p = askDialogFor
+    const prefilled = `Hello Cashier Team,
+
+May I request the official receipt for my completed payment?
+
+• Reference: ${p.reference || p.$id}
+• Date: ${formatDate(p.$createdAt)}
+• Amount: ${peso(p.amount)}
+• Method: ${p.method}
+• Course/Year: ${(p.courseId || "—").toUpperCase?.() ?? "—"}/${p.yearId || "—"}
+
+Thank you!`
+    setMessage(prefilled)
+    setSelectedCashierId("") // force selecting a cashier
+    setProofFile(null)
+  }, [askDialogFor])
+
+  const proofUrl = (p: PaymentWithExtras) => {
+    try {
+      if (!p.receiptProofBucketId || !p.receiptProofFileId) return null
+      const storage = getStorage()
+      // This returns a session-bound URL
+      return storage.getFileView(p.receiptProofBucketId, p.receiptProofFileId) as unknown as string
+    } catch {
+      return null
+    }
+  }
+
+  const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setProofFile(f)
+  }
+
+  const handleSend = async () => {
+    if (!askDialogFor) return
+    if (!selectedCashierId) {
+      alert("Please choose a cashier.")
+      return
+    }
+    if (!proofFile) {
+      alert("Please attach a proof file (e.g., the PDF or image you downloaded from Gmail).")
+      return
+    }
+    if (!PROOF_BUCKET_ID) {
+      alert("Missing storage bucket ID. Please set NEXT_PUBLIC_APPWRITE_RECEIPT_PROOF_BUCKET_ID.")
+      return
+    }
+
+    setSending(true)
+    try {
+      // 1) Upload proof to Storage
+      const storage = getStorage()
+      const created = await storage.createFile(PROOF_BUCKET_ID, ID.unique(), proofFile)
+      const proofId = (created as any).$id as string
+      const proofName = proofFile.name
+
+      // 2) Resolve cashier info for display
+      const to = cashiers.find((c) => c.$id === selectedCashierId)
+      const cashierName = to?.fullName || to?.email || "Cashier"
+
+      // 3) Patch the payment doc with request metadata
+      const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string
+      const paymentsCollectionId = process.env.NEXT_PUBLIC_APPWRITE_PAYMENTS_COLLECTION_ID as string
+      const db = getDatabases()
+
+      await db.updateDocument({
+        databaseId,
+        collectionId: paymentsCollectionId,
+        documentId: askDialogFor.$id,
+        data: {
+          receiptRequestedAt: new Date().toISOString(),
+          receiptRequestStatus: "Queued",
+          receiptRequestTo: selectedCashierId,
+          receiptRequestToName: cashierName,
+          receiptRequestMessage: message,
+          receiptProofBucketId: PROOF_BUCKET_ID,
+          receiptProofFileId: proofId,
+          receiptProofFileName: proofName,
+        },
+      })
+
+      // 4) Update local state so UI reflects "Queued"
+      setPayments((prev) =>
+        prev.map((x) =>
+          x.$id === askDialogFor.$id
+            ? {
+              ...x,
+              receiptRequestedAt: new Date().toISOString(),
+              receiptRequestStatus: "Queued",
+              receiptRequestTo: selectedCashierId,
+              receiptRequestToName: cashierName,
+              receiptRequestMessage: message,
+              receiptProofBucketId: PROOF_BUCKET_ID,
+              receiptProofFileId: proofId,
+              receiptProofFileName: proofName,
+            }
+            : x
+        )
+      )
+
+      setAskDialogFor(null)
+      setNotice(`Request queued and sent to ${cashierName}.`)
+      setTimeout(() => setNotice(""), 5000)
+    } catch (e: any) {
+      alert(e?.message ?? "Failed to send request. Please try again.")
+    } finally {
+      setSending(false)
+    }
+  }
+
   return (
     <DashboardLayout>
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold">Payment History</h1>
-          <p className="text-gray-600 dark:text-gray-400">View all your previous payments and download receipts</p>
+      <div className="mx-auto max-w-6xl px-4 py-8">
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Payment History</h1>
+            <p className="text-gray-300">View your payments and download receipts</p>
+          </div>
+          <Button variant="outline" className="border-slate-600" onClick={loadPayments} disabled={loading}>
+            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            Refresh
+          </Button>
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-800">
+        {error ? (
+          <Alert className="mb-6 bg-red-500/20 border-red-500/50 text-red-200">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        {notice ? (
+          <Alert className="mb-6 bg-green-500/20 border-green-500/50 text-green-200">
+            <AlertDescription className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4" /> {notice}
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        <div className="overflow-hidden rounded-lg border border-slate-700 bg-slate-800/60 text-white">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-gray-200 bg-gray-50 text-left text-sm font-medium text-gray-500 dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-400">
-                  <th className="px-6 py-3">Reference ID</th>
+                <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
+                  <th className="px-6 py-3">Reference</th>
                   <th className="px-6 py-3">Date</th>
                   <th className="px-6 py-3">Description</th>
-                  <th className="px-6 py-3">Amount</th>
+                  <th className="px-6 py-3 text-right">Amount</th>
                   <th className="px-6 py-3">Status</th>
                   <th className="px-6 py-3">Receipt</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {paymentHistory.map((payment) => (
-                  <tr key={payment.id} className="text-sm text-gray-900 dark:text-gray-200">
-                    <td className="whitespace-nowrap px-6 py-4 font-medium">{payment.id}</td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <div className="flex items-center">
-                        <CalendarIcon className="mr-2 size-4 text-gray-400" />
-                        {payment.date}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">{payment.description}</td>
-                    <td className="whitespace-nowrap px-6 py-4 font-medium">₱{payment.amount.toFixed(2)}</td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <span className="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-500">
-                        {payment.status}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <button className="inline-flex items-center text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
-                        <FileText className="mr-1 size-4" />
-                        Download
-                      </button>
+              <tbody className="divide-y divide-slate-700">
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-gray-300">
+                      <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                      Loading your payments…
                     </td>
                   </tr>
-                ))}
+                ) : payments.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-gray-300">
+                      No payments yet.
+                    </td>
+                  </tr>
+                ) : (
+                  payments.map((p) => {
+                    const completed = COMPLETED_STATES.has(p.status)
+                    const receiptUrl = (p.receiptUrl || p.receiptLink) ?? null
+                    const showDownload = completed && !!receiptUrl
+                    const requestQueued = completed && !receiptUrl && !!p.receiptRequestStatus
+                    const canAskCashier = completed && !receiptUrl && !p.receiptRequestStatus
+
+                    const desc =
+                      Array.isArray(p.fees) && p.fees.length > 0
+                        ? `Fees: ${p.fees.join(", ")}`
+                        : p.planId
+                          ? "Fee Plan Payment"
+                          : "Payment"
+
+                    return (
+                      <tr key={p.$id} className="text-sm text-gray-200">
+                        <td className="whitespace-nowrap px-6 py-4 font-medium">{p.reference || p.$id}</td>
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <div className="flex items-center">
+                            <CalendarIcon className="mr-2 h-4 w-4 text-gray-400" />
+                            {formatDate(p.$createdAt)}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span>{desc}</span>
+                            <span className="text-xs text-gray-400">
+                              Method: {p.method} • Course: {p.courseId?.toUpperCase?.() ?? "—"} • Year: {p.yearId ?? "—"}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-right font-semibold">{peso(p.amount)}</td>
+                        <td className="whitespace-nowrap px-6 py-4">
+                          {p.status === "Pending" && (
+                            <span className="inline-flex rounded-full bg-yellow-500/20 px-2 py-1 text-xs font-medium text-yellow-300">
+                              Pending
+                            </span>
+                          )}
+                          {(p.status === "Completed" || p.status === "Succeeded") && (
+                            <span className="inline-flex rounded-full bg-green-500/20 px-2 py-1 text-xs font-medium text-green-300">
+                              Completed
+                            </span>
+                          )}
+                          {(p.status === "Failed" || p.status === "Cancelled") && (
+                            <span className="inline-flex rounded-full bg-red-500/20 px-2 py-1 text-xs font-medium text-red-300">
+                              {p.status}
+                            </span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4">
+                          {showDownload ? (
+                            <a
+                              href={receiptUrl!}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center text-blue-300 hover:text-blue-200"
+                            >
+                              <FileText className="mr-1 h-4 w-4" />
+                              Download
+                            </a>
+                          ) : requestQueued ? (
+                            <div className="flex flex-col gap-1">
+                              <span className="inline-flex w-fit items-center rounded-full bg-blue-500/20 px-2 py-1 text-xs font-medium text-blue-200">
+                                <Send className="mr-1 h-3 w-3" />
+                                Request {p.receiptRequestStatus}
+                              </span>
+                              {proofUrl(p) ? (
+                                <a
+                                  href={proofUrl(p)!}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center text-xs text-gray-300 hover:text-gray-100"
+                                >
+                                  <Paperclip className="mr-1 h-3 w-3" />
+                                  View proof
+                                </a>
+                              ) : null}
+                            </div>
+                          ) : canAskCashier ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="border-slate-600"
+                              onClick={() => setAskDialogFor(p)}
+                            >
+                              Ask Cashier for Receipt
+                            </Button>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
               </tbody>
+              {!loading && payments.length > 0 && (
+                <tfoot>
+                  <tr className="border-t border-slate-700 bg-slate-900/40 text-sm">
+                    <td className="px-6 py-3 font-medium text-gray-300" colSpan={3}>
+                      Total Completed Payments
+                    </td>
+                    <td className="px-6 py-3 text-right font-semibold">{peso(totalPaid)}</td>
+                    <td className="px-6 py-3" colSpan={2} />
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </div>
 
         <div className="mt-6 flex justify-end">
-          <Link href="/dashboard" className="btn btn-outline">
-            Back to Dashboard
+          <Link href="/dashboard">
+            <Button variant="outline" className="border-slate-600">
+              Back to Dashboard
+            </Button>
           </Link>
         </div>
+
+        {/* Send-to-Cashier Dialog */}
+        <Dialog open={!!askDialogFor} onOpenChange={(o) => !o && setAskDialogFor(null)}>
+          <DialogContent className="bg-slate-800 border-slate-700 text-white">
+            <DialogHeader>
+              <DialogTitle>Send message to cashier</DialogTitle>
+              <DialogDescription className="text-gray-300">
+                This payment is completed, but no receipt has been uploaded. Choose a cashier, attach your proof (e.g.,
+                the receipt you received in Gmail), and send the request.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="mt-2 space-y-4">
+              {/* Choose cashier */}
+              <div className="space-y-2">
+                <Label className="text-gray-200">Cashier</Label>
+                {cashiersLoading ? (
+                  <div className="inline-flex items-center text-sm text-gray-300">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Loading cashiers…
+                  </div>
+                ) : cashiers.length === 0 ? (
+                  <div className="text-sm text-amber-200 inline-flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4" />
+                    No cashier accounts found. (role: <code>cashier</code>)
+                  </div>
+                ) : (
+                  <Select value={selectedCashierId} onValueChange={(v) => setSelectedCashierId(v)}>
+                    <SelectTrigger className="bg-slate-700 border-slate-600">
+                      <SelectValue placeholder="Select a cashier…" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                      {cashiers.map((c) => (
+                        <SelectItem key={c.$id} value={c.$id} className="cursor-pointer">
+                          {(c.fullName || c.email || "Cashier") + (c.email && c.fullName ? ` — ${c.email}` : "")}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
+              {/* Prefilled message (editable) */}
+              <div className="space-y-2">
+                <Label htmlFor="msg" className="text-gray-200">
+                  Message
+                </Label>
+                <textarea
+                  id="msg"
+                  className="min-h-[140px] w-full rounded-md border border-slate-700 bg-slate-900 p-3 text-sm text-gray-100 outline-none focus:ring-2 focus:ring-primary/60"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                />
+              </div>
+
+              {/* Proof attachment */}
+              <div className="space-y-2">
+                <Label className="text-gray-200">Attach proof (PDF or image)</Label>
+                {!PROOF_BUCKET_ID ? (
+                  <div className="text-sm text-amber-200 inline-flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4" />
+                    Missing <code>NEXT_PUBLIC_APPWRITE_RECEIPT_PROOF_BUCKET_ID</code> in env. Upload will fail.
+                  </div>
+                ) : null}
+                <div className="flex items-center gap-3">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-slate-600 bg-slate-700/40 px-3 py-2 text-sm hover:bg-slate-700/70">
+                    <Paperclip className="h-4 w-4" />
+                    <span>{proofFile ? "Replace file" : "Choose file"}</span>
+                    <input type="file" accept="application/pdf,image/*" className="hidden" onChange={handleFilePick} />
+                  </label>
+                  {proofFile ? (
+                    <span className="text-xs text-gray-300 truncate max-w-[60%]">
+                      {proofFile.name} • {(proofFile.size / 1024).toFixed(0)} KB
+                    </span>
+                  ) : (
+                    <span className="text-xs text-gray-400">Attach the receipt you downloaded from Gmail.</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" className="border-slate-600" onClick={() => setAskDialogFor(null)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSend} disabled={sending || cashiersLoading || cashiers.length === 0}>
+                  {sending ? (
+                    <span className="flex items-center">
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Sending…
+                    </span>
+                  ) : (
+                    <span className="flex items-center">
+                      Send message <Send className="ml-2 h-4 w-4" />
+                    </span>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   )

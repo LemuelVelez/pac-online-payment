@@ -11,6 +11,10 @@ export type PaymentRecord = {
   method: "credit-card" | "e-wallet" | "online-banking" | string;
   status: "Pending" | "Completed" | "Succeeded" | "Failed" | "Cancelled";
   reference: string;
+
+  /** New link to fee plan */
+  planId?: string | null;   // flat string id for fast querying/exports
+  planRef?: string | null;  // Appwrite relationship attribute → fee_plans
 };
 
 /** The document type returned by Appwrite (PaymentRecord + system fields). */

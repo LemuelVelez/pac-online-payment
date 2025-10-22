@@ -79,7 +79,7 @@ export default function MakePaymentPage() {
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
 
   useEffect(() => {
-    ;(async () => {
+    ; (async () => {
       setLoading(true)
       setError("")
       try {
@@ -266,6 +266,10 @@ export default function MakePaymentPage() {
         method: paymentMethod,
         status: "Pending",
         reference: link.id,
+
+        // NEW: link the chosen plan
+        planId: selectedPlan?.$id ?? null,
+        planRef: selectedPlan?.$id ?? null,
       }
       await createPayment(rec)
 
@@ -278,7 +282,6 @@ export default function MakePaymentPage() {
     }
   }
 
-  // Legacy checkbox breakdown is shown only if no plan selected but legacy per-fee entries exist
   const showLegacyBreakdown =
     !selectedPlan &&
     !!feePlanLegacy &&
@@ -413,8 +416,7 @@ export default function MakePaymentPage() {
               </Card>
 
               <form onSubmit={handleSubmit}>
-                {/* Legacy per-fee selection (shown only if no active plan was chosen
-                    but the profile already has a per-fee breakdown) */}
+                {/* Legacy per-fee selection */}
                 {showLegacyBreakdown ? (
                   <Card className="mb-8 bg-slate-800/60 border-slate-700 text-white">
                     <CardHeader>
@@ -538,7 +540,6 @@ export default function MakePaymentPage() {
                         />
                       </div>
                       <div className="text-sm text-gray-400 space-y-1">
-                        {/* Legacy helper */}
                         {showLegacyBreakdown && (
                           <p>
                             Selected fees total: <span className="text-white">₱{selectedFeesTotal.toLocaleString()}</span>
@@ -595,7 +596,6 @@ export default function MakePaymentPage() {
                     </div>
                     <div className="border-t border-slate-700 my-2" />
 
-                    {/* NEW: show selected plan quick summary */}
                     {selectedPlan && selectedPlanTotals && (
                       <>
                         <div className="flex justify-between">
@@ -610,7 +610,6 @@ export default function MakePaymentPage() {
                       </>
                     )}
 
-                    {/* Legacy summary details if applicable */}
                     {!selectedPlan &&
                       showLegacyBreakdown &&
                       (["tuition", "laboratory", "library", "miscellaneous"] as FeeKey[]).map(
@@ -622,10 +621,10 @@ export default function MakePaymentPage() {
                                 {k === "tuition"
                                   ? "Tuition Fee"
                                   : k === "laboratory"
-                                  ? "Laboratory Fee"
-                                  : k === "library"
-                                  ? "Library Fee"
-                                  : "Miscellaneous (Other Fees)"}
+                                    ? "Laboratory Fee"
+                                    : k === "library"
+                                      ? "Library Fee"
+                                      : "Miscellaneous (Other Fees)"}
                               </span>
                               <span>₱{feePlanLegacy![k]!.toLocaleString()}</span>
                             </div>
@@ -696,8 +695,8 @@ export default function MakePaymentPage() {
                       {paymentMethod === "credit-card"
                         ? "Credit/Debit Card"
                         : paymentMethod === "e-wallet"
-                        ? "E-Wallet"
-                        : "Online Banking"}
+                          ? "E-Wallet"
+                          : "Online Banking"}
                     </span>
                   </div>
                   <div className="flex justify-between">
