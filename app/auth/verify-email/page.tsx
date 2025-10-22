@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, BadgeCheck, MailCheck, Loader2 } from "lucide-react"
+import { ArrowLeft, BadgeCheck, MailCheck, Loader2, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -34,6 +34,7 @@ export default function VerifyEmailPage() {
 
     const [newEmail, setNewEmail] = useState<string>("")
     const [currentPassword, setCurrentPassword] = useState<string>("")
+    const [showPassword, setShowPassword] = useState<boolean>(false)
 
     const [cooldown, setCooldown] = useState<number>(0)
     const cooldownKey = useMemo(() => (email ? `verifyEmailLastSentAt:${email}` : "verifyEmailLastSentAt"), [email])
@@ -278,23 +279,36 @@ export default function VerifyEmailPage() {
                                                 spellCheck={false}
                                             />
                                         </div>
+
                                         <div className="space-y-1">
                                             <Label htmlFor="current-password" className="text-sm text-gray-200">
                                                 Current password
                                             </Label>
-                                            <Input
-                                                id="current-password"
-                                                type="password"
-                                                placeholder="Enter your password"
-                                                className="bg-slate-900/50 border-slate-700 text-white"
-                                                value={currentPassword}
-                                                onChange={(e) => setCurrentPassword(e.target.value)}
-                                                autoComplete="current-password"
-                                            />
+                                            <div className="relative">
+                                                <Input
+                                                    id="current-password"
+                                                    type={showPassword ? "text" : "password"}
+                                                    placeholder="Enter your password"
+                                                    className="bg-slate-900/50 border-slate-700 text-white pr-10"
+                                                    value={currentPassword}
+                                                    onChange={(e) => setCurrentPassword(e.target.value)}
+                                                    autoComplete="current-password"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowPassword((s) => !s)}
+                                                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-200"
+                                                    aria-label={showPassword ? "Hide password" : "Show password"}
+                                                    title={showPassword ? "Hide password" : "Show password"}
+                                                >
+                                                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                                </button>
+                                            </div>
                                         </div>
+
                                         <div className="flex flex-col sm:flex-row gap-3 pt-1">
                                             <Button
-                                                className="inline-flex items-center gap-2 w-full sm:w-auto bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                                                className="inline-flex items-center gap-2 w/full sm:w-auto bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
                                                 onClick={onChangeEmail}
                                                 disabled={updatingEmail || !newEmail || !currentPassword}
                                                 title="Update your email and resend the verification link"
@@ -334,7 +348,7 @@ export default function VerifyEmailPage() {
                         <CardFooter className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between border-t border-slate-700 pt-6">
                             <Button
                                 variant="outline"
-                                className="cursor-pointer w-full sm:w-auto text-slate-700 hover:text-white border-slate-700 hover:bg-slate-700 inline-flex items-center gap-2"
+                                className="cursor-pointer w-full sm:w-auto text-slate-300 hover:text-white border-slate-700 hover:bg-slate-700 inline-flex items-center gap-2"
                                 onClick={onRefreshClick}
                                 disabled={loading || refreshing}
                                 title="Refresh your verification status"
