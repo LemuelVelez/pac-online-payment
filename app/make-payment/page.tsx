@@ -17,8 +17,13 @@ import { getCurrentUserSafe, getDatabases, getEnvIds } from "@/lib/appwrite"
 import { createPayment, getPaidTotal, type PaymentRecord } from "@/lib/appwrite-payments"
 import type { Models } from "appwrite"
 
+// NEW: fee plan imports
+import { listAllFeePlans, computeTotals, type FeePlanDoc } from "@/lib/fee-plan"
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+
 type FeeKey = "tuition" | "laboratory" | "library" | "miscellaneous"
-type FeePlan = Partial<Record<FeeKey | "total", number>>
+type FeePlanLegacy = Partial<Record<FeeKey | "total", number>>
 
 type UserProfileDoc = Models.Document & {
   userId: string
@@ -30,7 +35,7 @@ type UserProfileDoc = Models.Document & {
   courseId?: "bsed" | "bscs" | "bssw" | "bsit"
   yearLevel?: "1st" | "2nd" | "3rd" | "4th" | string
   yearId?: "1" | "2" | "3" | "4"
-  feePlan?: FeePlan
+  feePlan?: FeePlanLegacy
   totalFees?: number
 }
 
@@ -60,7 +65,7 @@ export default function MakePaymentPage() {
   const [error, setError] = useState<string>("")
   const [courseId, setCourseId] = useState<UserProfileDoc["courseId"]>()
   const [yearId, setYearId] = useState<UserProfileDoc["yearId"]>()
-  const [feePlan, setFeePlan] = useState<FeePlan | null>(null)
+  const [feePlanLegacy, setFeePlanLegacy] = useState<FeePlanLegacy | null>(null) // legacy (from profile)
   const [paidTotal, setPaidTotal] = useState(0)
 
   const [paymentMethod, setPaymentMethod] = useState<"credit-card" | "e-wallet" | "online-banking">("credit-card")
@@ -69,8 +74,12 @@ export default function MakePaymentPage() {
   const [showPaymongoDialog, setShowPaymongoDialog] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
 
+  // NEW: Active fee plans fetched from DB + selected plan id
+  const [activePlans, setActivePlans] = useState<FeePlanDoc[]>([])
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
+
   useEffect(() => {
-    ; (async () => {
+    ;(async () => {
       setLoading(true)
       setError("")
       try {
@@ -93,7 +102,7 @@ export default function MakePaymentPage() {
 
         const normalizedCourse = doc.courseId ?? normalizeCourseId(doc.course)
         const normalizedYear = doc.yearId ?? normalizeYearId(doc.yearLevel)
-        const plan: FeePlan | null =
+        const legacy: FeePlanLegacy | null =
           doc.feePlan && Object.keys(doc.feePlan).length > 0
             ? doc.feePlan
             : typeof doc.totalFees === "number"
@@ -102,20 +111,46 @@ export default function MakePaymentPage() {
 
         setCourseId(normalizedCourse)
         setYearId(normalizedYear)
-        setFeePlan(plan ?? null)
+        setFeePlanLegacy(legacy ?? null)
 
-        if (plan) {
+        if (legacy) {
           const keys = (["tuition", "laboratory", "library", "miscellaneous"] as FeeKey[]).filter(
-            (k) => typeof plan[k] === "number"
+            (k) => typeof legacy[k] === "number"
           )
           setSelectedFees(keys)
         }
 
+        // Paid total for balance calculations
         let paid = 0
         if (normalizedCourse && normalizedYear) {
           paid = await getPaidTotal(me.$id, normalizedCourse, normalizedYear)
         }
         setPaidTotal(paid)
+
+        // NEW: Load active fee plans
+        const allPlans = await listAllFeePlans()
+        const onlyActive = allPlans.filter((p) => p.isActive !== false)
+
+        // Prefer plans matching the student's course (e.g., "BSED", "BSCS", etc.)
+        const courseCodeMap: Record<NonNullable<UserProfileDoc["courseId"]>, string> = {
+          bsed: "BSED",
+          bscs: "BSCS",
+          bssw: "BSSW",
+          bsit: "BSIT",
+        }
+        const courseLabel = normalizedCourse ? courseCodeMap[normalizedCourse] : undefined
+        const preferred = courseLabel
+          ? onlyActive.filter((p) => p.program?.toLowerCase().includes(courseLabel.toLowerCase()))
+          : onlyActive
+
+        setActivePlans(onlyActive)
+
+        // Auto-select a plan if there’s a clear match
+        if (preferred.length > 0) {
+          setSelectedPlanId(preferred[0].$id)
+        } else if (onlyActive.length === 1) {
+          setSelectedPlanId(onlyActive[0].$id)
+        }
       } catch (e: any) {
         setError(e?.message ?? "Failed to load payment data.")
       } finally {
@@ -139,12 +174,33 @@ export default function MakePaymentPage() {
     return ({ "1": "1st", "2": "2nd", "3": "3rd", "4": "4th" } as const)[yearId]
   }, [yearId])
 
-  const selectedFeesTotal = useMemo(() => {
-    if (!feePlan) return 0
-    return selectedFees.reduce((sum, k) => sum + (feePlan[k] ?? 0), 0)
-  }, [feePlan, selectedFees])
+  const selectedPlan = useMemo(
+    () => activePlans.find((p) => p.$id === selectedPlanId) ?? null,
+    [activePlans, selectedPlanId]
+  )
 
-  const totalFees = typeof feePlan?.total === "number" ? feePlan!.total! : undefined
+  const selectedPlanTotals = useMemo(() => {
+    if (!selectedPlan) return null
+    return computeTotals({
+      units: selectedPlan.units,
+      tuitionPerUnit: selectedPlan.tuitionPerUnit,
+      registrationFee: selectedPlan.registrationFee,
+      feeItems: selectedPlan.feeItems,
+    })
+  }, [selectedPlan])
+
+  const selectedFeesTotal = useMemo(() => {
+    if (!feePlanLegacy) return 0
+    return selectedFees.reduce((sum, k) => sum + (feePlanLegacy[k] ?? 0), 0)
+  }, [feePlanLegacy, selectedFees])
+
+  // Prefer NEW plan total when a plan is selected; fall back to legacy/provided total
+  const totalFees = typeof selectedPlanTotals?.total === "number"
+    ? selectedPlanTotals.total
+    : typeof feePlanLegacy?.total === "number"
+      ? feePlanLegacy.total!
+      : undefined
+
   const currentBalance = typeof totalFees === "number" ? Math.max(0, totalFees - paidTotal) : undefined
   const remainingAfterPayment =
     typeof currentBalance === "number" ? Math.max(0, currentBalance - (Number.parseFloat(amount) || 0)) : undefined
@@ -155,6 +211,14 @@ export default function MakePaymentPage() {
 
   const fillSelectedTotal = () => {
     setAmount(selectedFeesTotal ? String(selectedFeesTotal) : "")
+  }
+
+  // NEW: helpers to use plan total or balance
+  const usePlanTotal = () => {
+    if (typeof totalFees === "number") setAmount(String(totalFees))
+  }
+  const usePlanBalance = () => {
+    if (typeof currentBalance === "number") setAmount(String(currentBalance))
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -173,13 +237,24 @@ export default function MakePaymentPage() {
       if (!Number.isFinite(amt) || amt <= 0) throw new Error("Please enter a valid amount.")
 
       const description = `${courseLabel} • Year: ${yearLabel}`
-      const remarks = selectedFees.length > 0 ? `Fees: ${selectedFees.join(", ")}` : "Tuition / School Fees"
+      const remarksBase = selectedPlan
+        ? `Plan: ${selectedPlan.program} | Units: ${selectedPlan.units} | PerUnit: ₱${selectedPlan.tuitionPerUnit.toLocaleString()}`
+        : "Tuition / School Fees"
+      const remarksLegacy = selectedFees.length > 0 ? ` | Fees: ${selectedFees.join(", ")}` : ""
 
       const link = await createPaymentLink({
         amount: amt,
         description,
-        remarks,
-        metadata: { userId: me.$id, courseId, yearId, fees: selectedFees, method: paymentMethod },
+        remarks: `${remarksBase}${remarksLegacy}`.trim(),
+        metadata: {
+          userId: me.$id,
+          courseId,
+          yearId,
+          planId: selectedPlan?.$id ?? null,
+          planProgram: selectedPlan?.program ?? null,
+          fees: selectedPlan ? "plan-total" : selectedFees,
+          method: paymentMethod,
+        },
       })
 
       const rec: PaymentRecord = {
@@ -187,7 +262,7 @@ export default function MakePaymentPage() {
         courseId,
         yearId,
         amount: amt,
-        fees: selectedFees,
+        fees: selectedPlan ? (["tuition", "laboratory", "library", "miscellaneous"] as any) : selectedFees,
         method: paymentMethod,
         status: "Pending",
         reference: link.id,
@@ -203,12 +278,14 @@ export default function MakePaymentPage() {
     }
   }
 
-  const hasBreakdown =
-    !!feePlan &&
-    (typeof feePlan.tuition === "number" ||
-      typeof feePlan.laboratory === "number" ||
-      typeof feePlan.library === "number" ||
-      typeof feePlan.miscellaneous === "number")
+  // Legacy checkbox breakdown is shown only if no plan selected but legacy per-fee entries exist
+  const showLegacyBreakdown =
+    !selectedPlan &&
+    !!feePlanLegacy &&
+    (typeof feePlanLegacy.tuition === "number" ||
+      typeof feePlanLegacy.laboratory === "number" ||
+      typeof feePlanLegacy.library === "number" ||
+      typeof feePlanLegacy.miscellaneous === "number")
 
   return (
     <DashboardLayout>
@@ -239,8 +316,106 @@ export default function MakePaymentPage() {
         ) : (
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
             <div className="lg:col-span-2">
+              {/* NEW: Active Fee Plan chooser */}
+              <Card className="mb-8 bg-slate-800/60 border-slate-700 text-white">
+                <CardHeader>
+                  <CardTitle>Choose Fee Plan</CardTitle>
+                  <CardDescription className="text-gray-300">
+                    Select an <span className="font-medium text-white">active</span> fee plan for your course to proceed with payment.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {activePlans.length === 0 ? (
+                    <div className="text-sm text-gray-300">
+                      No active fee plans available. You can still enter a custom amount below.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="max-w-md">
+                        <Label className="mb-1 block">Active plans</Label>
+                        <Select value={selectedPlanId ?? ""} onValueChange={(v) => setSelectedPlanId(v)}>
+                          <SelectTrigger className="bg-slate-700 border-slate-600">
+                            <SelectValue placeholder="Select a plan…" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                            {activePlans.map((p) => {
+                              const totals = computeTotals({
+                                units: p.units,
+                                tuitionPerUnit: p.tuitionPerUnit,
+                                registrationFee: p.registrationFee,
+                                feeItems: p.feeItems,
+                              })
+                              return (
+                                <SelectItem key={p.$id} value={p.$id} className="cursor-pointer">
+                                  {p.program} — ₱{totals.total.toLocaleString()}
+                                </SelectItem>
+                              )
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {selectedPlan && selectedPlanTotals && (
+                        <div className="mt-4">
+                          <div className="text-sm mb-2 text-gray-300">
+                            Plan: <span className="font-medium text-white">{selectedPlan.program}</span>
+                          </div>
+                          <div className="overflow-hidden rounded-md border border-slate-700">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Description</TableHead>
+                                  <TableHead className="text-right">Amount</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                <TableRow>
+                                  <TableCell>Registration Fee</TableCell>
+                                  <TableCell className="text-right">₱{selectedPlan.registrationFee.toLocaleString()}</TableCell>
+                                </TableRow>
+                                <TableRow>
+                                  <TableCell>
+                                    Tuition Per Unit × Units ({selectedPlan.units} × ₱{selectedPlan.tuitionPerUnit.toLocaleString()})
+                                  </TableCell>
+                                  <TableCell className="text-right">₱{selectedPlanTotals.tuition.toLocaleString()}</TableCell>
+                                </TableRow>
+                                {selectedPlan.feeItems.map((f) => (
+                                  <TableRow key={f.id}>
+                                    <TableCell>{f.name}</TableCell>
+                                    <TableCell className="text-right">₱{Number(f.amount || 0).toLocaleString()}</TableCell>
+                                  </TableRow>
+                                ))}
+                                <TableRow>
+                                  <TableCell className="font-medium">TOTAL</TableCell>
+                                  <TableCell className="text-right font-semibold">
+                                    ₱{selectedPlanTotals.total.toLocaleString()}
+                                  </TableCell>
+                                </TableRow>
+                              </TableBody>
+                            </Table>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Button variant="outline" className="border-slate-600" onClick={usePlanTotal}>
+                              Use plan total
+                            </Button>
+                            {typeof currentBalance === "number" && (
+                              <Button variant="outline" className="border-slate-600" onClick={usePlanBalance}>
+                                Use current balance
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+
               <form onSubmit={handleSubmit}>
-                {hasBreakdown ? (
+                {/* Legacy per-fee selection (shown only if no active plan was chosen
+                    but the profile already has a per-fee breakdown) */}
+                {showLegacyBreakdown ? (
                   <Card className="mb-8 bg-slate-800/60 border-slate-700 text-white">
                     <CardHeader>
                       <CardTitle>Select Fees to Pay</CardTitle>
@@ -259,7 +434,7 @@ export default function MakePaymentPage() {
                           ] as { key: FeeKey; label: string }[]
                         ).map(
                           (item) =>
-                            typeof feePlan?.[item.key] === "number" && (
+                            typeof feePlanLegacy?.[item.key] === "number" && (
                               <div className="flex items-center space-x-2" key={item.key}>
                                 <Checkbox
                                   id={item.key}
@@ -274,7 +449,7 @@ export default function MakePaymentPage() {
                                   >
                                     {item.label}
                                   </label>
-                                  <p className="text-sm text-gray-400">₱{feePlan![item.key]!.toLocaleString()}</p>
+                                  <p className="text-sm text-gray-400">₱{feePlanLegacy![item.key]!.toLocaleString()}</p>
                                 </div>
                               </div>
                             )
@@ -290,16 +465,7 @@ export default function MakePaymentPage() {
                       </Button>
                     </CardFooter>
                   </Card>
-                ) : (
-                  <Card className="mb-8 bg-slate-800/60 border-slate-700 text-white">
-                    <CardHeader>
-                      <CardTitle>No Fee Breakdown Found</CardTitle>
-                      <CardDescription className="text-gray-300">
-                        Your profile doesn’t have a detailed fee plan. You can still enter a custom amount below.
-                      </CardDescription>
-                    </CardHeader>
-                  </Card>
-                )}
+                ) : null}
 
                 <Card className="mb-8 bg-slate-800/60 border-slate-700 text-white">
                   <CardHeader>
@@ -372,7 +538,8 @@ export default function MakePaymentPage() {
                         />
                       </div>
                       <div className="text-sm text-gray-400 space-y-1">
-                        {hasBreakdown && (
+                        {/* Legacy helper */}
+                        {showLegacyBreakdown && (
                           <p>
                             Selected fees total: <span className="text-white">₱{selectedFeesTotal.toLocaleString()}</span>
                           </p>
@@ -427,26 +594,45 @@ export default function MakePaymentPage() {
                       <span>{yearLabel}</span>
                     </div>
                     <div className="border-t border-slate-700 my-2" />
-                    {hasBreakdown &&
+
+                    {/* NEW: show selected plan quick summary */}
+                    {selectedPlan && selectedPlanTotals && (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-gray-300">Plan:</span>
+                          <span className="font-medium">{selectedPlan.program}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-300">Plan Total:</span>
+                          <span>₱{selectedPlanTotals.total.toLocaleString()}</span>
+                        </div>
+                        <div className="border-t border-slate-700 my-2" />
+                      </>
+                    )}
+
+                    {/* Legacy summary details if applicable */}
+                    {!selectedPlan &&
+                      showLegacyBreakdown &&
                       (["tuition", "laboratory", "library", "miscellaneous"] as FeeKey[]).map(
                         (k) =>
                           selectedFees.includes(k) &&
-                          typeof feePlan?.[k] === "number" && (
+                          typeof feePlanLegacy?.[k] === "number" && (
                             <div className="flex justify-between" key={k}>
                               <span className="text-gray-300">
                                 {k === "tuition"
                                   ? "Tuition Fee"
                                   : k === "laboratory"
-                                    ? "Laboratory Fee"
-                                    : k === "library"
-                                      ? "Library Fee"
-                                      : "Miscellaneous (Other Fees)"}
+                                  ? "Laboratory Fee"
+                                  : k === "library"
+                                  ? "Library Fee"
+                                  : "Miscellaneous (Other Fees)"}
                               </span>
-                              <span>₱{feePlan![k]!.toLocaleString()}</span>
+                              <span>₱{feePlanLegacy![k]!.toLocaleString()}</span>
                             </div>
                           )
                       )}
-                    {hasBreakdown && (
+
+                    {!selectedPlan && showLegacyBreakdown && (
                       <>
                         <div className="border-t border-slate-700 my-2" />
                         <div className="flex justify-between font-medium">
@@ -455,6 +641,7 @@ export default function MakePaymentPage() {
                         </div>
                       </>
                     )}
+
                     <div className="flex justify-between">
                       <span className="text-gray-300">Amount to Pay:</span>
                       <span>₱{amount ? Number.parseFloat(amount).toLocaleString() : "0.00"}</span>
@@ -509,8 +696,8 @@ export default function MakePaymentPage() {
                       {paymentMethod === "credit-card"
                         ? "Credit/Debit Card"
                         : paymentMethod === "e-wallet"
-                          ? "E-Wallet"
-                          : "Online Banking"}
+                        ? "E-Wallet"
+                        : "Online Banking"}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -519,6 +706,12 @@ export default function MakePaymentPage() {
                       {courseLabel} – {yearLabel}
                     </span>
                   </div>
+                  {selectedPlan && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Fee Plan:</span>
+                      <span className="truncate max-w-[60%] text-right">{selectedPlan.program}</span>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex items-center rounded-lg bg-blue-500/20 p-4 text-blue-200">
