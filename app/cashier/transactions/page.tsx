@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { PaymentReceipt } from "@/components/payment/payment-receipt"
 import { DateRangePicker } from "@/components/admin/date-range-picker"
 import { Search, Download, Filter, Eye, Loader2 } from "lucide-react"
@@ -58,7 +58,15 @@ export default function CashierTransactionsPage() {
     setLoading(true)
     try {
       const { DB_ID, USERS_COL_ID } = getEnvIds()
-      const PAYMENTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_PAYMENTS_COLLECTION_ID as string
+      // Read collection IDs from env (client-safe due to NEXT_PUBLIC_)
+      const PAYMENTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_PAYMENTS_COLLECTION_ID as string | undefined
+
+      if (!DB_ID || !USERS_COL_ID || !PAYMENTS_COL_ID) {
+        throw new Error(
+          "Missing Appwrite IDs: DB_ID / USERS_COL_ID / PAYMENTS_COL_ID. Check your .env(NEXT_PUBLIC_*) values."
+        )
+      }
+
       const db = getDatabases()
 
       const res = await db.listDocuments<PaymentDoc>(DB_ID, PAYMENTS_COL_ID, [
@@ -144,14 +152,20 @@ export default function CashierTransactionsPage() {
     toast.info("Preparing receipt…")
 
     try {
-      const { DB_ID } = getEnvIds()
-      const RECEIPTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPTS_COLLECTION_ID as string
-      const USERS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_COLLECTION_ID as string
+      const { DB_ID, USERS_COL_ID } = getEnvIds()
+      const RECEIPTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPTS_COLLECTION_ID as string | undefined
+
+      if (!DB_ID || !USERS_COL_ID || !RECEIPTS_COL_ID) {
+        throw new Error(
+          "Missing Appwrite IDs: DB_ID / USERS_COL_ID / RECEIPTS_COL_ID. Set NEXT_PUBLIC_* env vars accordingly."
+        )
+      }
+
       const db = getDatabases()
 
       // fetch student (ensure we have the freshest)
       let student = studentsById[payment.userId]
-      if (!student) {
+      if (!student && payment.userId) {
         const userRes = await db.getDocument<UserProfileDoc>(DB_ID, USERS_COL_ID, payment.userId).catch(() => null)
         if (userRes) student = userRes as unknown as UserProfileDoc
       }
@@ -236,15 +250,13 @@ export default function CashierTransactionsPage() {
                   Array.isArray(t.fees) && t.fees.length > 0
                     ? `Fees: ${t.fees.join(", ")}`
                     : t.planId
-                      ? "Fee Plan Payment"
-                      : "Payment"
+                    ? "Fee Plan Payment"
+                    : "Payment"
 
                 return (
                   <tr key={t.$id} className="text-sm">
                     <td className="whitespace-nowrap px-6 py-4 font-medium">{t.reference || t.$id}</td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      {new Date(t.$createdAt).toLocaleString()}
-                    </td>
+                    <td className="whitespace-nowrap px-6 py-4">{new Date(t.$createdAt).toLocaleString()}</td>
                     <td className="px-6 py-4">
                       <div>
                         <p className="font-medium">{s?.fullName ?? "—"}</p>
@@ -406,9 +418,7 @@ export default function CashierTransactionsPage() {
             <Card className="bg-slate-800/60 border-slate-700 text-white">
               <CardHeader>
                 <CardTitle>Over-the-Counter</CardTitle>
-                <CardDescription className="text-gray-300">
-                  Cash/Card transactions (recorded by cashiers)
-                </CardDescription>
+                <CardDescription className="text-gray-300">Cash/Card transactions (recorded by cashiers)</CardDescription>
               </CardHeader>
               <CardContent>{renderTable(myLikeTransactions)}</CardContent>
             </Card>
@@ -417,8 +427,19 @@ export default function CashierTransactionsPage() {
 
         {/* Receipt Dialog */}
         <Dialog open={isReceiptDialogOpen} onOpenChange={setIsReceiptDialogOpen}>
-          <DialogContent>
-            {receiptData && (
+          <DialogContent className="sm:max-w-2xl">
+            {/* Radix a11y requirement: include a title (hidden is fine) */}
+            <DialogHeader className="sr-only">
+              <DialogTitle>Payment Receipt</DialogTitle>
+              <DialogDescription>Details of the selected payment receipt.</DialogDescription>
+            </DialogHeader>
+
+            {!receiptData ? (
+              <div className="flex items-center justify-center py-12 text-gray-300">
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Preparing receipt…
+              </div>
+            ) : (
               <PaymentReceipt
                 receiptNumber={receiptData.receiptNumber}
                 date={receiptData.date}
