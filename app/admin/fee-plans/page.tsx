@@ -48,6 +48,7 @@ import { Item, ItemContent, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { Spinner } from "@/components/ui/spinner"
 import type { FeePlanDoc, FeePlanRecord } from "@/lib/fee-plan"
 import { computeTotals, createFeePlan, deleteFeePlan, duplicateFeePlan, listAllFeePlans, updateFeePlan } from "@/lib/fee-plan"
+import { toast } from "sonner"
 
 type FeeItem = { id: string; name: string; amount: number }
 
@@ -262,6 +263,8 @@ export default function AdminFeePlansPage() {
                     const docs = await listAllFeePlans()
                     if (!mounted) return
                     setPlans(docs.map(toVM))
+                } catch (e: any) {
+                    toast.error("Failed to load fee plans", { description: e?.message || "Please try again." })
                 } finally {
                     if (mounted) setLoading(false)
                 }
@@ -321,6 +324,8 @@ export default function AdminFeePlansPage() {
                 const created = await createFeePlan(payload)
                 const vm = toVM(created)
                 setPlans((p) => [vm, ...p])
+                setDialogOpen(false)
+                toast.success("Fee plan created", { description: vm.program })
             } else {
                 const patch: Partial<FeePlanRecord> = {
                     program: working.program.trim(),
@@ -333,8 +338,11 @@ export default function AdminFeePlansPage() {
                 const updated = await updateFeePlan(working.id, patch)
                 const vm = toVM(updated)
                 setPlans((p) => p.map((x) => (x.id === vm.id ? vm : x)))
+                setDialogOpen(false)
+                toast.success("Fee plan updated", { description: vm.program })
             }
-            setDialogOpen(false)
+        } catch (e: any) {
+            toast.error("Save failed", { description: e?.message || "Please try again." })
         } finally {
             setSaving(false)
         }
@@ -346,6 +354,9 @@ export default function AdminFeePlansPage() {
             const created = await duplicateFeePlan(plan.id)
             const vm = toVM(created)
             setPlans((p) => [vm, ...p])
+            toast.success("Plan duplicated", { description: vm.program })
+        } catch (e: any) {
+            toast.error("Duplicate failed", { description: e?.message || "Please try again." })
         } finally {
             setBusy(null)
         }
@@ -356,6 +367,9 @@ export default function AdminFeePlansPage() {
         try {
             await deleteFeePlan(plan.id)
             removePlanLocal(plan.id)
+            toast.success("Plan deleted", { description: plan.program })
+        } catch (e: any) {
+            toast.error("Delete failed", { description: e?.message || "Please try again." })
         } finally {
             setBusy(null)
         }
@@ -456,7 +470,16 @@ export default function AdminFeePlansPage() {
                                 <Edit className="mr-2 h-4 w-4" />
                                 Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => navigator.clipboard.writeText(plan.id)}>
+                            <DropdownMenuItem
+                                onClick={async () => {
+                                    try {
+                                        await navigator.clipboard.writeText(plan.id)
+                                        toast.success("Plan ID copied", { description: plan.id })
+                                    } catch {
+                                        toast.error("Failed to copy plan ID")
+                                    }
+                                }}
+                            >
                                 <Copy className="mr-2 h-4 w-4" />
                                 Copy plan ID
                             </DropdownMenuItem>

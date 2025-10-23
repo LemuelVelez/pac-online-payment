@@ -39,6 +39,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { toast } from "sonner"
 
 type UserVM = {
   id: string
@@ -225,6 +226,7 @@ export default function AdminUsersPage() {
 
         setUsers((prev) => [vm, ...prev])
         setDialogOpen(false)
+        toast.success("User created", { description: vm.name || vm.email })
       } else {
         const id = working.id!
         const original = users.find((u) => u.id === id)
@@ -240,7 +242,11 @@ export default function AdminUsersPage() {
           if (wantsEmailChange) {
             const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)
             if (!emailOk) {
-              throw new Error("Please enter a valid email address.")
+              const msg = "Please enter a valid email address."
+              setSaveError(msg)
+              toast.error("Invalid email", { description: msg })
+              setSaving(false)
+              return
             }
           }
 
@@ -270,9 +276,12 @@ export default function AdminUsersPage() {
         )
 
         setDialogOpen(false)
+        toast.success("User updated", { description: updated.fullName || updated.email })
       }
     } catch (e: any) {
-      setSaveError(e?.message || "Save failed")
+      const msg = e?.message || "Save failed"
+      setSaveError(msg)
+      toast.error("Save failed", { description: msg })
     } finally {
       setSaving(false)
     }
@@ -312,6 +321,8 @@ export default function AdminUsersPage() {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
+
+    toast.success("Exported users CSV", { description: `${filteredUsers.length} row(s) exported` })
   }
 
   const confirmDelete = async () => {
@@ -320,7 +331,10 @@ export default function AdminUsersPage() {
     try {
       await deleteUserProfile(confirmUser.id)
       setUsers((prev) => prev.filter((x) => x.id !== confirmUser.id))
+      toast.success("User deleted", { description: confirmUser.name || confirmUser.email })
       setConfirmUser(null)
+    } catch (e: any) {
+      toast.error("Delete failed", { description: e?.message || "Something went wrong while deleting the user." })
     } finally {
       setDeleting(false)
     }
