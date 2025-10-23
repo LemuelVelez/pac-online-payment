@@ -23,6 +23,7 @@ import {
 } from "@/lib/appwrite-cashier"
 import { getCurrentUserSafe } from "@/lib/appwrite"
 import type { PaymentDoc } from "@/lib/appwrite-payments"
+import { toast } from "sonner"
 
 type FeeKey = "tuition" | "laboratory" | "library" | "miscellaneous"
 
@@ -70,6 +71,7 @@ export default function CashierPaymentsPage() {
             if (!s) {
                 setSummary(null)
                 setPending([])
+                toast.error("Student not found", { description: `No record for "${id.trim()}"` })
                 return
             }
             const totals = await computeStudentTotals(s.$id, s.feePlan ?? (s.totalFees ? { total: Number(s.totalFees) } : undefined))
@@ -83,20 +85,32 @@ export default function CashierPaymentsPage() {
             setPending(pend)
             setSelectedFees((["tuition", "laboratory", "library", "miscellaneous"] as FeeKey[]).filter((k) => (totals.balances as any)[k] > 0))
             setAmount("")
+            toast.success("Student loaded", {
+                description: `${s.fullName ?? "Student"} • ${s.studentId ?? s.$id}`,
+            })
         } catch (e: any) {
-            setError(e?.message ?? "Lookup failed.")
+            const msg = e?.message ?? "Lookup failed."
+            setError(msg)
+            toast.error("Lookup failed", { description: msg })
         } finally {
             setLoading(false)
         }
     }
 
     const handleSearch = () => {
-        if (!studentId.trim()) return
+        if (!studentId.trim()) {
+            toast.error("Enter a Student ID")
+            return
+        }
         void loadStudent(studentId)
     }
 
     const feePlanTotal = useMemo(() => {
-        const t = (feePlanDraft.tuition ?? 0) + (feePlanDraft.laboratory ?? 0) + (feePlanDraft.library ?? 0) + (feePlanDraft.miscellaneous ?? 0)
+        const t =
+            (feePlanDraft.tuition ?? 0) +
+            (feePlanDraft.laboratory ?? 0) +
+            (feePlanDraft.library ?? 0) +
+            (feePlanDraft.miscellaneous ?? 0)
         return t || 0
     }, [feePlanDraft])
 
@@ -107,8 +121,11 @@ export default function CashierPaymentsPage() {
         try {
             await updateStudentFeePlan(student.$id, feePlanDraft)
             await loadStudent(student.studentId ?? student.$id)
+            toast.success("Fee plan saved", { description: "Balances updated." })
         } catch (e: any) {
-            setError(e?.message ?? "Failed to save fee plan.")
+            const msg = e?.message ?? "Failed to save fee plan."
+            setError(msg)
+            toast.error("Save failed", { description: msg })
         } finally {
             setSavingPlan(false)
         }
@@ -130,8 +147,11 @@ export default function CashierPaymentsPage() {
             })
             setShowReceipt(true)
             await loadStudent(studentId)
+            toast.success("Payment verified", { description: `Receipt ${res.receipt.$id} issued` })
         } catch (e: any) {
-            setError(e?.message ?? "Verification failed.")
+            const msg = e?.message ?? "Verification failed."
+            setError(msg)
+            toast.error("Verification failed", { description: msg })
         } finally {
             setProcessing(false)
         }
@@ -172,8 +192,11 @@ export default function CashierPaymentsPage() {
             setShowReceipt(true)
             await loadStudent(studentId)
             setAmount("")
+            toast.success("Counter payment recorded", { description: `Receipt ${res.receipt.$id} issued` })
         } catch (e: any) {
-            setError(e?.message ?? "Failed to record payment.")
+            const msg = e?.message ?? "Failed to record payment."
+            setError(msg)
+            toast.error("Recording failed", { description: msg })
         } finally {
             setProcessing(false)
         }
@@ -187,6 +210,7 @@ export default function CashierPaymentsPage() {
     const setSuggested = () => {
         const v = calculateSuggested()
         setAmount(v ? String(v) : "")
+        if (v) toast.info("Amount filled", { description: `Suggested total: ₱${v.toLocaleString()}` })
     }
 
     const resetFlow = () => {
@@ -224,8 +248,11 @@ export default function CashierPaymentsPage() {
                                             value={studentId}
                                             onChange={(e) => setStudentId(e.target.value)}
                                             className="bg-slate-700 border-slate-600"
+                                            onKeyDown={(e) => {
+                                                if (e.key === "Enter") handleSearch()
+                                            }}
                                         />
-                                        <Button onClick={handleSearch} disabled={!studentId || loading} className="bg-primary hover:bg-primary/90">
+                                        <Button onClick={handleSearch} disabled={!studentId || loading} className="bg-primary hover:bg-primary/90" title="Search">
                                             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                                         </Button>
                                     </div>
@@ -271,7 +298,9 @@ export default function CashierPaymentsPage() {
                                                         type="number"
                                                         className="bg-slate-700 border-slate-600"
                                                         value={feePlanDraft[k] ?? ""}
-                                                        onChange={(e) => setFeePlanDraft((s) => ({ ...s, [k]: e.target.value ? Number(e.target.value) : undefined }))}
+                                                        onChange={(e) =>
+                                                            setFeePlanDraft((s) => ({ ...s, [k]: e.target.value ? Number(e.target.value) : undefined }))
+                                                        }
                                                     />
                                                     <div className="text-xs text-gray-400">
                                                         Paid: ₱{Number(summary?.paidByFee?.[k] ?? 0).toLocaleString()} — Balance: ₱
@@ -302,13 +331,14 @@ export default function CashierPaymentsPage() {
                                                 <div key={p.$id} className="flex items-center justify-between rounded-lg border border-slate-700 p-3">
                                                     <div>
                                                         <div className="font-medium">
-                                                            {Array.isArray(p.fees) && p.fees.length ? p.fees.join(", ") : "Payment"} — ₱{Number(p.amount || 0).toLocaleString()}
+                                                            {Array.isArray(p.fees) && p.fees.length ? p.fees.join(", ") : "Payment"} — ₱
+                                                            {Number(p.amount || 0).toLocaleString()}
                                                         </div>
                                                         <div className="text-xs text-gray-400">
                                                             Ref: {p.reference} • {new Date(p.$createdAt).toLocaleString()} • Method: {p.method}
                                                         </div>
                                                     </div>
-                                                    <Button onClick={() => onVerify(p.$id)} disabled={processing}>
+                                                    <Button onClick={() => onVerify(p.$id)} disabled={processing} title="Verify payment and issue receipt">
                                                         {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify & Issue Receipt"}
                                                     </Button>
                                                 </div>
@@ -328,7 +358,10 @@ export default function CashierPaymentsPage() {
                                         <div className="space-y-4">
                                             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
                                                 {(["tuition", "laboratory", "library", "miscellaneous"] as FeeKey[]).map((k) => (
-                                                    <label key={k} className="flex items-center gap-2 rounded-md border border-slate-700 p-3 hover:bg-slate-700/40">
+                                                    <label
+                                                        key={k}
+                                                        className="flex items-center gap-2 rounded-md border border-slate-700 p-3 hover:bg-slate-700/40"
+                                                    >
                                                         <input
                                                             type="checkbox"
                                                             checked={selectedFees.includes(k)}
@@ -358,7 +391,11 @@ export default function CashierPaymentsPage() {
                                                 </div>
                                                 <div className="space-y-2">
                                                     <Label>Payment Method</Label>
-                                                    <RadioGroup value={method} onValueChange={(v) => setMethod(v as "cash" | "card")} className="flex gap-4">
+                                                    <RadioGroup
+                                                        value={method}
+                                                        onValueChange={(v) => setMethod(v as "cash" | "card")}
+                                                        className="flex gap-4"
+                                                    >
                                                         <div className="flex items-center space-x-2 rounded-lg border border-slate-700 p-3 hover:bg-slate-700/50">
                                                             <RadioGroupItem value="cash" id="cash" />
                                                             <Label htmlFor="cash" className="flex items-center gap-2 cursor-pointer">
@@ -389,6 +426,7 @@ export default function CashierPaymentsPage() {
                                                 className="w-full bg-primary hover:bg-primary/90"
                                                 onClick={onCounterPayment}
                                                 disabled={processing || !amount || Number.parseFloat(amount) <= 0 || selectedFees.length === 0}
+                                                title="Record payment and issue receipt"
                                             >
                                                 {processing ? (
                                                     <>
@@ -412,7 +450,9 @@ export default function CashierPaymentsPage() {
                                 </CardHeader>
                                 <CardContent>
                                     {!showReceipt ? (
-                                        <div className="text-gray-400">No receipt yet. Verify a pending payment or record a counter payment.</div>
+                                        <div className="text-gray-400">
+                                            No receipt yet. Verify a pending payment or record a counter payment.
+                                        </div>
                                     ) : (
                                         <Card className="bg-white text-slate-900">
                                             <CardContent className="p-0">
