@@ -24,6 +24,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { getCurrentUserSafe, getDatabases, getEnvIds, getStorage, ID, Query } from "@/lib/appwrite"
 import { listRecentPayments, type PaymentDoc } from "@/lib/appwrite-payments"
 import type { Models } from "appwrite" // ✅ Fix: use Appwrite Document base
+import { toast } from "sonner"
 
 type PaymentWithExtras = PaymentDoc & {
   /** Optional: uploaded by cashier when available */
@@ -89,20 +90,27 @@ export default function PaymentHistoryPage() {
     [payments]
   )
 
-  const loadPayments = async () => {
+  const loadPayments = async (opts?: { silent?: boolean }) => {
     setLoading(true)
     setError("")
     try {
       const me = await getCurrentUserSafe()
       if (!me) {
-        setError("You need to sign in to view your payment history.")
+        const msg = "You need to sign in to view your payment history."
+        setError(msg)
         setPayments([])
+        toast.error("Not signed in", { description: msg })
         return
       }
       const docs = await listRecentPayments(me.$id, 100)
       setPayments(docs as PaymentWithExtras[])
+      if (!opts?.silent) {
+        toast.success("Payments refreshed", { description: `${docs.length} record(s) loaded` })
+      }
     } catch (e: any) {
-      setError(e?.message ?? "Failed to load payment history.")
+      const msg = e?.message ?? "Failed to load payment history."
+      setError(msg)
+      toast.error("Failed to load payments", { description: msg })
     } finally {
       setLoading(false)
     }
@@ -120,15 +128,16 @@ export default function PaymentHistoryPage() {
         queries: [Query.equal("role", ["cashier", "business-office", "business_office", "businessoffice"]), Query.limit(100)],
       })
       setCashiers((res.documents as unknown as UserProfileDoc[]) ?? [])
-    } catch {
+    } catch (e: any) {
       setCashiers([])
+      toast.error("Failed to load cashiers", { description: e?.message ?? "Please try again." })
     } finally {
       setCashiersLoading(false)
     }
   }
 
   useEffect(() => {
-    loadPayments()
+    loadPayments({ silent: true })
     loadCashiers()
   }, [])
 
@@ -167,20 +176,23 @@ Thank you!`
     const f = e.target.files?.[0]
     if (!f) return
     setProofFile(f)
+    toast.success("Attachment added", { description: f.name })
   }
 
   const handleSend = async () => {
     if (!askDialogFor) return
     if (!selectedCashierId) {
-      alert("Please choose a cashier.")
+      toast.error("Please choose a cashier")
       return
     }
     if (!proofFile) {
-      alert("Please attach a proof file (e.g., the PDF or image you downloaded from Gmail).")
+      toast.error("Please attach a proof file", { description: "Attach a PDF or image of your receipt." })
       return
     }
     if (!PROOF_BUCKET_ID) {
-      alert("Missing storage bucket ID. Please set NEXT_PUBLIC_APPWRITE_RECEIPT_PROOF_BUCKET_ID.")
+      toast.error("Upload bucket not configured", {
+        description: "Set NEXT_PUBLIC_APPWRITE_RECEIPT_PROOF_BUCKET_ID in your environment.",
+      })
       return
     }
 
@@ -237,10 +249,12 @@ Thank you!`
       )
 
       setAskDialogFor(null)
-      setNotice(`Request queued and sent to ${cashierName}.`)
+      const msg = `Request queued and sent to ${cashierName}.`
+      setNotice(msg)
+      toast.success("Receipt request sent", { description: msg })
       setTimeout(() => setNotice(""), 5000)
     } catch (e: any) {
-      alert(e?.message ?? "Failed to send request. Please try again.")
+      toast.error("Failed to send request", { description: e?.message ?? "Please try again." })
     } finally {
       setSending(false)
     }
@@ -254,7 +268,13 @@ Thank you!`
             <h1 className="text-2xl font-bold text-white">Payment History</h1>
             <p className="text-gray-300">View your payments and download receipts</p>
           </div>
-          <Button variant="outline" className="border-slate-600" onClick={loadPayments} disabled={loading}>
+          <Button
+            variant="outline"
+            className="border-slate-600"
+            onClick={() => loadPayments()}
+            disabled={loading}
+            title="Refresh your payment list"
+          >
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
             Refresh
           </Button>
@@ -358,6 +378,7 @@ Thank you!`
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center text-blue-300 hover:text-blue-200"
+                              onClick={() => toast.info("Opening receipt…")}
                             >
                               <FileText className="mr-1 h-4 w-4" />
                               Download
@@ -374,6 +395,7 @@ Thank you!`
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="inline-flex items-center text-xs text-gray-300 hover:text-gray-100"
+                                  onClick={() => toast.info("Opening attachment…")}
                                 >
                                   <Paperclip className="mr-1 h-3 w-3" />
                                   View proof

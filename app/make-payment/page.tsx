@@ -21,6 +21,7 @@ import type { Models } from "appwrite"
 import { listAllFeePlans, computeTotals, type FeePlanDoc } from "@/lib/fee-plan"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { toast } from "sonner"
 
 type FeeKey = "tuition" | "laboratory" | "library" | "miscellaneous"
 type FeePlanLegacy = Partial<Record<FeeKey | "total", number>>
@@ -85,7 +86,9 @@ export default function MakePaymentPage() {
       try {
         const me = await getCurrentUserSafe()
         if (!me) {
-          setError("No active session.")
+          const msg = "No active session."
+          setError(msg)
+          toast.error("Not signed in", { description: msg })
           setLoading(false)
           return
         }
@@ -95,7 +98,9 @@ export default function MakePaymentPage() {
         const doc = await db.getDocument<UserProfileDoc>(DB_ID, USERS_COL_ID, me.$id).catch(() => null)
 
         if (!doc) {
-          setError("User profile not found in Appwrite.")
+          const msg = "User profile not found in Appwrite."
+          setError(msg)
+          toast.error("Profile not found", { description: msg })
           setLoading(false)
           return
         }
@@ -152,7 +157,9 @@ export default function MakePaymentPage() {
           setSelectedPlanId(onlyActive[0].$id)
         }
       } catch (e: any) {
-        setError(e?.message ?? "Failed to load payment data.")
+        const msg = e?.message ?? "Failed to load payment data."
+        setError(msg)
+        toast.error("Failed to load payment data", { description: msg })
       } finally {
         setLoading(false)
       }
@@ -210,15 +217,23 @@ export default function MakePaymentPage() {
   }
 
   const fillSelectedTotal = () => {
-    setAmount(selectedFeesTotal ? String(selectedFeesTotal) : "")
+    const val = selectedFeesTotal ? String(selectedFeesTotal) : ""
+    setAmount(val)
+    if (val) toast.info("Amount filled", { description: `Using selected fees total: ₱${selectedFeesTotal.toLocaleString()}` })
   }
 
   // NEW: helpers to use plan total or balance
   const usePlanTotal = () => {
-    if (typeof totalFees === "number") setAmount(String(totalFees))
+    if (typeof totalFees === "number") {
+      setAmount(String(totalFees))
+      toast.info("Amount filled", { description: `Using plan total: ₱${totalFees.toLocaleString()}` })
+    }
   }
   const usePlanBalance = () => {
-    if (typeof currentBalance === "number") setAmount(String(currentBalance))
+    if (typeof currentBalance === "number") {
+      setAmount(String(currentBalance))
+      toast.info("Amount filled", { description: `Using current balance: ₱${currentBalance.toLocaleString()}` })
+    }
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -273,10 +288,11 @@ export default function MakePaymentPage() {
       }
       await createPayment(rec)
 
+      toast.success("Opening PayMongo", { description: "The checkout page will open in a new tab." })
       window.open(link.checkoutUrl, "_blank", "noopener,noreferrer")
       setShowPaymongoDialog(false)
     } catch (err: any) {
-      alert(err?.message ?? "Failed to start payment. Please try again.")
+      toast.error("Failed to start payment", { description: err?.message ?? "Please try again." })
     } finally {
       setIsRedirecting(false)
     }
@@ -336,7 +352,22 @@ export default function MakePaymentPage() {
                     <>
                       <div className="max-w-md">
                         <Label className="mb-1 block">Active plans</Label>
-                        <Select value={selectedPlanId ?? ""} onValueChange={(v) => setSelectedPlanId(v)}>
+                        <Select
+                          value={selectedPlanId ?? ""}
+                          onValueChange={(v) => {
+                            setSelectedPlanId(v)
+                            const picked = activePlans.find(p => p.$id === v)
+                            if (picked) {
+                              const t = computeTotals({
+                                units: picked.units,
+                                tuitionPerUnit: picked.tuitionPerUnit,
+                                registrationFee: picked.registrationFee,
+                                feeItems: picked.feeItems,
+                              })
+                              toast.success("Plan selected", { description: `${picked.program} • ₱${t.total.toLocaleString()}` })
+                            }
+                          }}
+                        >
                           <SelectTrigger className="bg-slate-700 border-slate-600">
                             <SelectValue placeholder="Select a plan…" />
                           </SelectTrigger>
