@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { getAccount } from "@/lib/appwrite"
+import { toast } from "sonner"
 
 export default function ResetPasswordPage() {
     const sp = useSearchParams()
@@ -47,6 +48,9 @@ export default function ResetPasswordPage() {
             const account = getAccount()
             await account.updateRecovery(userId, secret, password)
             setSuccess(true)
+            toast.success("Password updated", {
+                description: "You can now log in with your new password.",
+            })
         } catch (err: any) {
             setError(err?.message ?? "Failed to reset password. Please try again.")
         } finally {

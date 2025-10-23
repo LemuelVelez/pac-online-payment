@@ -24,6 +24,7 @@ import {
 import { getOrCreateUserRole, roleToDashboard } from "@/lib/appwrite"
 import { Select, SelectTrigger, SelectContent, SelectItem } from "@/components/ui/select"
 import { useAuth } from "@/components/auth/auth-provider"
+import { toast } from "sonner"
 
 const DB_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string
 const USERS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_COLLECTION_ID as string
@@ -190,7 +191,6 @@ export default function LoginPage() {
             // Prefer sanitized redirect target if present
             const target = redirectParam ?? "/dashboard"
             await login(email, password, target)
-
             try {
                 if (rememberMe) {
                     localStorage.setItem(REMEMBER_FLAG_KEY, "1")
@@ -200,6 +200,9 @@ export default function LoginPage() {
                     localStorage.removeItem(REMEMBER_EMAIL_KEY)
                 }
             } catch { }
+            toast.success("Welcome back!", {
+                description: "You have successfully signed in.",
+            })
         } catch (err: any) {
             setError(err?.message ?? "Invalid email or password. Please try again.")
         } finally {
@@ -303,6 +306,10 @@ export default function LoginPage() {
             try {
                 await account.createVerification(verifyCallbackUrl)
             } catch { }
+
+            toast.success("Account created!", {
+                description: "We sent a verification link to your email.",
+            })
 
             // Go to verify page
             router.replace(`/auth/verify-email?email=${encodeURIComponent(regEmail)}&justRegistered=1`)

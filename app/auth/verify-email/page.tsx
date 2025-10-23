@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useCallback } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { getAccount, getOrCreateUserRole, roleToDashboard } from "@/lib/appwrite"
+import { toast } from "sonner"
 
 const RESEND_COOLDOWN_SECONDS = 60
 
@@ -37,7 +38,10 @@ export default function VerifyEmailPage() {
     const [showPassword, setShowPassword] = useState<boolean>(false)
 
     const [cooldown, setCooldown] = useState<number>(0)
-    const cooldownKey = useMemo(() => (email ? `verifyEmailLastSentAt:${email}` : "verifyEmailLastSentAt"), [email])
+    const cooldownKey = useMemo(
+        () => (email ? `verifyEmailLastSentAt:${email}` : "verifyEmailLastSentAt"),
+        [email]
+    )
 
     const computeSecondsLeft = (lastSentAtMs: number | null) => {
         if (!lastSentAtMs) return 0
@@ -46,7 +50,8 @@ export default function VerifyEmailPage() {
         return left > 0 ? left : 0
     }
 
-    const loadCooldownFromStorage = () => {
+    // ✅ Stabilize this function so exhaustive-deps is satisfied
+    const loadCooldownFromStorage = useCallback(() => {
         try {
             const raw = localStorage.getItem(cooldownKey)
             const lastSentAt = raw ? parseInt(raw, 10) : null
@@ -55,7 +60,7 @@ export default function VerifyEmailPage() {
         } catch {
             setCooldown(0)
         }
-    }
+    }, [cooldownKey])
 
     const refreshStatus = async () => {
         setError("")
@@ -82,8 +87,7 @@ export default function VerifyEmailPage() {
     useEffect(() => {
         if (typeof window === "undefined") return
         loadCooldownFromStorage()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [cooldownKey])
+    }, [loadCooldownFromStorage])
 
     useEffect(() => {
         if (cooldown <= 0) return
@@ -104,6 +108,9 @@ export default function VerifyEmailPage() {
             } catch { }
             setCooldown(RESEND_COOLDOWN_SECONDS)
             setInfo("Verification email sent. Please check your inbox or spam folder.")
+            toast.success("Verification email sent", {
+                description: "Check your inbox or spam folder to verify your email.",
+            })
         } catch (err: any) {
             setError(err?.message ?? "Failed to send verification email.")
         } finally {
@@ -149,6 +156,9 @@ export default function VerifyEmailPage() {
             } catch { }
             setInfo("Email updated. We've sent a new verification link to your new address.")
             setCurrentPassword("")
+            toast.success("Email updated", {
+                description: "A new verification link has been sent to your new email.",
+            })
         } catch (err: any) {
             setError(err?.message ?? "Could not update email. Please double-check your password.")
         } finally {
@@ -308,7 +318,7 @@ export default function VerifyEmailPage() {
 
                                         <div className="flex flex-col sm:flex-row gap-3 pt-1">
                                             <Button
-                                                className="inline-flex items-center gap-2 w/full sm:w-auto bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                                                className="inline-flex items-center gap-2 w-full sm:w-auto bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
                                                 onClick={onChangeEmail}
                                                 disabled={updatingEmail || !newEmail || !currentPassword}
                                                 title="Update your email and resend the verification link"

@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { getAccount } from "@/lib/appwrite"
+import { toast } from "sonner"
 
 export default function ForgotPasswordPage() {
     const [email, setEmail] = useState("")
@@ -29,6 +30,9 @@ export default function ForgotPasswordPage() {
             const resetUrl = `${window.location.origin}/auth/reset-password`
             await account.createRecovery(email, resetUrl)
             setSuccess(true)
+            toast.success("Reset link sent!", {
+                description: "Check your inbox (or spam) for the password reset email.",
+            })
         } catch (err: any) {
             setError(err?.message ?? "Failed to send password reset email. Please try again.")
         } finally {
