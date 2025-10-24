@@ -23,28 +23,26 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 
 import { getCurrentUserSafe, getDatabases, getEnvIds, getStorage, ID, Query } from "@/lib/appwrite"
 import { listRecentPayments, type PaymentDoc } from "@/lib/appwrite-payments"
-import type { Models } from "appwrite" // ✅ Fix: use Appwrite Document base
+import type { Models } from "appwrite"
 import { toast } from "sonner"
+import { createMessage } from "@/lib/appwrite-messages"
 
 type PaymentWithExtras = PaymentDoc & {
-  /** Optional: uploaded by cashier when available */
   receiptUrl?: string | null
   receiptLink?: string | null
 
-  /** Request-to-cashier metadata set when user clicks Send */
+  // legacy request flags (left for backward-compat display if ever present)
   receiptRequestStatus?: "Queued" | "Pending" | "Sent" | "Completed" | "Cancelled" | string | null
   receiptRequestTo?: string | null
   receiptRequestToName?: string | null
   receiptRequestMessage?: string | null
   receiptRequestedAt?: string | null
 
-  /** Proof-of-payment attachment (user uploaded) */
   receiptProofBucketId?: string | null
   receiptProofFileId?: string | null
   receiptProofFileName?: string | null
 }
 
-/** ✅ Fix: extend Models.Document so it satisfies Appwrite generics */
 type UserProfileDoc = Models.Document & {
   fullName?: string
   email?: string
@@ -53,6 +51,7 @@ type UserProfileDoc = Models.Document & {
 
 const COMPLETED_STATES = new Set<PaymentDoc["status"]>(["Completed", "Succeeded"])
 const PROOF_BUCKET_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPT_PROOF_BUCKET_ID as string | undefined
+const MESSAGES_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_MESSAGES_COLLECTION_ID as string | undefined
 
 function peso(n: number | string) {
   const v = typeof n === "string" ? Number(n || 0) : n
@@ -71,11 +70,9 @@ export default function PaymentHistoryPage() {
   const [notice, setNotice] = useState<string>("")
   const [payments, setPayments] = useState<PaymentWithExtras[]>([])
 
-  // Cashiers
   const [cashiers, setCashiers] = useState<UserProfileDoc[]>([])
   const [cashiersLoading, setCashiersLoading] = useState(true)
 
-  // Dialog state
   const [askDialogFor, setAskDialogFor] = useState<PaymentWithExtras | null>(null)
   const [selectedCashierId, setSelectedCashierId] = useState<string>("")
   const [message, setMessage] = useState<string>("")
@@ -121,7 +118,6 @@ export default function PaymentHistoryPage() {
     try {
       const { DB_ID, USERS_COL_ID } = getEnvIds()
       const db = getDatabases()
-      // Include common business office role variants, too
       const res = await db.listDocuments<UserProfileDoc>({
         databaseId: DB_ID,
         collectionId: USERS_COL_ID,
@@ -141,7 +137,6 @@ export default function PaymentHistoryPage() {
     loadCashiers()
   }, [])
 
-  // When opening the dialog, prefill message
   useEffect(() => {
     if (!askDialogFor) return
     const p = askDialogFor
@@ -153,24 +148,12 @@ May I request the official receipt for my completed payment?
 • Date: ${formatDate(p.$createdAt)}
 • Amount: ${peso(p.amount)}
 • Method: ${p.method}
-• Course/Year: ${(p.courseId || "—").toUpperCase?.() ?? "—"}/${p.yearId || "—"}
 
 Thank you!`
     setMessage(prefilled)
-    setSelectedCashierId("") // force selecting a cashier
+    setSelectedCashierId("")
     setProofFile(null)
   }, [askDialogFor])
-
-  const proofUrl = (p: PaymentWithExtras) => {
-    try {
-      if (!p.receiptProofBucketId || !p.receiptProofFileId) return null
-      const storage = getStorage()
-      // This returns a session-bound URL
-      return storage.getFileView(p.receiptProofBucketId, p.receiptProofFileId) as unknown as string
-    } catch {
-      return null
-    }
-  }
 
   const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -180,13 +163,13 @@ Thank you!`
   }
 
   const handleSend = async () => {
+    if (!MESSAGES_COL_ID) {
+      toast.error("Messages collection not configured", { description: "Set NEXT_PUBLIC_APPWRITE_MESSAGES_COLLECTION_ID" })
+      return
+    }
     if (!askDialogFor) return
     if (!selectedCashierId) {
       toast.error("Please choose a cashier")
-      return
-    }
-    if (!proofFile) {
-      toast.error("Please attach a proof file", { description: "Attach a PDF or image of your receipt." })
       return
     }
     if (!PROOF_BUCKET_ID) {
@@ -198,63 +181,39 @@ Thank you!`
 
     setSending(true)
     try {
-      // 1) Upload proof to Storage
-      const storage = getStorage()
-      const created = await storage.createFile(PROOF_BUCKET_ID, ID.unique(), proofFile)
-      const proofId = (created as any).$id as string
-      const proofName = proofFile.name
+      const me = await getCurrentUserSafe()
+      if (!me) throw new Error("Not signed in.")
 
-      // 2) Resolve cashier info for display
-      const to = cashiers.find((c) => c.$id === selectedCashierId)
-      const cashierName = to?.fullName || to?.email || "Cashier"
+      let uploaded:
+        | { bucketId: string; fileId: string; fileName: string }
+        | null = null
 
-      // 3) Patch the payment doc with request metadata
-      const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string
-      const paymentsCollectionId = process.env.NEXT_PUBLIC_APPWRITE_PAYMENTS_COLLECTION_ID as string
-      const db = getDatabases()
+      if (proofFile) {
+        const storage = getStorage()
+        const created: any = await storage.createFile(PROOF_BUCKET_ID, ID.unique(), proofFile)
+        uploaded = { bucketId: PROOF_BUCKET_ID, fileId: created?.$id, fileName: proofFile.name }
+      } else {
+        uploaded = { bucketId: "", fileId: "", fileName: "" }
+      }
 
-      await db.updateDocument({
-        databaseId,
-        collectionId: paymentsCollectionId,
-        documentId: askDialogFor.$id,
-        data: {
-          receiptRequestedAt: new Date().toISOString(),
-          receiptRequestStatus: "Queued",
-          receiptRequestTo: selectedCashierId,
-          receiptRequestToName: cashierName,
-          receiptRequestMessage: message,
-          receiptProofBucketId: PROOF_BUCKET_ID,
-          receiptProofFileId: proofId,
-          receiptProofFileName: proofName,
-        },
+      await createMessage({
+        userId: me.$id,
+        cashierId: selectedCashierId,
+        paymentId: askDialogFor.$id,
+        subject: `Receipt request: ${askDialogFor.reference || askDialogFor.$id}`,
+        message,
+        proofBucketId: uploaded.bucketId,
+        proofFileId: uploaded.fileId,
+        proofFileName: uploaded.fileName,
       })
 
-      // 4) Update local state so UI reflects "Queued"
-      setPayments((prev) =>
-        prev.map((x) =>
-          x.$id === askDialogFor.$id
-            ? {
-              ...x,
-              receiptRequestedAt: new Date().toISOString(),
-              receiptRequestStatus: "Queued",
-              receiptRequestTo: selectedCashierId,
-              receiptRequestToName: cashierName,
-              receiptRequestMessage: message,
-              receiptProofBucketId: PROOF_BUCKET_ID,
-              receiptProofFileId: proofId,
-              receiptProofFileName: proofName,
-            }
-            : x
-        )
-      )
-
       setAskDialogFor(null)
-      const msg = `Request queued and sent to ${cashierName}.`
+      const msg = "Your message was sent to the cashier."
       setNotice(msg)
-      toast.success("Receipt request sent", { description: msg })
+      toast.success("Message sent", { description: msg })
       setTimeout(() => setNotice(""), 5000)
     } catch (e: any) {
-      toast.error("Failed to send request", { description: e?.message ?? "Please try again." })
+      toast.error("Failed to send message", { description: e?.message ?? "Please try again." })
     } finally {
       setSending(false)
     }
@@ -326,8 +285,6 @@ Thank you!`
                     const completed = COMPLETED_STATES.has(p.status)
                     const receiptUrl = (p.receiptUrl || p.receiptLink) ?? null
                     const showDownload = completed && !!receiptUrl
-                    const requestQueued = completed && !receiptUrl && !!p.receiptRequestStatus
-                    const canAskCashier = completed && !receiptUrl && !p.receiptRequestStatus
 
                     const desc =
                       Array.isArray(p.fees) && p.fees.length > 0
@@ -349,7 +306,7 @@ Thank you!`
                           <div className="flex flex-col">
                             <span>{desc}</span>
                             <span className="text-xs text-gray-400">
-                              Method: {p.method} • Course: {p.courseId?.toUpperCase?.() ?? "—"} • Year: {p.yearId ?? "—"}
+                              Method: {p.method}
                             </span>
                           </div>
                         </td>
@@ -383,26 +340,7 @@ Thank you!`
                               <FileText className="mr-1 h-4 w-4" />
                               Download
                             </a>
-                          ) : requestQueued ? (
-                            <div className="flex flex-col gap-1">
-                              <span className="inline-flex w-fit items-center rounded-full bg-blue-500/20 px-2 py-1 text-xs font-medium text-blue-200">
-                                <Send className="mr-1 h-3 w-3" />
-                                Request {p.receiptRequestStatus}
-                              </span>
-                              {proofUrl(p) ? (
-                                <a
-                                  href={proofUrl(p)!}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center text-xs text-gray-300 hover:text-gray-100"
-                                  onClick={() => toast.info("Opening attachment…")}
-                                >
-                                  <Paperclip className="mr-1 h-3 w-3" />
-                                  View proof
-                                </a>
-                              ) : null}
-                            </div>
-                          ) : canAskCashier ? (
+                          ) : completed ? (
                             <Button
                               variant="outline"
                               size="sm"
@@ -443,19 +381,17 @@ Thank you!`
           </Link>
         </div>
 
-        {/* Send-to-Cashier Dialog */}
+        {/* Send-to-Cashier Dialog -> now writes to messages table */}
         <Dialog open={!!askDialogFor} onOpenChange={(o) => !o && setAskDialogFor(null)}>
           <DialogContent className="bg-slate-800 border-slate-700 text-white">
             <DialogHeader>
               <DialogTitle>Send message to cashier</DialogTitle>
               <DialogDescription className="text-gray-300">
-                This payment is completed, but no receipt has been uploaded. Choose a cashier, attach your proof (e.g.,
-                the receipt you received in Gmail), and send the request.
+                Choose a cashier, (optionally) attach a proof file, and send your request.
               </DialogDescription>
             </DialogHeader>
 
             <div className="mt-2 space-y-4">
-              {/* Choose cashier */}
               <div className="space-y-2">
                 <Label className="text-gray-200">Cashier</Label>
                 {cashiersLoading ? (
@@ -484,7 +420,6 @@ Thank you!`
                 )}
               </div>
 
-              {/* Prefilled message (editable) */}
               <div className="space-y-2">
                 <Label htmlFor="msg" className="text-gray-200">
                   Message
@@ -497,7 +432,6 @@ Thank you!`
                 />
               </div>
 
-              {/* Proof attachment */}
               <div className="space-y-2">
                 <Label className="text-gray-200">Attach proof (PDF or image)</Label>
                 {!PROOF_BUCKET_ID ? (
@@ -517,7 +451,7 @@ Thank you!`
                       {proofFile.name} • {(proofFile.size / 1024).toFixed(0)} KB
                     </span>
                   ) : (
-                    <span className="text-xs text-gray-400">Attach the receipt you downloaded from Gmail.</span>
+                    <span className="text-xs text-gray-400">Optional attachment.</span>
                   )}
                 </div>
               </div>

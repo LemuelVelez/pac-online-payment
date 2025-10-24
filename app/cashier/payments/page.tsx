@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -18,7 +18,6 @@ import {
     computeStudentTotals,
     listUserPayments,
     verifyPendingPaymentAndIssueReceipt,
-    updateStudentFeePlan,
     recordCounterPaymentAndReceipt,
 } from "@/lib/appwrite-cashier"
 import { getCurrentUserSafe } from "@/lib/appwrite"
@@ -45,22 +44,9 @@ export default function CashierPaymentsPage() {
     const [method, setMethod] = useState<"cash" | "card">("cash")
     const [amount, setAmount] = useState("")
 
-    const [feePlanDraft, setFeePlanDraft] = useState<{ tuition?: number; laboratory?: number; library?: number; miscellaneous?: number }>({})
-    const [savingPlan, setSavingPlan] = useState(false)
-
     const [processing, setProcessing] = useState(false)
     const [showReceipt, setShowReceipt] = useState(false)
     const [receiptData, setReceiptData] = useState<any>(null)
-
-    useEffect(() => {
-        if (!student) return
-        setFeePlanDraft({
-            tuition: student.feePlan?.tuition ?? undefined,
-            laboratory: student.feePlan?.laboratory ?? undefined,
-            library: student.feePlan?.library ?? undefined,
-            miscellaneous: student.feePlan?.miscellaneous ?? undefined,
-        })
-    }, [student])
 
     const loadStudent = async (id: string) => {
         setError("")
@@ -74,6 +60,7 @@ export default function CashierPaymentsPage() {
                 toast.error("Student not found", { description: `No record for "${id.trim()}"` })
                 return
             }
+            // Cashier READ-ONLY: compute balances from existing profile feePlan/total + payments
             const totals = await computeStudentTotals(s.$id, s.feePlan ?? (s.totalFees ? { total: Number(s.totalFees) } : undefined))
             setSummary({
                 paidTotal: totals.paidTotal,
@@ -103,32 +90,6 @@ export default function CashierPaymentsPage() {
             return
         }
         void loadStudent(studentId)
-    }
-
-    const feePlanTotal = useMemo(() => {
-        const t =
-            (feePlanDraft.tuition ?? 0) +
-            (feePlanDraft.laboratory ?? 0) +
-            (feePlanDraft.library ?? 0) +
-            (feePlanDraft.miscellaneous ?? 0)
-        return t || 0
-    }, [feePlanDraft])
-
-    const savePlan = async () => {
-        if (!student) return
-        setSavingPlan(true)
-        setError("")
-        try {
-            await updateStudentFeePlan(student.$id, feePlanDraft)
-            await loadStudent(student.studentId ?? student.$id)
-            toast.success("Fee plan saved", { description: "Balances updated." })
-        } catch (e: any) {
-            const msg = e?.message ?? "Failed to save fee plan."
-            setError(msg)
-            toast.error("Save failed", { description: msg })
-        } finally {
-            setSavingPlan(false)
-        }
     }
 
     const onVerify = async (paymentId: string) => {
@@ -206,7 +167,10 @@ export default function CashierPaymentsPage() {
 
     const calculateSuggested = () => {
         if (!summary) return 0
-        return selectedFees.reduce((s, k) => s + (Number(summary.balances?.[k] ?? 0) || 0), 0)
+        return (["tuition", "laboratory", "library", "miscellaneous"] as FeeKey[]).reduce(
+            (s, k) => s + (selectedFees.includes(k) ? Number(summary.balances?.[k] ?? 0) : 0),
+            0
+        )
     }
 
     const setSuggested = () => {
@@ -285,37 +249,30 @@ export default function CashierPaymentsPage() {
                                 </CardContent>
                             </Card>
 
-                            {student && (
+                            {/* READ-ONLY balances & quick suggested amount */}
+                            {student && summary && (
                                 <Card className="bg-slate-800/60 border-slate-700 text-white">
                                     <CardHeader>
-                                        <CardTitle>Fee Plan & Balances</CardTitle>
-                                        <CardDescription className="text-gray-300">Set or update balances; totals derive from completed payments</CardDescription>
+                                        <CardTitle>Current Balances (Read-Only)</CardTitle>
+                                        <CardDescription className="text-gray-300">Derived from fee plan (admin) and completed payments</CardDescription>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
                                             {(["tuition", "laboratory", "library", "miscellaneous"] as FeeKey[]).map((k) => (
-                                                <div className="space-y-2" key={k}>
-                                                    <Label className="capitalize">{k} (₱)</Label>
-                                                    <Input
-                                                        type="number"
-                                                        className="bg-slate-700 border-slate-600"
-                                                        value={feePlanDraft[k] ?? ""}
-                                                        onChange={(e) =>
-                                                            setFeePlanDraft((s) => ({ ...s, [k]: e.target.value ? Number(e.target.value) : undefined }))
-                                                        }
-                                                    />
-                                                    <div className="text-xs text-gray-400">
-                                                        Paid: ₱{Number(summary?.paidByFee?.[k] ?? 0).toLocaleString()} — Balance: ₱
-                                                        {Number(summary?.balances?.[k] ?? 0).toLocaleString()}
+                                                <div key={k} className="rounded-md border border-slate-700 p-3">
+                                                    <div className="text-xs uppercase tracking-wide text-gray-400">{k}</div>
+                                                    <div className="mt-1 text-sm text-gray-300">
+                                                        Paid: ₱{Number(summary.paidByFee?.[k] ?? 0).toLocaleString()}
+                                                    </div>
+                                                    <div className="text-sm font-semibold">
+                                                        Balance: ₱{Number(summary.balances?.[k] ?? 0).toLocaleString()}
                                                     </div>
                                                 </div>
                                             ))}
                                         </div>
-                                        <div className="mt-4 flex items-center justify-between">
-                                            <div className="text-sm text-gray-400">Plan Total: ₱{feePlanTotal.toLocaleString()}</div>
-                                            <Button onClick={savePlan} disabled={savingPlan}>
-                                                {savingPlan ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Fee Plan"}
-                                            </Button>
+                                        <div className="mt-4 text-sm text-gray-300">
+                                            Total Paid: <span className="text-white">₱{Number(summary.paidTotal).toLocaleString()}</span> • Current
+                                            Balance: <span className="text-white">₱{Number(summary.balanceTotal).toLocaleString()}</span>
                                         </div>
                                     </CardContent>
                                 </Card>
@@ -339,6 +296,10 @@ export default function CashierPaymentsPage() {
                                                         <div className="text-xs text-gray-400">
                                                             Ref: {p.reference} • {new Date(p.$createdAt).toLocaleString()} • Method: {p.method}
                                                         </div>
+                                                        {/* If the payment has a linked plan, show it briefly */}
+                                                        {p.planId ? (
+                                                            <div className="text-xs text-gray-400 mt-1">Plan: {p.planId}</div>
+                                                        ) : null}
                                                     </div>
                                                     <Button onClick={() => onVerify(p.$id)} disabled={processing} title="Verify payment and issue receipt">
                                                         {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify & Issue Receipt"}
