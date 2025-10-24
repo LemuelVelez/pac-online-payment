@@ -9,6 +9,7 @@ export type FeePlan = {
   laboratory?: number
   library?: number
   miscellaneous?: number
+  /** When only an overall total is known (no per-key breakdown). */
   total?: number
 }
 
@@ -27,31 +28,32 @@ export type UserProfileDoc = Models.Document & {
   totalFees?: number
 }
 
-/** ===== Receipts collection ===== */
-export type ReceiptItem = { label: string; amount: number }
-
-export type ReceiptRecord = {
+/** ===== Receipts ===== */
+export type ReceiptDoc = Models.Document & {
   userId: string
   paymentId?: string | null
   issuedAt: string
-  items: ReceiptItem[]
   total: number
   method: string
   cashierId?: string | null
-  /** Optional storage file metadata */
-  fileBucketId?: string | null
-  fileId?: string | null
-  fileUrl?: string | null
 }
 
-export type ReceiptDoc = Models.Document & ReceiptRecord
+/** ===== Receipt Items (separate collection) ===== */
+export type ReceiptItem = { label: string; amount: number; quantity?: number }
+export type ReceiptItemDoc = Models.Document & {
+  receipts: string // relation to receipt document id
+  label: string
+  amount: number
+  quantity: number
+}
 
 function ids() {
   const { DB_ID, USERS_COL_ID } = getEnvIds()
   const PAYMENTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_PAYMENTS_COLLECTION_ID as string
   const RECEIPTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPTS_COLLECTION_ID as string
+  const RECEIPT_ITEMS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPT_ITEMS_COLLECTION_ID as string | undefined
   const RECEIPTS_BUCKET_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPTS_BUCKET_ID as string | undefined
-  return { DB_ID, USERS_COL_ID, PAYMENTS_COL_ID, RECEIPTS_COL_ID, RECEIPTS_BUCKET_ID }
+  return { DB_ID, USERS_COL_ID, PAYMENTS_COL_ID, RECEIPTS_COL_ID, RECEIPT_ITEMS_COL_ID, RECEIPTS_BUCKET_ID }
 }
 
 /** Utility: start and end of the current local day as ISO strings */
@@ -72,15 +74,18 @@ function peso(n: number) {
 function buildReceiptHtml(opts: {
   receipt: ReceiptDoc
   student?: Pick<UserProfileDoc, "fullName" | "studentId"> | null
+  items: Array<{ label: string; amount: number; quantity?: number }>
 }): string {
   const { receipt, student } = opts
-  const rows = (receipt.items || [])
-    .map(
-      (i) => `<tr>
-  <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${i.label}</td>
-  <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;">${peso(Number(i.amount || 0))}</td>
+  const rows = (opts.items || [])
+    .map((i) => {
+      const qty = Number(i.quantity ?? 1) || 1
+      const label = qty > 1 ? `${i.label} × ${qty}` : i.label
+      return `<tr>
+  <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${label}</td>
+  <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;">${peso(Number(i.amount || 0) * qty)}</td>
 </tr>`
-    )
+    })
     .join("")
   const date = new Date(receipt.issuedAt || Date.now()).toLocaleString()
 
@@ -129,12 +134,12 @@ function buildReceiptHtml(opts: {
 </html>`
 }
 
-/** Uploads the rendered receipt HTML to Storage and links it back to Payment & Receipt docs. */
+/** Uploads the rendered receipt HTML to Storage and returns a view URL, if bucket is configured. */
 async function attachReceiptFile(
   receipt: ReceiptDoc,
   payment: PaymentDoc
 ): Promise<string | null> {
-  const { RECEIPTS_BUCKET_ID, DB_ID, PAYMENTS_COL_ID, USERS_COL_ID, RECEIPTS_COL_ID } = ids()
+  const { RECEIPTS_BUCKET_ID, DB_ID, USERS_COL_ID, RECEIPT_ITEMS_COL_ID } = ids()
   if (!RECEIPTS_BUCKET_ID) return null
 
   const storage = getStorage()
@@ -146,10 +151,34 @@ async function attachReceiptFile(
     student = await db.getDocument<UserProfileDoc>(DB_ID, USERS_COL_ID, payment.userId).catch(() => null)
   }
 
-  const html = buildReceiptHtml({ receipt, student: student ? { fullName: student.fullName, studentId: student.studentId } : null })
+  // fetch line items from the RECEIPT_ITEMS collection, fall back to payment fees if not present
+  let items: ReceiptItem[] = []
+  if (RECEIPT_ITEMS_COL_ID) {
+    const itemsRes = await db
+      .listDocuments<ReceiptItemDoc>(DB_ID, RECEIPT_ITEMS_COL_ID, [Query.equal("receipts", receipt.$id), Query.limit(100)])
+      .catch(() => null)
+    if (itemsRes?.documents?.length) {
+      items = itemsRes.documents.map((i) => ({
+        label: i.label,
+        amount: Number(i.amount || 0),
+        quantity: Number(i.quantity || 1) || 1,
+      }))
+    }
+  }
+  if (!items.length) {
+    const amount = Number(payment.amount) || 0
+    const fees = Array.isArray(payment.fees) && payment.fees.length ? payment.fees : ["miscellaneous"]
+    const share = fees.length ? amount / fees.length : amount
+    items = fees.map((f) => ({ label: f[0].toUpperCase() + f.slice(1), amount: share, quantity: 1 }))
+  }
+
+  const html = buildReceiptHtml({
+    receipt,
+    student: student ? { fullName: student.fullName, studentId: student.studentId } : null,
+    items,
+  })
   const fileName = `receipt-${receipt.$id}.html`
 
-  // File() may not exist in every JS env (however our pages run in the browser)
   const fileLike =
     typeof File !== "undefined"
       ? new File([html], fileName, { type: "text/html" })
@@ -159,27 +188,7 @@ async function attachReceiptFile(
   const fileId: string = created?.$id
   const viewUrl = (storage.getFileView(RECEIPTS_BUCKET_ID, fileId) as unknown as string) || null
 
-  // Link back to both Payment and Receipt docs for the student app to show "Download"
-  try {
-    await db.updateDocument<any>(DB_ID, PAYMENTS_COL_ID, payment.$id, {
-      receiptId: receipt.$id,
-      receiptUrl: viewUrl,
-      receiptLink: viewUrl,
-    } as any)
-  } catch {
-    /* non-fatal */
-  }
-
-  try {
-    await db.updateDocument<any>(DB_ID, RECEIPTS_COL_ID, receipt.$id, {
-      fileBucketId: RECEIPTS_BUCKET_ID,
-      fileId,
-      fileUrl: viewUrl,
-    } as any)
-  } catch {
-    /* non-fatal */
-  }
-
+  // NOTE: Your collections don't have fields to store file URLs, so we only return the URL.
   return viewUrl
 }
 
@@ -270,19 +279,38 @@ export async function computeStudentTotals(
   }
 
   const plan = feePlan ?? {}
-  const balances: Record<string, number> = {}
   const keys: (keyof FeePlan)[] = ["tuition", "laboratory", "library", "miscellaneous"]
+
+  // Compute per-key targets if present
+  const targets: Record<string, number> = {}
   let totalPlan = 0
   for (const k of keys) {
-    const target = Number(plan[k] ?? 0)
-    const paid = Number(paidByFee[k as string] ?? 0)
-    balances[k] = Math.max(0, target - paid)
-    totalPlan += target
+    const v = Number(plan[k] ?? 0)
+    targets[k as string] = v
+    totalPlan += v
   }
+
+  // Fallback: if no per-key breakdown but we have an overall total, apply it to "miscellaneous"
+  if (totalPlan === 0 && typeof plan.total === "number" && plan.total > 0) {
+    targets.tuition = 0
+    targets.laboratory = 0
+    targets.library = 0
+    targets.miscellaneous = Number(plan.total || 0)
+    totalPlan = targets.miscellaneous
+  }
+
+  const balances: Record<string, number> = {}
+  for (const k of keys) {
+    const target = Number(targets[k as string] || 0)
+    const paid = Number(paidByFee[k as string] || 0)
+    balances[k as string] = Math.max(0, target - paid)
+  }
+
+  const balanceTotal = Math.max(0, totalPlan - paidTotal)
 
   return {
     paidTotal,
-    balanceTotal: Math.max(0, totalPlan - paidTotal),
+    balanceTotal,
     paidByFee,
     balances,
   }
@@ -291,12 +319,15 @@ export async function computeStudentTotals(
 /**
  * Verify a pending online payment and issue a receipt.
  * Also generates & attaches a downloadable receipt file (if bucket env is set).
+ *
+ * NOTE: Your Receipts collection does NOT have an `items` attribute.
+ * Line items are saved into NEXT_PUBLIC_APPWRITE_RECEIPT_ITEMS_COLLECTION_ID.
  */
 export async function verifyPendingPaymentAndIssueReceipt(
   paymentId: string
 ): Promise<{ payment: PaymentDoc; receipt: ReceiptDoc; receiptUrl?: string | null }> {
   const db = getDatabases()
-  const { DB_ID, PAYMENTS_COL_ID, RECEIPTS_COL_ID } = ids()
+  const { DB_ID, PAYMENTS_COL_ID, RECEIPTS_COL_ID, RECEIPT_ITEMS_COL_ID } = ids()
 
   const payment = await db.getDocument<PaymentDoc>(DB_ID, PAYMENTS_COL_ID, paymentId)
 
@@ -306,8 +337,7 @@ export async function verifyPendingPaymentAndIssueReceipt(
   const fees = Array.isArray(updated.fees) && updated.fees.length ? updated.fees : ["miscellaneous"]
   const share = fees.length ? amount / fees.length : amount
 
-  const items: ReceiptItem[] = fees.map((f) => ({ label: f[0].toUpperCase() + f.slice(1), amount: share }))
-
+  // 1) Create receipt with required fields only
   const receipt = await db.createDocument<ReceiptDoc>(
     DB_ID,
     RECEIPTS_COL_ID,
@@ -316,14 +346,28 @@ export async function verifyPendingPaymentAndIssueReceipt(
       userId: updated.userId,
       paymentId: updated.$id,
       issuedAt: new Date().toISOString(),
-      items,
       total: amount,
       method: updated.method || "Online",
     },
     [Permission.read(Role.any()), Permission.update(Role.any()), Permission.delete(Role.any())]
   )
 
-  // Try to create & attach a downloadable file for the student
+  // 2) Create receipt item rows in the separate collection (if configured)
+  if (RECEIPT_ITEMS_COL_ID) {
+    const items: ReceiptItem[] = fees.map((f) => ({ label: f[0].toUpperCase() + f.slice(1), amount: share, quantity: 1 }))
+    await Promise.all(
+      items.map((it) =>
+        db.createDocument(DB_ID, RECEIPT_ITEMS_COL_ID, ID.unique(), {
+          receipts: receipt.$id, // relation to the receipt doc
+          label: it.label,
+          amount: it.amount,
+          quantity: it.quantity ?? 1,
+        })
+      )
+    ).catch(() => null)
+  }
+
+  // 3) Try to create & attach a downloadable file for the student (no DB updates)
   const url = await attachReceiptFile(receipt, updated).catch(() => null)
 
   return { payment: updated, receipt, receiptUrl: url ?? undefined }
@@ -351,12 +395,14 @@ export async function updateStudentFeePlan(
 /**
  * Record an over-the-counter payment and issue a receipt.
  * Also generates & attaches a downloadable receipt file (if bucket env is set).
+ *
+ * NOTE: No `items` field is written to the receipt document.
  */
 export async function recordCounterPaymentAndReceipt(
   rec: Pick<PaymentRecord, "userId" | "courseId" | "yearId" | "amount" | "fees" | "method">
 ): Promise<{ payment: PaymentDoc; receipt: ReceiptDoc; receiptUrl?: string | null }> {
   const db = getDatabases()
-  const { DB_ID, PAYMENTS_COL_ID, RECEIPTS_COL_ID } = ids()
+  const { DB_ID, PAYMENTS_COL_ID, RECEIPTS_COL_ID, RECEIPT_ITEMS_COL_ID } = ids()
 
   const payment = await db.createDocument<PaymentDoc>(DB_ID, PAYMENTS_COL_ID, ID.unique(), {
     ...rec,
@@ -367,7 +413,6 @@ export async function recordCounterPaymentAndReceipt(
   const amount = Number(payment.amount) || 0
   const fees = Array.isArray(payment.fees) && payment.fees.length ? payment.fees : ["miscellaneous"]
   const share = fees.length ? amount / fees.length : amount
-  const items: ReceiptItem[] = fees.map((f) => ({ label: f[0].toUpperCase() + f.slice(1), amount: share }))
 
   const receipt = await db.createDocument<ReceiptDoc>(
     DB_ID,
@@ -377,14 +422,27 @@ export async function recordCounterPaymentAndReceipt(
       userId: payment.userId,
       paymentId: payment.$id,
       issuedAt: new Date().toISOString(),
-      items,
       total: amount,
       method: rec.method === "card" ? "Card" : "Cash",
     },
     [Permission.read(Role.any()), Permission.update(Role.any()), Permission.delete(Role.any())]
   )
 
-  // Try to create & attach a downloadable file for the student
+  // Create receipt items in the dedicated collection
+  if (RECEIPT_ITEMS_COL_ID) {
+    const items: ReceiptItem[] = fees.map((f) => ({ label: f[0].toUpperCase() + f.slice(1), amount: share, quantity: 1 }))
+    await Promise.all(
+      items.map((it) =>
+        db.createDocument(DB_ID, RECEIPT_ITEMS_COL_ID, ID.unique(), {
+          receipts: receipt.$id,
+          label: it.label,
+          amount: it.amount,
+          quantity: it.quantity ?? 1,
+        })
+      )
+    ).catch(() => null)
+  }
+
   const url = await attachReceiptFile(receipt, payment).catch(() => null)
 
   return { payment, receipt, receiptUrl: url ?? undefined }
@@ -428,48 +486,6 @@ export async function listPendingPaymentsWithStudentInfo(): Promise<
   }
 
   return out
-}
-
-/** Bulk: apply the same fee plan to ALL students (cashier tool) */
-export async function applyFeePlanToAllStudents(plan: {
-  tuition: number
-  laboratory: number
-  library: number
-  miscellaneous: number
-}): Promise<{ updated: number }> {
-  const db = getDatabases()
-  const { DB_ID, USERS_COL_ID } = ids()
-
-  let updated = 0
-  let cursor: string | undefined
-
-  for (;;) {
-    const queries: string[] = [Query.equal("role", "student"), Query.limit(100)]
-    if (cursor) queries.push(Query.cursorAfter(cursor))
-
-    const res = await db.listDocuments<UserProfileDoc>(DB_ID, USERS_COL_ID, queries)
-    const docs = res.documents ?? []
-    if (!docs.length) break
-
-    const total = (plan.tuition || 0) + (plan.laboratory || 0) + (plan.library || 0) + (plan.miscellaneous || 0)
-
-    await Promise.all(
-      docs.map((u) =>
-        db
-          .updateDocument(DB_ID, USERS_COL_ID, u.$id, {
-            feePlan: { ...plan, total },
-            totalFees: total,
-          })
-          .then(() => updated++)
-          .catch(() => null)
-      )
-    )
-
-    if (docs.length < 100) break
-    cursor = docs[docs.length - 1].$id
-  }
-
-  return { updated }
 }
 
 /** NEW: Transform payments into a 24-hour series for charts */

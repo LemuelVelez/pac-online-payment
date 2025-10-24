@@ -1,3 +1,4 @@
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
@@ -28,15 +29,22 @@ export function PaymentReceipt({
   return (
     <Card className="bg-white text-slate-900 w-full max-w-xs mx-auto">
       <CardHeader className="text-center border-b border-slate-200 pb-1 pt-2">
-        <div className="flex items-center justify-center gap-0.5 mb-0.5">
-          <div className="h-4 w-4 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-xs">
-            P
-          </div>
+        <div className="flex items-center justify-center gap-2 mb-1">
+          {/* Uses /public/images/logo.png */}
+          <Image
+            src="/images/logo.png"
+            alt="PAC Salug Campus Logo"
+            width={24}
+            height={24}
+            className="h-6 w-6 object-contain"
+            priority
+          />
           <h2 className="text-base font-bold">PAC Salug Campus</h2>
         </div>
         <p className="text-[10px] text-slate-500">Philippine Advent College - Salug Campus</p>
         <p className="text-[10px] text-slate-500">Zamboanga del Norte</p>
       </CardHeader>
+
       <CardContent className="pt-2 pb-2">
         <div className="mb-2">
           <h3 className="text-base font-bold text-center mb-0.5">PAYMENT RECEIPT</h3>
@@ -89,6 +97,7 @@ export function PaymentReceipt({
           <span>{total}</span>
         </div>
       </CardContent>
+
       <CardFooter className="flex justify-between border-t border-slate-200 pt-2 pb-2">
         <Button variant="outline" size="sm" className="flex items-center gap-1">
           <Printer className="h-3 w-3" />

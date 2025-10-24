@@ -62,7 +62,6 @@ export async function createMessage(input: CreateMessageInput) {
     responseFileName: null,
   }
 
-  // NOTE: do not pass explicit permissions; use collection defaults
   const doc = (await db.createDocument({
     databaseId: DB_ID,
     collectionId: MESSAGES_COL_ID,
@@ -88,6 +87,25 @@ export async function listMessagesForCashier(
     databaseId: DB_ID,
     collectionId: MESSAGES_COL_ID,
     queries: [Query.equal("cashierId", cashierId), Query.orderDesc("$createdAt"), Query.limit(limit)],
+  })
+
+  return (res.documents ?? []) as MessageDoc[]
+}
+
+/** NEW: read (student inbox/outbox) */
+export async function listMessagesForUser(
+  userId: string,
+  limit = 200
+): Promise<MessageDoc[]> {
+  const { DB_ID } = getEnvIds()
+  const MESSAGES_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_MESSAGES_COLLECTION_ID
+  if (!DB_ID || !MESSAGES_COL_ID) throw new Error("Messages collection not configured.")
+
+  const db = getDatabases()
+  const res = await db.listDocuments<MessageDoc>({
+    databaseId: DB_ID,
+    collectionId: MESSAGES_COL_ID,
+    queries: [Query.equal("userId", userId), Query.orderDesc("$createdAt"), Query.limit(limit)],
   })
 
   return (res.documents ?? []) as MessageDoc[]

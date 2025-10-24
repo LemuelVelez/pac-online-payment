@@ -1,6 +1,17 @@
 import { ID, Query, getDatabases } from "@/lib/appwrite";
 import type { Models } from "appwrite";
 
+/** Allowed payment methods (must match Appwrite enum exactly) */
+export const ALLOWED_PAYMENT_METHODS = [
+  "cash",
+  "card",
+  "credit-card",
+  "e-wallet",
+  "online-banking",
+] as const;
+
+export type PaymentMethod = typeof ALLOWED_PAYMENT_METHODS[number];
+
 /** Shape we persist in the Appwrite Payments collection */
 export type PaymentRecord = {
   userId: string;
@@ -8,7 +19,7 @@ export type PaymentRecord = {
   yearId: "1" | "2" | "3" | "4";
   amount: number;
   fees: Array<"tuition" | "laboratory" | "library" | "miscellaneous">;
-  method: "credit-card" | "e-wallet" | "online-banking" | string;
+  method: PaymentMethod; // strictly one of the allowed values
   status: "Pending" | "Completed" | "Succeeded" | "Failed" | "Cancelled";
   reference: string;
 
@@ -34,16 +45,41 @@ function getIds() {
   };
 }
 
+/** Normalize/Clamp method values to an allowed enum to avoid Appwrite validation errors. */
+function normalizeMethod(value: unknown): PaymentMethod {
+  const v = String(value ?? "").toLowerCase().trim();
+
+  if ((ALLOWED_PAYMENT_METHODS as readonly string[]).includes(v)) {
+    return v as PaymentMethod;
+  }
+
+  // Heuristic mappings for common aliases
+  if (v.includes("cash")) return "cash";
+  if (v.includes("wallet") || v.includes("gcash") || v.includes("maya") || v.includes("grab"))
+    return "e-wallet";
+  if (v.includes("bank")) return "online-banking";
+  if (v.includes("credit") || v.includes("debit")) return "credit-card";
+  if (v.includes("card")) return "card";
+
+  // Safe default
+  return "card";
+}
+
 /** Create a payment document (usually right before redirecting to PayMongo). */
 export async function createPayment(rec: PaymentRecord): Promise<PaymentDoc> {
   const { databaseId, paymentsCollectionId } = getIds();
   const databases = getDatabases();
 
+  const payload: PaymentRecord = {
+    ...rec,
+    method: normalizeMethod(rec.method),
+  };
+
   const doc = await databases.createDocument<PaymentDoc>(
     databaseId,
     paymentsCollectionId,
     ID.unique(),
-    rec
+    payload
   );
 
   return doc;
@@ -57,11 +93,16 @@ export async function updatePayment(
   const { databaseId, paymentsCollectionId } = getIds();
   const databases = getDatabases();
 
+  const patched = {
+    ...patch,
+    ...(patch.method ? { method: normalizeMethod(patch.method) } : {}),
+  } as Partial<PaymentRecord>;
+
   const doc = await databases.updateDocument<PaymentDoc>(
     databaseId,
     paymentsCollectionId,
     id,
-    patch
+    patched
   );
 
   return doc;

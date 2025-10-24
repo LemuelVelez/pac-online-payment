@@ -11,8 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/u
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { PaymentReceipt } from "@/components/payment/payment-receipt"
 import { DateRangePicker } from "@/components/admin/date-range-picker"
-import { Search, RefreshCw, Filter, Eye, Loader2, Reply, Paperclip } from "lucide-react"
-import { getDatabases, getEnvIds, Query, getStorage, getCurrentUserSafe } from "@/lib/appwrite"
+import { Search, RefreshCw, Filter, Eye, Loader2, Reply, Paperclip, CheckCircle } from "lucide-react"
+import { getDatabases, getEnvIds, Query, getStorage, getCurrentUserSafe, ID } from "@/lib/appwrite"
 import type { PaymentDoc } from "@/lib/appwrite-payments"
 import type { UserProfileDoc } from "@/lib/appwrite-cashier"
 import { toast } from "sonner"
@@ -22,6 +22,7 @@ import {
   replyToMessage,
   type MessageDoc,
 } from "@/lib/appwrite-messages"
+import { verifyPendingPaymentAndIssueReceipt } from "@/lib/appwrite-cashier"
 
 type ReceiptData = {
   receiptNumber: string
@@ -31,6 +32,7 @@ type ReceiptData = {
   paymentMethod: string
   items: { description: string; amount: string }[]
   total: string
+  downloadUrl?: string | null
 }
 
 function peso(n: number | string) {
@@ -72,6 +74,8 @@ function saveLocalReadSet(cashierId: string, set: Set<string>) {
   }
 }
 
+const REPLY_BUCKET_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPTS_BUCKET_ID as string | undefined
+
 export default function CashierTransactionsPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -83,6 +87,8 @@ export default function CashierTransactionsPage() {
 
   const [isReceiptDialogOpen, setIsReceiptDialogOpen] = useState(false)
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null)
+  const [selectedPayment, setSelectedPayment] = useState<PaymentDoc | null>(null)
+  const [verifying, setVerifying] = useState(false)
 
   // messages state
   const [meId, setMeId] = useState<string>("")
@@ -90,7 +96,20 @@ export default function CashierTransactionsPage() {
   const [messages, setMessages] = useState<MessageDoc[]>([])
   const [selectedMessage, setSelectedMessage] = useState<MessageDoc | null>(null)
   const [replyText, setReplyText] = useState("")
+  const [replyFile, setReplyFile] = useState<File | null>(null)
   const [sendingReply, setSendingReply] = useState(false)
+
+  /* ================= Helpers ================= */
+
+  const lineItemsFromPayment = (p: PaymentDoc): { description: string; amount: string }[] => {
+    const amount = Number(p.amount) || 0
+    const fees = Array.isArray(p.fees) && p.fees.length ? p.fees : ["miscellaneous"]
+    const share = fees.length ? amount / fees.length : amount
+    return fees.map((f) => ({
+      description: f[0].toUpperCase() + f.slice(1),
+      amount: `₱${Number(share).toLocaleString()}`,
+    }))
+  }
 
   /* ================= Loaders ================= */
 
@@ -167,7 +186,7 @@ export default function CashierTransactionsPage() {
   }, [load, loadMessages])
 
   useEffect(() => {
-    ;(async () => {
+    (async () => {
       const me = await getCurrentUserSafe()
       if (me) setMeId(me.$id)
     })()
@@ -205,7 +224,7 @@ export default function CashierTransactionsPage() {
 
   const todaysTransactions = useMemo(() => {
     const today = new Date()
-    const y = today.getFullYear()
+       const y = today.getFullYear()
     const m = today.getMonth()
     const d = today.getDate()
     return filteredTransactions.filter((t) => {
@@ -219,11 +238,12 @@ export default function CashierTransactionsPage() {
     [filteredTransactions]
   )
 
-  /* ================= Receipt view ================= */
+  /* ================= Receipt view & verification ================= */
 
   const handleViewReceipt = async (payment: PaymentDoc) => {
     setIsReceiptDialogOpen(true)
     setReceiptData(null)
+    setSelectedPayment(payment)
     toast.info("Preparing receipt…")
 
     try {
@@ -231,7 +251,7 @@ export default function CashierTransactionsPage() {
       const RECEIPTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPTS_COLLECTION_ID as string | undefined
       const RECEIPT_ITEMS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPT_ITEMS_COLLECTION_ID as string | undefined
 
-      if (!DB_ID || !USERS_COL_ID || !RECEIPTS_COL_ID) {
+      if (!DB_ID || !USERS_COL_ID) {
         throw new Error("Missing Appwrite IDs for receipts. Set NEXT_PUBLIC_* env vars accordingly.")
       }
 
@@ -244,21 +264,78 @@ export default function CashierTransactionsPage() {
         if (userRes) student = userRes as unknown as UserProfileDoc
       }
 
-      // find receipt for this payment
-      const rres = await db
-        .listDocuments<any>(DB_ID, RECEIPTS_COL_ID, [Query.equal("paymentId", payment.$id), Query.limit(1)])
-        .catch(() => null)
-      const rec = rres?.documents?.[0]
+      // try to find receipt for this payment
+      if (RECEIPTS_COL_ID) {
+        const rres = await db
+          .listDocuments<any>(DB_ID, RECEIPTS_COL_ID, [Query.equal("paymentId", payment.$id), Query.limit(1)])
+          .catch(() => null)
+        const rec = rres?.documents?.[0]
 
-      if (rec) {
-        // fetch line items
-        let lineItems: { description: string; amount: string }[] = []
-        if (RECEIPT_ITEMS_COL_ID) {
-          const itemsRes = await db
-            .listDocuments<any>(DB_ID, RECEIPT_ITEMS_COL_ID, [Query.equal("receiptRef", rec.$id), Query.limit(100)])
-            .catch(() => null)
+        if (rec) {
+          // fetch line items (optional) — relationship field is "receipts"
+          let lineItems: { description: string; amount: string }[] = []
+          if (RECEIPT_ITEMS_COL_ID) {
+            const itemsRes = await db
+              .listDocuments<any>(DB_ID, RECEIPT_ITEMS_COL_ID, [Query.equal("receipts", rec.$id), Query.limit(100)])
+              .catch(() => null)
 
-          lineItems = (itemsRes?.documents ?? []).map((i: any) => {
+            lineItems = (itemsRes?.documents ?? []).map((i: any) => {
+              const qty = Number(i.quantity ?? 1) || 1
+              const subtotal = Number(i.amount || 0) * qty
+              return {
+                description: qty > 1 ? `${i.label} × ${qty}` : i.label,
+                amount: `₱${subtotal.toLocaleString()}`,
+              }
+            })
+          }
+
+          setReceiptData({
+            receiptNumber: rec.$id,
+            date: new Date(rec.issuedAt ?? payment.$createdAt).toISOString().split("T")[0],
+            studentId: student?.studentId ?? student?.$id ?? "—",
+            studentName: student?.fullName ?? "—",
+            paymentMethod: rec.method ?? methodLabel(payment.method),
+            items: lineItems.length ? lineItems : lineItemsFromPayment(payment),
+            total: `₱${Number(rec.total || payment.amount || 0).toLocaleString()}`,
+          })
+          return
+        }
+      }
+
+      // fallback preview from payment
+      setReceiptData({
+        receiptNumber: payment.reference || payment.$id,
+        date: new Date(payment.$createdAt).toISOString().split("T")[0],
+        studentId: student?.studentId ?? student?.$id ?? "—",
+        studentName: student?.fullName ?? "—",
+        paymentMethod: methodLabel(payment.method),
+        items: lineItemsFromPayment(payment),
+        total: `₱${Number(payment.amount || 0).toLocaleString()}`,
+      })
+    } catch (e: any) {
+      toast.error("Unable to open receipt", { description: e?.message ?? "Please try again." })
+    }
+  }
+
+  const verifyFromDialog = async () => {
+    if (!selectedPayment || selectedPayment.status !== "Pending") return
+    setVerifying(true)
+    try {
+      const result = await verifyPendingPaymentAndIssueReceipt(selectedPayment.$id)
+
+      // Attempt to load line items from receipt items collection if present; otherwise compute from payment
+      const { DB_ID } = getEnvIds()
+      const RECEIPT_ITEMS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPT_ITEMS_COLLECTION_ID as string | undefined
+      let verifiedItems: { description: string; amount: string }[] = []
+
+      if (DB_ID && RECEIPT_ITEMS_COL_ID) {
+        try {
+          const db = getDatabases()
+          const itemsRes = await db.listDocuments<any>(DB_ID, RECEIPT_ITEMS_COL_ID, [
+            Query.equal("receipts", result.receipt.$id),
+            Query.limit(100),
+          ])
+          verifiedItems = (itemsRes?.documents ?? []).map((i: any) => {
             const qty = Number(i.quantity ?? 1) || 1
             const subtotal = Number(i.amount || 0) * qty
             return {
@@ -266,113 +343,36 @@ export default function CashierTransactionsPage() {
               amount: `₱${subtotal.toLocaleString()}`,
             }
           })
+        } catch {
+          /* fall back below */
         }
-
-        setReceiptData({
-          receiptNumber: rec.$id,
-          date: new Date(rec.issuedAt ?? payment.$createdAt).toISOString().split("T")[0],
-          studentId: student?.studentId ?? student?.$id ?? "—",
-          studentName: student?.fullName ?? "—",
-          paymentMethod: rec.method ?? methodLabel(payment.method),
-          items: lineItems.length ? lineItems : [],
-          total: `₱${Number(rec.total || payment.amount || 0).toLocaleString()}`,
-        })
-        return
+      }
+      if (!verifiedItems.length) {
+        verifiedItems = lineItemsFromPayment(result.payment)
       }
 
-      // fallback from payment
-      const amount = Number(payment.amount) || 0
-      const fees = Array.isArray(payment.fees) && payment.fees.length ? payment.fees : ["miscellaneous"]
-      const share = fees.length ? amount / fees.length : amount
+      // Update table row
+      setAllPayments((prev) => prev.map((p) => (p.$id === selectedPayment.$id ? result.payment : p)))
+
+      // Refresh receipt view right away
       setReceiptData({
-        receiptNumber: payment.reference || payment.$id,
-        date: new Date(payment.$createdAt).toISOString().split("T")[0],
-        studentId: student?.studentId ?? student?.$id ?? "—",
-        studentName: student?.fullName ?? "—",
-        paymentMethod: methodLabel(payment.method),
-        items: fees.map((f) => ({ description: f[0].toUpperCase() + f.slice(1), amount: `₱${Number(share).toLocaleString()}` })),
-        total: `₱${amount.toLocaleString()}`,
+        receiptNumber: result.receipt.$id,
+        date: new Date(result.receipt.issuedAt).toISOString().split("T")[0],
+        studentId: receiptData?.studentId ?? "—",
+        studentName: receiptData?.studentName ?? "—",
+        paymentMethod: "Online",
+        items: verifiedItems,
+        total: `₱${Number(result.receipt.total || 0).toLocaleString()}`,
+        downloadUrl: result.receiptUrl ?? null,
       })
+      setSelectedPayment({ ...selectedPayment, status: "Completed" })
+      toast.success("Payment verified", { description: "Receipt issued successfully." })
     } catch (e: any) {
-      toast.error("Unable to open receipt", { description: e?.message ?? "Please try again." })
+      toast.error("Verification failed", { description: e?.message ?? "Please try again." })
+    } finally {
+      setVerifying(false)
     }
   }
-
-  const renderTable = (rows: PaymentDoc[]) => (
-    <div className="rounded-lg border border-slate-700">
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
-              <th className="px-6 py-3">Reference ID</th>
-              <th className="px-6 py-3">Date &amp; Time</th>
-              <th className="px-6 py-3">Student</th>
-              <th className="px-6 py-3">Description</th>
-              <th className="px-6 py-3 text-right">Amount</th>
-              <th className="px-6 py-3">Payment Method</th>
-              <th className="px-6 py-3">Status</th>
-              <th className="px-6 py-3">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-700">
-            {loading ? (
-              <tr>
-                <td colSpan={8} className="px-6 py-8 text-center text-gray-300">
-                  <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
-                  Loading…
-                </td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-6 py-8 text-center text-gray-300">No transactions found.</td>
-              </tr>
-            ) : (
-              rows.map((t) => {
-                const s = studentsById[t.userId]
-                const desc = Array.isArray(t.fees) && t.fees.length > 0 ? `Fees: ${t.fees.join(", ")}` : t.planId ? "Fee Plan Payment" : "Payment"
-                return (
-                  <tr key={t.$id} className="text-sm">
-                    <td className="whitespace-nowrap px-6 py-4 font-medium">{t.reference || t.$id}</td>
-                    <td className="whitespace-nowrap px-6 py-4">{new Date(t.$createdAt).toLocaleString()}</td>
-                    <td className="px-6 py-4">
-                      <div>
-                        <p className="font-medium">{s?.fullName ?? "—"}</p>
-                        <p className="text-xs text-gray-400">{s?.studentId ?? t.userId}</p>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">{desc}</td>
-                    <td className="whitespace-nowrap px-6 py-4 text-right">{peso(t.amount)}</td>
-                    <td className="px-6 py-4">{methodLabel(t.method)}</td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      {t.status === "Pending" && <span className="inline-flex rounded-full bg-yellow-500/20 px-2 py-1 text-xs font-medium text-yellow-300">Pending</span>}
-                      {(t.status === "Completed" || t.status === "Succeeded") && (
-                        <span className="inline-flex rounded-full bg-green-500/20 px-2 py-1 text-xs font-medium text-green-300">Completed</span>
-                      )}
-                      {(t.status === "Failed" || t.status === "Cancelled") && (
-                        <span className="inline-flex rounded-full bg-red-500/20 px-2 py-1 text-xs font-medium text-red-300">{t.status}</span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-slate-600 text-white hover:bg-slate-700"
-                        onClick={() => handleViewReceipt(t)}
-                        title="View receipt"
-                      >
-                        <Eye className="mr-2 h-4 w-4" />
-                        View
-                      </Button>
-                    </td>
-                  </tr>
-                )
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
 
   /* ================= Messages ================= */
 
@@ -381,7 +381,7 @@ export default function CashierTransactionsPage() {
       const me = (await getCurrentUserSafe())!
       const cashierId = me.$id
 
-      // Try to persist "read" in DB; if it fails, keep local state so it won't flip back
+      // Try server mark-as-read, fall back to local flag
       let updatedFromServer: MessageDoc | null = null
       try {
         updatedFromServer = await markMessageRead(msg.$id)
@@ -389,12 +389,10 @@ export default function CashierTransactionsPage() {
         toast.warning("Couldn’t mark as read on server", { description: e?.message ?? "Using local state instead." })
       }
 
-      // Update local read set to prevent reverting to "new" on refresh
       const set = getLocalReadSet(cashierId)
       set.add(msg.$id)
       saveLocalReadSet(cashierId, set)
 
-      // Update UI immediately
       setMessages((prev) =>
         prev.map((m) => (m.$id === msg.$id ? (updatedFromServer ?? { ...m, status: "read" as any }) : m))
       )
@@ -411,6 +409,7 @@ export default function CashierTransactionsPage() {
       const student = studentsById[msg.userId]
       const defaultReply = `Hello ${student?.fullName ?? "student"},\n\nWe received your message about ${msg.subject}.\nWe'll review your request and get back to you shortly.\n\n— Cashier`
       setReplyText(msg.responseMessage ?? defaultReply)
+      setReplyFile(null)
 
       setSelectedMessage(updatedFromServer ?? { ...msg, status: "read" as any })
     } catch (e: any) {
@@ -428,6 +427,16 @@ export default function CashierTransactionsPage() {
     }
   }
 
+  const responseUrl = (m?: MessageDoc | null) => {
+    if (!m?.responseBucketId || !m?.responseFileId) return null
+    try {
+      const storage = getStorage()
+      return (storage.getFileView(m.responseBucketId, m.responseFileId) as unknown as string) || null
+    } catch {
+      return null
+    }
+  }
+
   const sendReply = async () => {
     if (!selectedMessage) return
     if (!replyText.trim()) {
@@ -436,11 +445,27 @@ export default function CashierTransactionsPage() {
     }
     setSendingReply(true)
     try {
-      const updated = await replyToMessage(selectedMessage.$id, replyText.trim())
-      // Persist reply and reflect in UI
+      let uploaded:
+        | { bucketId: string | null; fileId: string | null; fileName: string | null }
+        | null = null
+
+      if (replyFile && REPLY_BUCKET_ID) {
+        const storage = getStorage()
+        const created: any = await storage.createFile(REPLY_BUCKET_ID, ID.unique(), replyFile)
+        uploaded = { bucketId: REPLY_BUCKET_ID, fileId: created?.$id, fileName: replyFile.name }
+      } else {
+        uploaded = { bucketId: null, fileId: null, fileName: null }
+      }
+
+      const updated = await replyToMessage(selectedMessage.$id, replyText.trim(), {
+        responseBucketId: uploaded.bucketId,
+        responseFileId: uploaded.fileId,
+        responseFileName: uploaded.fileName,
+      })
+
       setMessages((prev) => prev.map((m) => (m.$id === updated.$id ? updated : m)))
       setSelectedMessage(updated)
-      toast.success("Reply sent", { description: "The student can now see your response." })
+      toast.success("Reply sent", { description: uploaded?.fileId ? "Receipt attached for the student." : "The student can now see your response." })
     } catch (e: any) {
       toast.error("Failed to send reply", { description: e?.message ?? "Please try again." })
     } finally {
@@ -655,33 +680,65 @@ export default function CashierTransactionsPage() {
           </TabsContent>
         </Tabs>
 
-        {/* Receipt Dialog */}
+        {/* Receipt Dialog (view + verify) — medium height & scrollable */}
         <Dialog open={isReceiptDialogOpen} onOpenChange={setIsReceiptDialogOpen}>
-          <DialogContent className="sm:max-w-2xl">
-            <DialogHeader className="sr-only">
+          <DialogContent
+            className="
+              bg-slate-800 border-slate-700 text-white
+              p-0
+              w-[95vw] sm:w-auto
+              max-w-[95vw] sm:max-w-[90vw] md:max-w-[720px] lg:max-w-[820px]
+              max-h-[65vh] sm:max-h-[60vh]
+              overflow-hidden
+              flex flex-col
+            "
+          >
+            <DialogHeader className="px-5 pt-5 pb-3">
               <DialogTitle>Payment Receipt</DialogTitle>
-              <DialogDescription>Details of the selected payment receipt.</DialogDescription>
+              <DialogDescription className="text-gray-300">
+                Preview and (if pending) verify to issue the official receipt.
+              </DialogDescription>
             </DialogHeader>
 
-            {!receiptData ? (
-              <div className="flex items-center justify-center py-12 text-gray-300">
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Preparing receipt…
-              </div>
-            ) : (
-              <PaymentReceipt
-                receiptNumber={receiptData.receiptNumber}
-                date={receiptData.date}
-                studentId={receiptData.studentId}
-                studentName={receiptData.studentName}
-                paymentMethod={receiptData.paymentMethod}
-                items={receiptData.items}
-                total={receiptData.total}
-              />
-            )}
+            {/* Scrollable body */}
+            <div className="px-5 pb-5 overflow-y-auto flex-1">
+              {!receiptData ? (
+                <div className="flex items-center justify-center py-12 text-gray-300">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Preparing receipt…
+                </div>
+              ) : (
+                <>
+                  {selectedPayment?.status === "Pending" && (
+                    <div className="mb-3 rounded-md bg-amber-500/15 border border-amber-400/40 p-3 text-sm text-amber-100">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4" />
+                          This payment is still <b>Pending</b>. Verify to mark as Completed and send the receipt to the student.
+                        </div>
+                        <Button onClick={verifyFromDialog} disabled={verifying}>
+                          {verifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                          Verify & Issue Receipt
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  <PaymentReceipt
+                    receiptNumber={receiptData.receiptNumber}
+                    date={receiptData.date}
+                    studentId={receiptData.studentId}
+                    studentName={receiptData.studentName}
+                    paymentMethod={receiptData.paymentMethod}
+                    items={receiptData.items}
+                    total={receiptData.total}
+                  />
+                </>
+              )}
+            </div>
           </DialogContent>
         </Dialog>
 
-        {/* Message View/Reply Dialog — responsive width & vertical scroll */}
+        {/* Message View/Reply Dialog — responsive width & vertical scroll + attachment */}
         <Dialog open={!!selectedMessage} onOpenChange={(o) => !o && setSelectedMessage(null)}>
           <DialogContent
             className="
@@ -724,6 +781,21 @@ export default function CashierTransactionsPage() {
                       </a>
                     ) : null}
 
+                    {/* If a previous reply had an attachment, show it too */}
+                    {selectedMessage.responseBucketId && selectedMessage.responseFileId ? (
+                      <div className="mt-2">
+                        <a
+                          href={responseUrl(selectedMessage) ?? undefined}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center text-emerald-300 hover:text-emerald-200 text-sm"
+                        >
+                          <Paperclip className="mr-2 h-4 w-4" />
+                          {selectedMessage.responseFileName || "Receipt attachment"}
+                        </a>
+                      </div>
+                    ) : null}
+
                     <div className="mt-3 text-xs text-gray-400">
                       From: {studentsById[selectedMessage.userId]?.fullName ?? selectedMessage.userId} •{" "}
                       {new Date(selectedMessage.$createdAt).toLocaleString()}
@@ -736,11 +808,39 @@ export default function CashierTransactionsPage() {
                   <div className="space-y-2">
                     <label className="text-sm text-gray-200">Your Reply</label>
                     <textarea
-                      className="min-h-[120px] w-full rounded-md border border-slate-700 bg-slate-900 p-3 text-sm text-gray-100 outline-none focus:ring-2 focus:ring-primary/60"
+                      className="min-h-[110px] w-full rounded-md border border-slate-700 bg-slate-900 p-3 text-sm text-gray-100 outline-none focus:ring-2 focus:ring-primary/60"
                       value={replyText}
                       onChange={(e) => setReplyText(e.target.value)}
                       placeholder="Type your reply here…"
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm text-gray-200">Attach receipt (optional)</label>
+                    {!REPLY_BUCKET_ID ? (
+                      <div className="text-xs text-amber-200">
+                        Missing <code>NEXT_PUBLIC_APPWRITE_RECEIPTS_BUCKET_ID</code> in env — file upload disabled.
+                      </div>
+                    ) : null}
+                    <div className="flex items-center gap-3">
+                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-slate-600 bg-slate-700/40 px-3 py-2 text-sm hover:bg-slate-700/70">
+                        <Paperclip className="h-4 w-4" />
+                        <span>{replyFile ? "Replace file" : "Choose file"}</span>
+                        <input
+                          type="file"
+                          accept="application/pdf,image/*"
+                          className="hidden"
+                          onChange={(e) => setReplyFile(e.target.files?.[0] ?? null)}
+                        />
+                      </label>
+                      {replyFile ? (
+                        <span className="text-xs text-gray-300 truncate max-w-[60%]">
+                          {replyFile.name} • {(replyFile.size / 1024).toFixed(0)} KB
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400">Optional PDF or image.</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -768,4 +868,82 @@ export default function CashierTransactionsPage() {
       </div>
     </DashboardLayout>
   )
+
+  function renderTable(rows: PaymentDoc[]) {
+    return (
+      <div className="rounded-lg border border-slate-700">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
+                <th className="px-6 py-3">Reference ID</th>
+                <th className="px-6 py-3">Date &amp; Time</th>
+                <th className="px-6 py-3">Student</th>
+                <th className="px-6 py-3">Description</th>
+                <th className="px-6 py-3 text-right">Amount</th>
+                <th className="px-6 py-3">Payment Method</th>
+                <th className="px-6 py-3">Status</th>
+                <th className="px-6 py-3">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-700">
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-8 text-center text-gray-300">
+                    <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                    Loading…
+                  </td>
+                </tr>
+              ) : rows.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-8 text-center text-gray-300">No transactions found.</td>
+                </tr>
+              ) : (
+                rows.map((t) => {
+                  const s = studentsById[t.userId]
+                  const desc = Array.isArray(t.fees) && t.fees.length > 0 ? `Fees: ${t.fees.join(", ")}` : t.planId ? "Fee Plan Payment" : "Payment"
+                  return (
+                    <tr key={t.$id} className="text-sm">
+                      <td className="whitespace-nowrap px-6 py-4 font-medium">{t.reference || t.$id}</td>
+                      <td className="whitespace-nowrap px-6 py-4">{new Date(t.$createdAt).toLocaleString()}</td>
+                      <td className="px-6 py-4">
+                        <div>
+                          <p className="font-medium">{s?.fullName ?? "—"}</p>
+                          <p className="text-xs text-gray-400">{s?.studentId ?? t.userId}</p>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">{desc}</td>
+                      <td className="whitespace-nowrap px-6 py-4 text-right">{peso(t.amount)}</td>
+                      <td className="px-6 py-4">{methodLabel(t.method)}</td>
+                      <td className="whitespace-nowrap px-6 py-4">
+                        {t.status === "Pending" && <span className="inline-flex rounded-full bg-yellow-500/20 px-2 py-1 text-xs font-medium text-yellow-300">Pending</span>}
+                        {(t.status === "Completed" || t.status === "Succeeded") && (
+                          <span className="inline-flex rounded-full bg-green-500/20 px-2 py-1 text-xs font-medium text-green-300">Completed</span>
+                        )}
+                        {(t.status === "Failed" || t.status === "Cancelled") && (
+                          <span className="inline-flex rounded-full bg-red-500/20 px-2 py-1 text-xs font-medium text-red-300">{t.status}</span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-slate-600 text-white hover:bg-slate-700"
+                          onClick={() => handleViewReceipt(t)}
+                          title="View or verify"
+                        >
+                          <Eye className="mr-2 h-4 w-4" />
+                          View
+                        </Button>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
 }

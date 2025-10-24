@@ -12,6 +12,7 @@ import {
   Paperclip,
   Send,
   AlertCircle,
+  Mail,
 } from "lucide-react"
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
@@ -25,7 +26,7 @@ import { getCurrentUserSafe, getDatabases, getEnvIds, getStorage, ID, Query } fr
 import { listRecentPayments, type PaymentDoc } from "@/lib/appwrite-payments"
 import type { Models } from "appwrite"
 import { toast } from "sonner"
-import { createMessage } from "@/lib/appwrite-messages"
+import { createMessage, listMessagesForUser, type MessageDoc } from "@/lib/appwrite-messages"
 
 type PaymentWithExtras = PaymentDoc & {
   receiptUrl?: string | null
@@ -78,6 +79,10 @@ export default function PaymentHistoryPage() {
   const [message, setMessage] = useState<string>("")
   const [proofFile, setProofFile] = useState<File | null>(null)
   const [sending, setSending] = useState(false)
+
+  // NEW: messages from cashier
+  const [msgsLoading, setMsgsLoading] = useState(true)
+  const [myMessages, setMyMessages] = useState<MessageDoc[]>([])
 
   const totalPaid = useMemo(
     () =>
@@ -132,9 +137,28 @@ export default function PaymentHistoryPage() {
     }
   }
 
+  const loadMyMessages = async (opts?: { silent?: boolean }) => {
+    setMsgsLoading(true)
+    try {
+      const me = await getCurrentUserSafe()
+      if (!me) throw new Error("Not signed in.")
+      const docs = await listMessagesForUser(me.$id, 200)
+      setMyMessages(docs)
+      if (!opts?.silent) {
+        const replied = docs.filter((d) => (d.status ?? "").toLowerCase() === "replied").length
+        toast.success("Messages refreshed", { description: `${docs.length} total • ${replied} replied` })
+      }
+    } catch (e: any) {
+      toast.error("Failed to load messages", { description: e?.message ?? "Please try again." })
+    } finally {
+      setMsgsLoading(false)
+    }
+  }
+
   useEffect(() => {
     loadPayments({ silent: true })
     loadCashiers()
+    loadMyMessages({ silent: true })
   }, [])
 
   useEffect(() => {
@@ -212,6 +236,7 @@ Thank you!`
       setNotice(msg)
       toast.success("Message sent", { description: msg })
       setTimeout(() => setNotice(""), 5000)
+      loadMyMessages({ silent: true })
     } catch (e: any) {
       toast.error("Failed to send message", { description: e?.message ?? "Please try again." })
     } finally {
@@ -230,9 +255,12 @@ Thank you!`
           <Button
             variant="outline"
             className="border-slate-600"
-            onClick={() => loadPayments()}
+            onClick={() => {
+              loadPayments()
+              loadMyMessages({ silent: true })
+            }}
             disabled={loading}
-            title="Refresh your payment list"
+            title="Refresh your payment list & messages"
           >
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
             Refresh
@@ -373,6 +401,66 @@ Thank you!`
           </div>
         </div>
 
+        {/* NEW: Replies & receipts from cashier */}
+        <div className="mt-10">
+          <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-white">
+            <Mail className="h-5 w-5" /> Messages from Cashier
+          </h2>
+          <div className="rounded-lg border border-slate-700 bg-slate-800/60 text-white">
+            {msgsLoading ? (
+              <div className="px-6 py-8 text-center text-gray-300">
+                <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                Loading messages…
+              </div>
+            ) : myMessages.length === 0 ? (
+              <div className="px-6 py-8 text-center text-gray-300">No messages yet.</div>
+            ) : (
+              <div className="divide-y divide-slate-700">
+                {myMessages.map((m) => {
+                  const replied = (m.status ?? "").toLowerCase() === "replied"
+                  const storage = getStorage()
+                  const respUrl =
+                    m.responseBucketId && m.responseFileId
+                      ? ((storage.getFileView(m.responseBucketId, m.responseFileId) as unknown as string) || null)
+                      : null
+                  return (
+                    <div key={m.$id} className="px-6 py-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div className="font-medium">{m.subject}</div>
+                        <div className="text-xs text-gray-400">{formatDate(m.$createdAt)}</div>
+                      </div>
+                      <div className="mt-2 text-sm text-gray-200 whitespace-pre-wrap">{m.message}</div>
+
+                      {replied ? (
+                        <div className="mt-3 rounded-md border border-emerald-700/40 bg-emerald-900/20 p-3">
+                          <div className="text-xs uppercase tracking-wide text-emerald-300">Cashier reply</div>
+                          <div className="mt-1 text-sm whitespace-pre-wrap">{m.responseMessage || "—"}</div>
+                          {respUrl ? (
+                            <a
+                              href={respUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-2 inline-flex items-center text-emerald-300 hover:text-emerald-200 text-sm"
+                            >
+                              <Paperclip className="mr-2 h-4 w-4" />
+                              {m.responseFileName || "Receipt attachment"}
+                            </a>
+                          ) : null}
+                          <div className="mt-1 text-xs text-gray-400">
+                            {m.respondedAt ? `Responded: ${new Date(m.respondedAt).toLocaleString()}` : "Responded"}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-xs text-gray-400">Status: {m.status ?? "new"}</div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="mt-6 flex justify-end">
           <Link href="/dashboard">
             <Button variant="outline" className="border-slate-600">
@@ -381,7 +469,7 @@ Thank you!`
           </Link>
         </div>
 
-        {/* Send-to-Cashier Dialog -> now writes to messages table */}
+        {/* Send-to-Cashier Dialog -> writes to messages table */}
         <Dialog open={!!askDialogFor} onOpenChange={(o) => !o && setAskDialogFor(null)}>
           <DialogContent className="bg-slate-800 border-slate-700 text-white">
             <DialogHeader>
