@@ -602,7 +602,7 @@ export default function MakePaymentPage() {
                     </div>
                   </CardContent>
                   <CardFooter>
-                    <Button type="submit" className="w-full" disabled={!amount || Number.parseFloat(amount) <= 0}>
+                    <Button type="submit" className="w-full cursor-pointer" disabled={!amount || Number.parseFloat(amount) <= 0}>
                       Proceed to Payment
                     </Button>
                   </CardFooter>
@@ -756,7 +756,7 @@ export default function MakePaymentPage() {
               <Button variant="outline" onClick={() => setShowPaymongoDialog(false)} className="border-slate-600">
                 Cancel
               </Button>
-              <Button onClick={handlePaymongoRedirect} className="bg-primary hover:bg-primary/90" disabled={isRedirecting}>
+              <Button onClick={handlePaymongoRedirect} className="bg-primary hover:bg-primary/90 cursor-pointer" disabled={isRedirecting}>
                 {isRedirecting ? (
                   <span className="flex items-center">
                     <svg className="mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24">

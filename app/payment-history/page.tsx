@@ -460,7 +460,7 @@ Thank you!`
                 <Button variant="outline" className="border-slate-600" onClick={() => setAskDialogFor(null)}>
                   Cancel
                 </Button>
-                <Button onClick={handleSend} disabled={sending || cashiersLoading || cashiers.length === 0}>
+                <Button onClick={handleSend} disabled={sending || cashiersLoading || cashiers.length === 0} className="cursor-pointer">
                   {sending ? (
                     <span className="flex items-center">
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />

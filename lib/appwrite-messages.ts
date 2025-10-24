@@ -1,6 +1,7 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Models } from "appwrite"
-import { getDatabases, getEnvIds, getStorage, Permission, Role } from "@/lib/appwrite"
+import { getDatabases, getEnvIds, ID, Query } from "@/lib/appwrite"
+
+/* ===== Types that mirror your Messages collection schema ===== */
 
 export type MessageRecord = {
   userId: string
@@ -11,138 +12,134 @@ export type MessageRecord = {
   proofBucketId: string
   proofFileId: string
   proofFileName: string
-  status: "Queued" | "Sent" | "Answered" | "Closed"
-  createdAt: string
-  respondedAt: string
-  responseMessage: string
-  responseBucketId: string
-  responseFileId: string
-  responseFileName: string
+  status: string
+
+  // Response-related columns that exist in your collection:
+  respondedAt?: string | null
+  responseMessage?: string | null
+  responseBucketId?: string | null
+  responseFileId?: string | null
+  responseFileName?: string | null
 }
 
 export type MessageDoc = Models.Document & MessageRecord
 
-function ids() {
+/* ===== Create (student → cashier) ===== */
+
+export type CreateMessageInput = {
+  userId: string
+  cashierId: string
+  paymentId: string
+  subject: string
+  message: string
+  proofBucketId?: string
+  proofFileId?: string
+  proofFileName?: string
+}
+
+export async function createMessage(input: CreateMessageInput) {
   const { DB_ID } = getEnvIds()
-  const MESSAGES_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_MESSAGES_COLLECTION_ID as string
-  if (!DB_ID || !MESSAGES_COL_ID) {
-    throw new Error("Missing NEXT_PUBLIC_APPWRITE_DATABASE_ID or NEXT_PUBLIC_APPWRITE_MESSAGES_COLLECTION_ID")
-  }
-  return { DB_ID, MESSAGES_COL_ID }
-}
+  const MESSAGES_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_MESSAGES_COLLECTION_ID
+  if (!DB_ID) throw new Error("Appwrite DB_ID not configured.")
+  if (!MESSAGES_COL_ID) throw new Error("Messages collection not configured.")
 
-export async function createMessage(data: Omit<MessageRecord, "status" | "createdAt" | "respondedAt" | "responseMessage" | "responseBucketId" | "responseFileId" | "responseFileName">): Promise<MessageDoc> {
-  const { DB_ID, MESSAGES_COL_ID } = ids()
   const db = getDatabases()
-  const now = new Date().toISOString()
 
-  const full: MessageRecord = {
-    ...data,
-    status: "Queued",
-    createdAt: now,
-    respondedAt: "",
-    responseMessage: "",
-    responseBucketId: "",
-    responseFileId: "",
-    responseFileName: "",
+  const data: MessageRecord = {
+    userId: input.userId,
+    cashierId: input.cashierId,
+    paymentId: input.paymentId,
+    subject: input.subject,
+    message: input.message,
+    proofBucketId: input.proofBucketId || "",
+    proofFileId: input.proofFileId || "",
+    proofFileName: input.proofFileName || "",
+    status: "new",
+    respondedAt: null,
+    responseMessage: null,
+    responseBucketId: null,
+    responseFileId: null,
+    responseFileName: null,
   }
 
-  const res = await db.createDocument<MessageDoc>({
+  // NOTE: do not pass explicit permissions; use collection defaults
+  const doc = (await db.createDocument({
     databaseId: DB_ID,
     collectionId: MESSAGES_COL_ID,
-    documentId: "unique()",
-    data: full,
-    permissions: [
-      Permission.read(Role.user(full.userId)),
-      Permission.read(Role.user(full.cashierId)),
-      Permission.update(Role.user(full.cashierId)),
-    ],
-  })
-  return res
+    documentId: ID.unique(),
+    data,
+  })) as unknown as MessageDoc
+
+  return doc
 }
 
-export async function listMessagesForStudent(userId: string): Promise<MessageDoc[]> {
-  const { DB_ID, MESSAGES_COL_ID } = ids()
+/* ===== Read (cashier inbox) ===== */
+
+export async function listMessagesForCashier(
+  cashierId: string,
+  limit = 200
+): Promise<MessageDoc[]> {
+  const { DB_ID } = getEnvIds()
+  const MESSAGES_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_MESSAGES_COLLECTION_ID
+  if (!DB_ID || !MESSAGES_COL_ID) throw new Error("Messages collection not configured.")
+
   const db = getDatabases()
   const res = await db.listDocuments<MessageDoc>({
     databaseId: DB_ID,
     collectionId: MESSAGES_COL_ID,
-    queries: [
-      (window as any).Appwrite?.Query?.equal?.("userId", [userId]) ?? `userId=${userId}`,
-      // Fallback: newer SDKs accept Query.* imported; keeping compatibility in caller pages
-    ],
-  }).catch(async () => {
-    // Fallback to standard query builder if available via import
-    const { Query } = await import("@/lib/appwrite")
-    return db.listDocuments<MessageDoc>({
-      databaseId: DB_ID,
-      collectionId: MESSAGES_COL_ID,
-      queries: [Query.equal("userId", userId), Query.orderDesc("$createdAt"), Query.limit(100)],
-    })
+    queries: [Query.equal("cashierId", cashierId), Query.orderDesc("$createdAt"), Query.limit(limit)],
   })
 
-  const docs = (res?.documents ?? []) as MessageDoc[]
-  return docs
-}
-
-export async function listMessagesForCashier(cashierId: string): Promise<MessageDoc[]> {
-  const { DB_ID, MESSAGES_COL_ID } = ids()
-  const db = getDatabases()
-  const { Query } = await import("@/lib/appwrite")
-  const res = await db.listDocuments<MessageDoc>({
-    databaseId: DB_ID,
-    collectionId: MESSAGES_COL_ID,
-    queries: [Query.equal("cashierId", cashierId), Query.orderDesc("$createdAt"), Query.limit(200)],
-  })
   return (res.documents ?? []) as MessageDoc[]
 }
 
-export async function replyToMessage(opts: {
-  messageId: string
-  cashierId: string
-  responseMessage: string
-  responseBucketId: string
-  responseFileId: string
-  responseFileName: string
-}): Promise<MessageDoc> {
-  const { DB_ID, MESSAGES_COL_ID } = ids()
-  const db = getDatabases()
-  const now = new Date().toISOString()
+/* ===== Update helpers (cashier actions) ===== */
 
-  const res = await db.updateDocument<MessageDoc>({
-    databaseId: DB_ID,
-    collectionId: MESSAGES_COL_ID,
-    documentId: opts.messageId,
-    data: {
-      respondedAt: now,
-      responseMessage: opts.responseMessage,
-      responseBucketId: opts.responseBucketId,
-      responseFileId: opts.responseFileId,
-      responseFileName: opts.responseFileName,
-      status: "Answered",
-    },
-  })
-  return res
-}
+/** Mark a message as read. */
+export async function markMessageRead(messageId: string): Promise<MessageDoc> {
+  const { DB_ID } = getEnvIds()
+  const MESSAGES_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_MESSAGES_COLLECTION_ID
+  if (!DB_ID || !MESSAGES_COL_ID) throw new Error("Messages collection not configured.")
 
-export async function updateMessageStatus(messageId: string, status: MessageRecord["status"]): Promise<MessageDoc> {
-  const { DB_ID, MESSAGES_COL_ID } = ids()
   const db = getDatabases()
-  const res = await db.updateDocument<MessageDoc>({
+  const updated = (await db.updateDocument({
     databaseId: DB_ID,
     collectionId: MESSAGES_COL_ID,
     documentId: messageId,
-    data: { status },
-  })
-  return res
+    data: { status: "read" },
+  })) as unknown as MessageDoc
+
+  return updated
 }
 
-export function fileViewUrl(bucketId: string, fileId: string): string | null {
-  if (!bucketId || !fileId) return null
-  try {
-    const storage = getStorage()
-    return (storage.getFileView(bucketId, fileId) as unknown as string) ?? null
-  } catch {
-    return null
+/** Send a reply and set status to "replied". */
+export async function replyToMessage(
+  messageId: string,
+  responseMessage: string,
+  opts?: {
+    responseBucketId?: string | null
+    responseFileId?: string | null
+    responseFileName?: string | null
   }
+): Promise<MessageDoc> {
+  const { DB_ID } = getEnvIds()
+  const MESSAGES_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_MESSAGES_COLLECTION_ID
+  if (!DB_ID || !MESSAGES_COL_ID) throw new Error("Messages collection not configured.")
+
+  const db = getDatabases()
+  const updated = (await db.updateDocument({
+    databaseId: DB_ID,
+    collectionId: MESSAGES_COL_ID,
+    documentId: messageId,
+    data: {
+      status: "replied",
+      respondedAt: new Date().toISOString(),
+      responseMessage,
+      responseBucketId: opts?.responseBucketId ?? null,
+      responseFileId: opts?.responseFileId ?? null,
+      responseFileName: opts?.responseFileName ?? null,
+    },
+  })) as unknown as MessageDoc
+
+  return updated
 }
