@@ -1,5 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Models } from "appwrite"
-import { getDatabases, ID, Query, Permission, Role, getEnvIds } from "@/lib/appwrite"
+import { getDatabases, ID, Query, Permission, Role, getEnvIds, getStorage } from "@/lib/appwrite"
 import type { PaymentDoc, PaymentRecord } from "@/lib/appwrite-payments"
 
 /** ===== User profile (Users collection) ===== */
@@ -37,6 +38,10 @@ export type ReceiptRecord = {
   total: number
   method: string
   cashierId?: string | null
+  /** Optional storage file metadata */
+  fileBucketId?: string | null
+  fileId?: string | null
+  fileUrl?: string | null
 }
 
 export type ReceiptDoc = Models.Document & ReceiptRecord
@@ -45,7 +50,8 @@ function ids() {
   const { DB_ID, USERS_COL_ID } = getEnvIds()
   const PAYMENTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_PAYMENTS_COLLECTION_ID as string
   const RECEIPTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPTS_COLLECTION_ID as string
-  return { DB_ID, USERS_COL_ID, PAYMENTS_COL_ID, RECEIPTS_COL_ID }
+  const RECEIPTS_BUCKET_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPTS_BUCKET_ID as string | undefined
+  return { DB_ID, USERS_COL_ID, PAYMENTS_COL_ID, RECEIPTS_COL_ID, RECEIPTS_BUCKET_ID }
 }
 
 /** Utility: start and end of the current local day as ISO strings */
@@ -55,6 +61,126 @@ function getTodayBounds() {
   const end = new Date()
   end.setHours(23, 59, 59, 999)
   return { startIso: start.toISOString(), endIso: end.toISOString() }
+}
+
+/** Peso formatter (numeric) */
+function peso(n: number) {
+  return `₱${(n || 0).toLocaleString()}`
+}
+
+/** Render a simple printable HTML receipt to be uploaded as a file. */
+function buildReceiptHtml(opts: {
+  receipt: ReceiptDoc
+  student?: Pick<UserProfileDoc, "fullName" | "studentId"> | null
+}): string {
+  const { receipt, student } = opts
+  const rows = (receipt.items || [])
+    .map(
+      (i) => `<tr>
+  <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${i.label}</td>
+  <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;">${peso(Number(i.amount || 0))}</td>
+</tr>`
+    )
+    .join("")
+  const date = new Date(receipt.issuedAt || Date.now()).toLocaleString()
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Receipt ${receipt.$id}</title>
+</head>
+<body style="font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;background:#0f172a;color:#0b1220;padding:24px;">
+  <div style="max-width:720px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 10px 25px rgba(2,6,23,.15);">
+    <div style="background:#16a34a;color:#ffffff;padding:24px;">
+      <h1 style="margin:0;font-size:20px;line-height:1.2;">Official Receipt</h1>
+      <div style="opacity:.9;margin-top:4px;">Receipt ID: ${receipt.$id}</div>
+    </div>
+
+    <div style="padding:24px;">
+      <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px;">
+        <div><div style="font-size:12px;color:#6b7280;">Student Name</div><div style="font-weight:600">${student?.fullName ?? "—"}</div></div>
+        <div><div style="font-size:12px;color:#6b7280;">Student ID</div><div style="font-weight:600">${student?.studentId ?? "—"}</div></div>
+        <div><div style="font-size:12px;color:#6b7280;">Issued At</div><div style="font-weight:600">${date}</div></div>
+        <div><div style="font-size:12px;color:#6b7280;">Method</div><div style="font-weight:600">${receipt.method || "—"}</div></div>
+      </div>
+
+      <table style="width:100%;border-collapse:collapse;border-top:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;margin:8px 0;">
+        <thead>
+          <tr style="background:#f8fafc;">
+            <th style="text-align:left;padding:8px;">Description</th>
+            <th style="text-align:right;padding:8px;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr>
+            <td style="padding:8px;text-align:right;font-weight:700;">TOTAL</td>
+            <td style="padding:8px;text-align:right;font-weight:700;">${peso(Number(receipt.total || 0))}</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <p style="font-size:12px;color:#6b7280;margin-top:16px;">This is a system-generated receipt. No signature required.</p>
+    </div>
+  </div>
+</body>
+</html>`
+}
+
+/** Uploads the rendered receipt HTML to Storage and links it back to Payment & Receipt docs. */
+async function attachReceiptFile(
+  receipt: ReceiptDoc,
+  payment: PaymentDoc
+): Promise<string | null> {
+  const { RECEIPTS_BUCKET_ID, DB_ID, PAYMENTS_COL_ID, USERS_COL_ID, RECEIPTS_COL_ID } = ids()
+  if (!RECEIPTS_BUCKET_ID) return null
+
+  const storage = getStorage()
+  const db = getDatabases()
+
+  // fetch student (for name/id on the downloaded receipt)
+  let student: UserProfileDoc | null = null
+  if (payment.userId) {
+    student = await db.getDocument<UserProfileDoc>(DB_ID, USERS_COL_ID, payment.userId).catch(() => null)
+  }
+
+  const html = buildReceiptHtml({ receipt, student: student ? { fullName: student.fullName, studentId: student.studentId } : null })
+  const fileName = `receipt-${receipt.$id}.html`
+
+  // File() may not exist in every JS env (however our pages run in the browser)
+  const fileLike =
+    typeof File !== "undefined"
+      ? new File([html], fileName, { type: "text/html" })
+      : (new Blob([html], { type: "text/html" }) as unknown as File)
+
+  const created: any = await storage.createFile(RECEIPTS_BUCKET_ID, ID.unique(), fileLike)
+  const fileId: string = created?.$id
+  const viewUrl = (storage.getFileView(RECEIPTS_BUCKET_ID, fileId) as unknown as string) || null
+
+  // Link back to both Payment and Receipt docs for the student app to show "Download"
+  try {
+    await db.updateDocument<any>(DB_ID, PAYMENTS_COL_ID, payment.$id, {
+      receiptId: receipt.$id,
+      receiptUrl: viewUrl,
+      receiptLink: viewUrl,
+    } as any)
+  } catch {
+    /* non-fatal */
+  }
+
+  try {
+    await db.updateDocument<any>(DB_ID, RECEIPTS_COL_ID, receipt.$id, {
+      fileBucketId: RECEIPTS_BUCKET_ID,
+      fileId,
+      fileUrl: viewUrl,
+    } as any)
+  } catch {
+    /* non-fatal */
+  }
+
+  return viewUrl
 }
 
 /** Get student by studentId (falls back to $id) */
@@ -162,10 +288,13 @@ export async function computeStudentTotals(
   }
 }
 
-/** Verify a pending online payment and issue a receipt */
+/**
+ * Verify a pending online payment and issue a receipt.
+ * Also generates & attaches a downloadable receipt file (if bucket env is set).
+ */
 export async function verifyPendingPaymentAndIssueReceipt(
   paymentId: string
-): Promise<{ payment: PaymentDoc; receipt: ReceiptDoc }> {
+): Promise<{ payment: PaymentDoc; receipt: ReceiptDoc; receiptUrl?: string | null }> {
   const db = getDatabases()
   const { DB_ID, PAYMENTS_COL_ID, RECEIPTS_COL_ID } = ids()
 
@@ -194,7 +323,10 @@ export async function verifyPendingPaymentAndIssueReceipt(
     [Permission.read(Role.any()), Permission.update(Role.any()), Permission.delete(Role.any())]
   )
 
-  return { payment: updated, receipt }
+  // Try to create & attach a downloadable file for the student
+  const url = await attachReceiptFile(receipt, updated).catch(() => null)
+
+  return { payment: updated, receipt, receiptUrl: url ?? undefined }
 }
 
 /** Update a single student's fee plan */
@@ -216,10 +348,13 @@ export async function updateStudentFeePlan(
   return doc
 }
 
-/** Record an over-the-counter payment and issue a receipt */
+/**
+ * Record an over-the-counter payment and issue a receipt.
+ * Also generates & attaches a downloadable receipt file (if bucket env is set).
+ */
 export async function recordCounterPaymentAndReceipt(
   rec: Pick<PaymentRecord, "userId" | "courseId" | "yearId" | "amount" | "fees" | "method">
-): Promise<{ payment: PaymentDoc; receipt: ReceiptDoc }> {
+): Promise<{ payment: PaymentDoc; receipt: ReceiptDoc; receiptUrl?: string | null }> {
   const db = getDatabases()
   const { DB_ID, PAYMENTS_COL_ID, RECEIPTS_COL_ID } = ids()
 
@@ -249,7 +384,10 @@ export async function recordCounterPaymentAndReceipt(
     [Permission.read(Role.any()), Permission.update(Role.any()), Permission.delete(Role.any())]
   )
 
-  return { payment, receipt }
+  // Try to create & attach a downloadable file for the student
+  const url = await attachReceiptFile(receipt, payment).catch(() => null)
+
+  return { payment, receipt, receiptUrl: url ?? undefined }
 }
 
 /** List ALL pending payments with attached student info (for data table) */

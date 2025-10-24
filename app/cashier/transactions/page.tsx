@@ -58,7 +58,6 @@ export default function CashierTransactionsPage() {
     setLoading(true)
     try {
       const { DB_ID, USERS_COL_ID } = getEnvIds()
-      // Read collection IDs from env (client-safe due to NEXT_PUBLIC_)
       const PAYMENTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_PAYMENTS_COLLECTION_ID as string | undefined
 
       if (!DB_ID || !USERS_COL_ID || !PAYMENTS_COL_ID) {
@@ -120,6 +119,7 @@ export default function CashierTransactionsPage() {
       const matchesStatus =
         statusFilter === "all" ||
         (statusFilter === "completed" && COMPLETED.has(t.status)) ||
+        (statusFilter === "pending" && t.status === "Pending") ||
         (statusFilter === "failed" && (t.status === "Failed" || t.status === "Cancelled"))
 
       const method = (t.method ?? "").toLowerCase()
@@ -140,7 +140,6 @@ export default function CashierTransactionsPage() {
     })
   }, [filteredTransactions])
 
-  // Over-the-counter payments recorded by cashiers use method "cash" or "card"
   const myLikeTransactions = useMemo(
     () => filteredTransactions.filter((t) => ["cash", "card"].includes((t.method || "").toLowerCase())),
     [filteredTransactions]
@@ -154,6 +153,7 @@ export default function CashierTransactionsPage() {
     try {
       const { DB_ID, USERS_COL_ID } = getEnvIds()
       const RECEIPTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPTS_COLLECTION_ID as string | undefined
+      const RECEIPT_ITEMS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPT_ITEMS_COLLECTION_ID as string | undefined
 
       if (!DB_ID || !USERS_COL_ID || !RECEIPTS_COL_ID) {
         throw new Error(
@@ -177,22 +177,36 @@ export default function CashierTransactionsPage() {
       const rec = rres?.documents?.[0]
 
       if (rec) {
+        // fetch line items from receipt_items collection when available
+        let lineItems: { description: string; amount: string }[] = []
+        if (RECEIPT_ITEMS_COL_ID) {
+          const itemsRes = await db
+            .listDocuments<any>(DB_ID, RECEIPT_ITEMS_COL_ID, [Query.equal("receiptRef", rec.$id), Query.limit(100)])
+            .catch(() => null)
+
+          lineItems = (itemsRes?.documents ?? []).map((i: any) => {
+            const qty = Number(i.quantity ?? 1) || 1
+            const subtotal = Number(i.amount || 0) * qty
+            return {
+              description: qty > 1 ? `${i.label} × ${qty}` : i.label,
+              amount: `₱${subtotal.toLocaleString()}`,
+            }
+          })
+        }
+
         setReceiptData({
           receiptNumber: rec.$id,
           date: new Date(rec.issuedAt ?? payment.$createdAt).toISOString().split("T")[0],
           studentId: student?.studentId ?? student?.$id ?? "—",
           studentName: student?.fullName ?? "—",
           paymentMethod: rec.method ?? methodLabel(payment.method),
-          items: (rec.items ?? []).map((i: any) => ({
-            description: i.label,
-            amount: `₱${Number(i.amount || 0).toLocaleString()}`,
-          })),
+          items: lineItems.length ? lineItems : [],
           total: `₱${Number(rec.total || payment.amount || 0).toLocaleString()}`,
         })
         return
       }
 
-      // fallback: synthesize from payment
+      // fallback: synthesize from payment if no receipt doc
       const amount = Number(payment.amount) || 0
       const fees = Array.isArray(payment.fees) && payment.fees.length ? payment.fees : ["miscellaneous"]
       const share = fees.length ? amount / fees.length : amount
@@ -250,8 +264,8 @@ export default function CashierTransactionsPage() {
                   Array.isArray(t.fees) && t.fees.length > 0
                     ? `Fees: ${t.fees.join(", ")}`
                     : t.planId
-                    ? "Fee Plan Payment"
-                    : "Payment"
+                      ? "Fee Plan Payment"
+                      : "Payment"
 
                 return (
                   <tr key={t.$id} className="text-sm">
@@ -351,6 +365,7 @@ export default function CashierTransactionsPage() {
                     </SelectTrigger>
                     <SelectContent className="bg-slate-700 border-slate-600 text-white">
                       <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
                       <SelectItem value="completed">Completed</SelectItem>
                       <SelectItem value="failed">Failed</SelectItem>
                     </SelectContent>

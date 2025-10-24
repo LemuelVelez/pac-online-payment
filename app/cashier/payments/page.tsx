@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { CreditCard, Wallet, Search, CheckCircle, Loader2 } from "lucide-react"
+import { CreditCard, Wallet, Search, CheckCircle, Loader2, Download as DownloadIcon } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { PaymentReceipt } from "@/components/payment/payment-receipt"
@@ -144,10 +144,11 @@ export default function CashierPaymentsPage() {
                 paymentMethod: "Online",
                 items: (res.receipt.items as any[]).map((i) => ({ description: i.label, amount: `₱${Number(i.amount).toLocaleString()}` })),
                 total: `₱${Number(res.receipt.total || 0).toLocaleString()}`,
+                downloadUrl: res.receiptUrl ?? null,
             })
             setShowReceipt(true)
             await loadStudent(studentId)
-            toast.success("Payment verified", { description: `Receipt ${res.receipt.$id} issued` })
+            toast.success("Payment verified", { description: res.receiptUrl ? "Receipt sent to student." : "Receipt issued." })
         } catch (e: any) {
             const msg = e?.message ?? "Verification failed."
             setError(msg)
@@ -188,11 +189,12 @@ export default function CashierPaymentsPage() {
                 paymentMethod: method === "cash" ? "Cash" : "Credit/Debit Card",
                 items: (res.receipt.items as any[]).map((i) => ({ description: i.label, amount: `₱${Number(i.amount).toLocaleString()}` })),
                 total: `₱${Number(res.receipt.total || 0).toLocaleString()}`,
+                downloadUrl: res.receiptUrl ?? null,
             })
             setShowReceipt(true)
             await loadStudent(studentId)
             setAmount("")
-            toast.success("Counter payment recorded", { description: `Receipt ${res.receipt.$id} issued` })
+            toast.success("Counter payment recorded", { description: res.receiptUrl ? "Receipt sent to student." : "Receipt issued." })
         } catch (e: any) {
             const msg = e?.message ?? "Failed to record payment."
             setError(msg)
@@ -459,7 +461,7 @@ export default function CashierPaymentsPage() {
                                                 <div className="bg-green-500 p-6 text-white text-center">
                                                     <CheckCircle className="h-12 w-12 mx-auto mb-2" />
                                                     <h2 className="text-xl font-bold">Receipt Issued</h2>
-                                                    <p>The receipt has been generated.</p>
+                                                    <p>The receipt has been generated{receiptData?.downloadUrl ? " and sent to the student." : "."}</p>
                                                 </div>
                                                 {receiptData && (
                                                     <div className="p-6">
@@ -472,10 +474,24 @@ export default function CashierPaymentsPage() {
                                                             items={receiptData.items}
                                                             total={receiptData.total}
                                                         />
-                                                        <div className="mt-4 flex gap-3">
+                                                        <div className="mt-4 flex flex-wrap gap-3">
                                                             <Button variant="outline" className="border-slate-600" onClick={() => window.print()}>
                                                                 Print
                                                             </Button>
+                                                            {receiptData.downloadUrl ? (
+                                                                <a
+                                                                    href={receiptData.downloadUrl}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="inline-flex"
+                                                                    title="Open/download the receipt file"
+                                                                >
+                                                                    <Button variant="outline" className="border-slate-600">
+                                                                        <DownloadIcon className="mr-2 h-4 w-4" />
+                                                                        Download
+                                                                    </Button>
+                                                                </a>
+                                                            ) : null}
                                                             <Button onClick={resetFlow}>OK</Button>
                                                         </div>
                                                     </div>
