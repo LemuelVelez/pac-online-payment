@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
-import { useEffect, useMemo, useState, useCallback } from "react"
+import { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/u
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { PaymentReceipt } from "@/components/payment/payment-receipt"
 import { DateRangePicker } from "@/components/admin/date-range-picker"
-import { Search, RefreshCw, Filter, Eye, Loader2, Reply, Paperclip, CheckCircle } from "lucide-react"
+import { Search, RefreshCw, Filter, Eye, Loader2, Reply, Paperclip, CheckCircle, FileText } from "lucide-react"
 import { getDatabases, getEnvIds, Query, getStorage, getCurrentUserSafe, ID } from "@/lib/appwrite"
 import type { PaymentDoc } from "@/lib/appwrite-payments"
 import type { UserProfileDoc } from "@/lib/appwrite-cashier"
@@ -30,7 +30,8 @@ type ReceiptData = {
   studentId: string
   studentName: string
   paymentMethod: string
-  items: { description: string; amount: string }[]
+  /** Only DB-backed items. Omit to show total only. */
+  items?: { description: string; amount: string }[]
   total: string
   downloadUrl?: string | null
 }
@@ -99,17 +100,54 @@ export default function CashierTransactionsPage() {
   const [replyFile, setReplyFile] = useState<File | null>(null)
   const [sendingReply, setSendingReply] = useState(false)
 
-  /* ================= Helpers ================= */
+  // Ref to capture the receipt as PNG
+  const receiptRef = useRef<HTMLDivElement>(null)
 
-  const lineItemsFromPayment = (p: PaymentDoc): { description: string; amount: string }[] => {
-    const amount = Number(p.amount) || 0
-    const fees = Array.isArray(p.fees) && p.fees.length ? p.fees : ["miscellaneous"]
-    const share = fees.length ? amount / fees.length : amount
-    return fees.map((f) => ({
-      description: f[0].toUpperCase() + f.slice(1),
-      amount: `₱${Number(share).toLocaleString()}`,
-    }))
-  }
+  // Helper: download current receipt as PNG
+  const downloadReceiptPng = useCallback(async () => {
+    if (!receiptRef.current || !receiptData) {
+      toast.error("Nothing to download yet.")
+      return
+    }
+    try {
+      // Prefer html-to-image, fall back to dom-to-image-more
+      let dataUrl: string | null = null
+      try {
+        const { toPng } = await import("html-to-image")
+        dataUrl = await toPng(receiptRef.current, {
+          cacheBust: true,
+          backgroundColor: "#ffffff",
+          pixelRatio: 2,
+        })
+      } catch {
+        // IMPORTANT: grab the default export (and keep an `any` fallback)
+        const mod = await import("dom-to-image-more")
+        const domtoimage = ((mod as any).default ?? mod) as {
+          toPng(node: HTMLElement, options?: { cacheBust?: boolean; bgcolor?: string; quality?: number }): Promise<string>
+        }
+        dataUrl = await domtoimage.toPng(receiptRef.current, {
+          cacheBust: true,
+          bgcolor: "#ffffff",
+          quality: 1,
+        })
+      }
+
+      if (!dataUrl) throw new Error("Failed to render image.")
+
+      const safeName = (s: string) => s.replace(/[^\w\-]+/g, "_")
+      const fileName = `receipt_${safeName(receiptData.receiptNumber)}.png`
+
+      const link = document.createElement("a")
+      link.download = fileName
+      link.href = dataUrl
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      toast.success("Receipt downloaded", { description: fileName })
+    } catch (e: any) {
+      toast.error("Download failed", { description: e?.message ?? "Could not generate image." })
+    }
+  }, [receiptData])
 
   /* ================= Loaders ================= */
 
@@ -186,7 +224,7 @@ export default function CashierTransactionsPage() {
   }, [load, loadMessages])
 
   useEffect(() => {
-    (async () => {
+    ;(async () => {
       const me = await getCurrentUserSafe()
       if (me) setMeId(me.$id)
     })()
@@ -224,7 +262,7 @@ export default function CashierTransactionsPage() {
 
   const todaysTransactions = useMemo(() => {
     const today = new Date()
-       const y = today.getFullYear()
+    const y = today.getFullYear()
     const m = today.getMonth()
     const d = today.getDate()
     return filteredTransactions.filter((t) => {
@@ -295,21 +333,21 @@ export default function CashierTransactionsPage() {
             studentId: student?.studentId ?? student?.$id ?? "—",
             studentName: student?.fullName ?? "—",
             paymentMethod: rec.method ?? methodLabel(payment.method),
-            items: lineItems.length ? lineItems : lineItemsFromPayment(payment),
+            items: lineItems.length ? lineItems : undefined, // <-- only real items
             total: `₱${Number(rec.total || payment.amount || 0).toLocaleString()}`,
           })
           return
         }
       }
 
-      // fallback preview from payment
+      // fallback preview from payment — show total only
       setReceiptData({
         receiptNumber: payment.reference || payment.$id,
         date: new Date(payment.$createdAt).toISOString().split("T")[0],
         studentId: student?.studentId ?? student?.$id ?? "—",
         studentName: student?.fullName ?? "—",
         paymentMethod: methodLabel(payment.method),
-        items: lineItemsFromPayment(payment),
+        items: undefined, // <-- no fabricated equal split
         total: `₱${Number(payment.amount || 0).toLocaleString()}`,
       })
     } catch (e: any) {
@@ -323,7 +361,7 @@ export default function CashierTransactionsPage() {
     try {
       const result = await verifyPendingPaymentAndIssueReceipt(selectedPayment.$id)
 
-      // Attempt to load line items from receipt items collection if present; otherwise compute from payment
+      // Attempt to load line items from receipt items collection if present; otherwise show total only
       const { DB_ID } = getEnvIds()
       const RECEIPT_ITEMS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPT_ITEMS_COLLECTION_ID as string | undefined
       let verifiedItems: { description: string; amount: string }[] = []
@@ -347,9 +385,6 @@ export default function CashierTransactionsPage() {
           /* fall back below */
         }
       }
-      if (!verifiedItems.length) {
-        verifiedItems = lineItemsFromPayment(result.payment)
-      }
 
       // Update table row
       setAllPayments((prev) => prev.map((p) => (p.$id === selectedPayment.$id ? result.payment : p)))
@@ -361,7 +396,7 @@ export default function CashierTransactionsPage() {
         studentId: receiptData?.studentId ?? "—",
         studentName: receiptData?.studentName ?? "—",
         paymentMethod: "Online",
-        items: verifiedItems,
+        items: verifiedItems.length ? verifiedItems : undefined, // <-- only if DB saved
         total: `₱${Number(result.receipt.total || 0).toLocaleString()}`,
         downloadUrl: result.receiptUrl ?? null,
       })
@@ -465,7 +500,9 @@ export default function CashierTransactionsPage() {
 
       setMessages((prev) => prev.map((m) => (m.$id === updated.$id ? updated : m)))
       setSelectedMessage(updated)
-      toast.success("Reply sent", { description: uploaded?.fileId ? "Receipt attached for the student." : "The student can now see your response." })
+      toast.success("Reply sent", {
+        description: uploaded?.fileId ? "Receipt attached for the student." : "The student can now see your response.",
+      })
     } catch (e: any) {
       toast.error("Failed to send reply", { description: e?.message ?? "Please try again." })
     } finally {
@@ -723,15 +760,45 @@ export default function CashierTransactionsPage() {
                     </div>
                   )}
 
-                  <PaymentReceipt
-                    receiptNumber={receiptData.receiptNumber}
-                    date={receiptData.date}
-                    studentId={receiptData.studentId}
-                    studentName={receiptData.studentName}
-                    paymentMethod={receiptData.paymentMethod}
-                    items={receiptData.items}
-                    total={receiptData.total}
-                  />
+                  {/* Capture-only area for PNG download */}
+                  <div ref={receiptRef}>
+                    <PaymentReceipt
+                      receiptNumber={receiptData.receiptNumber}
+                      date={receiptData.date}
+                      studentId={receiptData.studentId}
+                      studentName={receiptData.studentName}
+                      paymentMethod={receiptData.paymentMethod}
+                      items={receiptData.items}
+                      total={receiptData.total}
+                    />
+                  </div>
+
+                  {/* Actions: Download PNG + (optional) server file */}
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <Button
+                      variant="outline"
+                      className="border-slate-600"
+                      onClick={downloadReceiptPng}
+                      title="Download this receipt as PNG"
+                    >
+                      Download PNG
+                    </Button>
+
+                    {receiptData.downloadUrl ? (
+                      <a
+                        href={receiptData.downloadUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex"
+                        title="Open/download the original receipt file"
+                      >
+                        <Button variant="outline" className="border-slate-600">
+                          <FileText className="mr-2 h-4 w-4" />
+                          Open Original
+                        </Button>
+                      </a>
+                    ) : null}
+                  </div>
                 </>
               )}
             </div>
@@ -901,7 +968,12 @@ export default function CashierTransactionsPage() {
               ) : (
                 rows.map((t) => {
                   const s = studentsById[t.userId]
-                  const desc = Array.isArray(t.fees) && t.fees.length > 0 ? `Fees: ${t.fees.join(", ")}` : t.planId ? "Fee Plan Payment" : "Payment"
+                  const desc =
+                    Array.isArray(t.fees) && t.fees.length > 0
+                      ? `Fees: ${t.fees.join(", ")}`
+                      : t.planId
+                      ? "Fee Plan Payment"
+                      : "Payment"
                   return (
                     <tr key={t.$id} className="text-sm">
                       <td className="whitespace-nowrap px-6 py-4 font-medium">{t.reference || t.$id}</td>
@@ -916,12 +988,20 @@ export default function CashierTransactionsPage() {
                       <td className="whitespace-nowrap px-6 py-4 text-right">{peso(t.amount)}</td>
                       <td className="px-6 py-4">{methodLabel(t.method)}</td>
                       <td className="whitespace-nowrap px-6 py-4">
-                        {t.status === "Pending" && <span className="inline-flex rounded-full bg-yellow-500/20 px-2 py-1 text-xs font-medium text-yellow-300">Pending</span>}
+                        {t.status === "Pending" && (
+                          <span className="inline-flex rounded-full bg-yellow-500/20 px-2 py-1 text-xs font-medium text-yellow-300">
+                            Pending
+                          </span>
+                        )}
                         {(t.status === "Completed" || t.status === "Succeeded") && (
-                          <span className="inline-flex rounded-full bg-green-500/20 px-2 py-1 text-xs font-medium text-green-300">Completed</span>
+                          <span className="inline-flex rounded-full bg-green-500/20 px-2 py-1 text-xs font-medium text-green-300">
+                            Completed
+                          </span>
                         )}
                         {(t.status === "Failed" || t.status === "Cancelled") && (
-                          <span className="inline-flex rounded-full bg-red-500/20 px-2 py-1 text-xs font-medium text-red-300">{t.status}</span>
+                          <span className="inline-flex rounded-full bg-red-500/20 px-2 py-1 text-xs font-medium text-red-300">
+                            {t.status}
+                          </span>
                         )}
                       </td>
                       <td className="whitespace-nowrap px-6 py-4">

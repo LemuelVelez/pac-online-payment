@@ -29,12 +29,14 @@ export type UserProfileDoc = Models.Document & {
 }
 
 /** ===== Receipts ===== */
+type ReceiptMethod = "cash" | "card" | "credit-card" | "e-wallet" | "online-banking"
+
 export type ReceiptDoc = Models.Document & {
   userId: string
   paymentId?: string | null
   issuedAt: string
   total: number
-  method: string
+  method: ReceiptMethod
   cashierId?: string | null
 }
 
@@ -54,6 +56,26 @@ function ids() {
   const RECEIPT_ITEMS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPT_ITEMS_COLLECTION_ID as string | undefined
   const RECEIPTS_BUCKET_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPTS_BUCKET_ID as string | undefined
   return { DB_ID, USERS_COL_ID, PAYMENTS_COL_ID, RECEIPTS_COL_ID, RECEIPT_ITEMS_COL_ID, RECEIPTS_BUCKET_ID }
+}
+
+/** Normalize receipt method to match the Appwrite enum exactly. */
+const RECEIPT_ALLOWED = new Set<ReceiptMethod>([
+  "cash",
+  "card",
+  "credit-card",
+  "e-wallet",
+  "online-banking",
+])
+function normalizeReceiptMethod(value: unknown): ReceiptMethod {
+  const v = String(value ?? "").toLowerCase().trim()
+  if (RECEIPT_ALLOWED.has(v as ReceiptMethod)) return v as ReceiptMethod
+  if (v.includes("cash")) return "cash"
+  if (v.includes("wallet") || v.includes("gcash") || v.includes("maya") || v.includes("grab")) return "e-wallet"
+  if (v.includes("bank")) return "online-banking"
+  if (v.includes("credit") || v.includes("debit")) return "credit-card"
+  if (v.includes("card")) return "card"
+  // default fallback
+  return "card"
 }
 
 /** Utility: start and end of the current local day as ISO strings */
@@ -151,7 +173,7 @@ async function attachReceiptFile(
     student = await db.getDocument<UserProfileDoc>(DB_ID, USERS_COL_ID, payment.userId).catch(() => null)
   }
 
-  // fetch line items from the RECEIPT_ITEMS collection, fall back to payment fees if not present
+  // fetch line items from the RECEIPT_ITEMS collection, fall back to a single "Payment" line if not present
   let items: ReceiptItem[] = []
   if (RECEIPT_ITEMS_COL_ID) {
     const itemsRes = await db
@@ -165,11 +187,10 @@ async function attachReceiptFile(
       }))
     }
   }
+
   if (!items.length) {
-    const amount = Number(payment.amount) || 0
-    const fees = Array.isArray(payment.fees) && payment.fees.length ? payment.fees : ["miscellaneous"]
-    const share = fees.length ? amount / fees.length : amount
-    items = fees.map((f) => ({ label: f[0].toUpperCase() + f.slice(1), amount: share, quantity: 1 }))
+    // No saved breakdown — do NOT fabricate equal splits; show the single total line
+    items = [{ label: "Payment", amount: Number(payment.amount) || 0, quantity: 1 }]
   }
 
   const html = buildReceiptHtml({
@@ -337,7 +358,7 @@ export async function verifyPendingPaymentAndIssueReceipt(
   const fees = Array.isArray(updated.fees) && updated.fees.length ? updated.fees : ["miscellaneous"]
   const share = fees.length ? amount / fees.length : amount
 
-  // 1) Create receipt with required fields only
+  // 1) Create receipt with normalized method to satisfy the enum on Receipts collection
   const receipt = await db.createDocument<ReceiptDoc>(
     DB_ID,
     RECEIPTS_COL_ID,
@@ -347,7 +368,7 @@ export async function verifyPendingPaymentAndIssueReceipt(
       paymentId: updated.$id,
       issuedAt: new Date().toISOString(),
       total: amount,
-      method: updated.method || "Online",
+      method: normalizeReceiptMethod(updated.method),
     },
     [Permission.read(Role.any()), Permission.update(Role.any()), Permission.delete(Role.any())]
   )
@@ -423,7 +444,7 @@ export async function recordCounterPaymentAndReceipt(
       paymentId: payment.$id,
       issuedAt: new Date().toISOString(),
       total: amount,
-      method: rec.method === "card" ? "Card" : "Cash",
+      method: normalizeReceiptMethod(rec.method),
     },
     [Permission.read(Role.any()), Permission.update(Role.any()), Permission.delete(Role.any())]
   )

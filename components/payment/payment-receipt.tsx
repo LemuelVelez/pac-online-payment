@@ -1,20 +1,29 @@
 import Image from "next/image"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { Download, Printer } from "lucide-react"
 
 interface PaymentReceiptProps {
+  // Required data for the receipt
   receiptNumber: string
   date: string
   studentId: string
   studentName: string
   paymentMethod: string
-  items: {
+  /**
+   * Real-time items only. Leave undefined/empty when no breakdown exists.
+   * The component will then show only the total.
+   */
+  items?: {
     description: string
     amount: string
   }[]
   total: string
+
+  // Optional branding (no hardcoded defaults)
+  brandLogoSrc?: string
+  brandName?: string
+  brandSubtitle?: string
+  brandAddress?: string
 }
 
 export function PaymentReceipt({
@@ -25,24 +34,34 @@ export function PaymentReceipt({
   paymentMethod,
   items,
   total,
+  brandLogoSrc,
+  brandName,
+  brandSubtitle,
+  brandAddress,
 }: PaymentReceiptProps) {
+  const hasItems = Array.isArray(items) && items.length > 0
+
   return (
     <Card className="bg-white text-slate-900 w-full max-w-xs mx-auto">
       <CardHeader className="text-center border-b border-slate-200 pb-1 pt-2">
-        <div className="flex items-center justify-center gap-2 mb-1">
-          {/* Uses /public/images/logo.png */}
-          <Image
-            src="/images/logo.png"
-            alt="PAC Salug Campus Logo"
-            width={24}
-            height={24}
-            className="h-6 w-6 object-contain"
-            priority
-          />
-          <h2 className="text-base font-bold">PAC Salug Campus</h2>
-        </div>
-        <p className="text-[10px] text-slate-500">Philippine Advent College - Salug Campus</p>
-        <p className="text-[10px] text-slate-500">Zamboanga del Norte</p>
+        {(brandLogoSrc || brandName) && (
+          <div className="flex items-center justify-center gap-2 mb-1">
+            {brandLogoSrc ? (
+              <Image
+                src={brandLogoSrc}
+                alt={brandName ? `${brandName} Logo` : "Organization Logo"}
+                width={24}
+                height={24}
+                className="h-6 w-6 object-contain"
+                priority
+              />
+            ) : null}
+            {brandName ? <h2 className="text-base font-bold">{brandName}</h2> : null}
+          </div>
+        )}
+
+        {brandSubtitle ? <p className="text-[10px] text-slate-500">{brandSubtitle}</p> : null}
+        {brandAddress ? <p className="text-[10px] text-slate-500">{brandAddress}</p> : null}
       </CardHeader>
 
       <CardContent className="pt-2 pb-2">
@@ -75,20 +94,23 @@ export function PaymentReceipt({
           <p className="font-medium text-xs">{studentName}</p>
         </div>
 
-        <Separator className="my-2" />
-
-        <div className="space-y-1 mb-2">
-          <div className="flex justify-between font-medium text-xs">
-            <span>Description</span>
-            <span>Amount</span>
-          </div>
-          {items.map((item, index) => (
-            <div key={index} className="flex justify-between text-xs">
-              <span className="text-slate-600">{item.description}</span>
-              <span>{item.amount}</span>
+        {hasItems ? (
+          <>
+            <Separator className="my-2" />
+            <div className="space-y-1 mb-2">
+              <div className="flex justify-between font-medium text-xs">
+                <span>Description</span>
+                <span>Amount</span>
+              </div>
+              {items!.map((item, index) => (
+                <div key={index} className="flex justify-between text-xs">
+                  <span className="text-slate-600">{item.description}</span>
+                  <span>{item.amount}</span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        ) : null}
 
         <Separator className="my-2" />
 
@@ -96,21 +118,13 @@ export function PaymentReceipt({
           <span>Total</span>
           <span>{total}</span>
         </div>
-      </CardContent>
 
-      <CardFooter className="flex justify-between border-t border-slate-200 pt-2 pb-2">
-        <Button variant="outline" size="sm" className="flex items-center gap-1">
-          <Printer className="h-3 w-3" />
-          Print
-        </Button>
-        <Button
-          size="sm"
-          className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 flex items-center gap-1"
-        >
-          <Download className="h-3 w-3" />
-          Download
-        </Button>
-      </CardFooter>
+        {!hasItems ? (
+          <p className="mt-1 text-[10px] text-slate-500 text-center">
+            No itemized breakdown available yet.
+          </p>
+        ) : null}
+      </CardContent>
     </Card>
   )
 }
