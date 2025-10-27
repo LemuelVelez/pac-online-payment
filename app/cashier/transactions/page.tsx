@@ -23,6 +23,7 @@ import {
   type MessageDoc,
 } from "@/lib/appwrite-messages"
 import { verifyPendingPaymentAndIssueReceipt } from "@/lib/appwrite-cashier"
+import { getFeePlan, type FeePlanDoc, computeTotals } from "@/lib/fee-plan"
 
 type ReceiptData = {
   receiptNumber: string
@@ -30,10 +31,23 @@ type ReceiptData = {
   studentId: string
   studentName: string
   paymentMethod: string
-  /** Only DB-backed items. Omit to show total only. */
   items?: { description: string; amount: string }[]
   total: string
   downloadUrl?: string | null
+  plan?: {
+    program: string
+    units: number
+    tuitionPerUnit: number
+    registrationFee: number
+    feeItems: { name: string; amount: number }[]
+    planTotal?: number
+  } | null
+  summary?: {
+    totalFees?: number
+    previouslyPaid?: number
+    amountPaidNow?: number
+    balanceAfter?: number
+  }
 }
 
 function peso(n: number | string) {
@@ -76,6 +90,9 @@ function saveLocalReadSet(cashierId: string, set: Set<string>) {
 }
 
 const REPLY_BUCKET_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPTS_BUCKET_ID as string | undefined
+const RECEIPTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPTS_COLLECTION_ID as string | undefined
+const RECEIPT_ITEMS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPT_ITEMS_COLLECTION_ID as string | undefined
+const PAYMENTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_PAYMENTS_COLLECTION_ID as string | undefined
 
 export default function CashierTransactionsPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -103,6 +120,12 @@ export default function CashierTransactionsPage() {
   // Ref to capture the receipt as PNG
   const receiptRef = useRef<HTMLDivElement>(null)
 
+  // Track which payments have a receipt doc so we can hide/show the View button
+  const [receiptsByPaymentId, setReceiptsByPaymentId] = useState<Record<string, string>>({})
+
+  // For inline “Pending Online Payments” list verification
+  const [verifyingRowId, setVerifyingRowId] = useState<string | null>(null)
+
   // Helper: download current receipt as PNG
   const downloadReceiptPng = useCallback(async () => {
     if (!receiptRef.current || !receiptData) {
@@ -120,7 +143,6 @@ export default function CashierTransactionsPage() {
           pixelRatio: 2,
         })
       } catch {
-        // IMPORTANT: grab the default export (and keep an `any` fallback)
         const mod = await import("dom-to-image-more")
         const domtoimage = ((mod as any).default ?? mod) as {
           toPng(node: HTMLElement, options?: { cacheBust?: boolean; bgcolor?: string; quality?: number }): Promise<string>
@@ -155,7 +177,6 @@ export default function CashierTransactionsPage() {
     setLoading(true)
     try {
       const { DB_ID, USERS_COL_ID } = getEnvIds()
-      const PAYMENTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_PAYMENTS_COLLECTION_ID as string | undefined
 
       if (!DB_ID || !USERS_COL_ID || !PAYMENTS_COL_ID) {
         throw new Error("Missing Appwrite IDs: DB_ID / USERS_COL_ID / PAYMENTS_COL_ID. Check your env.")
@@ -183,6 +204,23 @@ export default function CashierTransactionsPage() {
       }
 
       setStudentsById(map)
+
+      // Prefetch which payments have a receipt doc so we can hide/show the "View Receipt" button
+      if (RECEIPTS_COL_ID) {
+        const ids = payments.map((p) => p.$id)
+        const byPayment: Record<string, string> = {}
+        for (let i = 0; i < ids.length; i += 100) {
+          const slice = ids.slice(i, i + 100)
+          const rres = await db
+            .listDocuments<any>(DB_ID, RECEIPTS_COL_ID, [Query.equal("paymentId", slice), Query.limit(slice.length)])
+            .catch(() => null)
+          rres?.documents?.forEach((r: any) => {
+            if (r.paymentId) byPayment[r.paymentId] = r.$id
+          })
+        }
+        setReceiptsByPaymentId(byPayment)
+      }
+
       toast.success("Transactions loaded", { description: `${payments.length} record(s)` })
     } catch (e: any) {
       toast.error("Failed to load transactions", { description: e?.message ?? "Please try again." })
@@ -224,11 +262,93 @@ export default function CashierTransactionsPage() {
   }, [load, loadMessages])
 
   useEffect(() => {
-    ;(async () => {
+    ; (async () => {
       const me = await getCurrentUserSafe()
       if (me) setMeId(me.$id)
     })()
   }, [])
+
+  /* ================= Helpers (plan + summary + items fallback) ================= */
+
+  function buildSummaryAndPlan(payment: PaymentDoc, feePlan?: FeePlanDoc | null) {
+    const plan =
+      feePlan
+        ? {
+          program: feePlan.program,
+          units: feePlan.units,
+          tuitionPerUnit: feePlan.tuitionPerUnit,
+          registrationFee: feePlan.registrationFee,
+          feeItems: (feePlan.feeItems ?? []).map((f) => ({ name: f.name, amount: f.amount })),
+          planTotal: computeTotals({
+            units: feePlan.units,
+            tuitionPerUnit: feePlan.tuitionPerUnit,
+            registrationFee: feePlan.registrationFee,
+            feeItems: feePlan.feeItems ?? [],
+          }).total,
+        }
+        : null
+
+    const planTotal = plan?.planTotal ?? 0
+    const amountPaidNow = Number(payment.amount) || 0
+
+    // Previously paid = sum of Completed/Succeeded for this user (exclude this one if it's already completed)
+    const previouslyPaid =
+      (allPayments || [])
+        .filter((p) => p.userId === payment.userId && COMPLETED.has(p.status))
+        .reduce((s, p) => s + (Number(p.amount) || 0), 0) -
+      (COMPLETED.has(payment.status) ? amountPaidNow : 0)
+
+    const balanceAfter = Math.max(0, planTotal - (previouslyPaid + amountPaidNow))
+
+    return {
+      plan,
+      summary: {
+        totalFees: planTotal,
+        previouslyPaid,
+        amountPaidNow,
+        balanceAfter,
+      },
+    }
+  }
+
+  /** Plan-based receipt items (used when no/poor stored items) */
+  function buildItemsFromPlan(plan?: FeePlanDoc | null): { description: string; amount: string }[] {
+    if (!plan) return []
+    const totals = computeTotals({
+      units: plan.units,
+      tuitionPerUnit: plan.tuitionPerUnit,
+      registrationFee: plan.registrationFee,
+      feeItems: plan.feeItems ?? [],
+    })
+    const items: { description: string; amount: string }[] = []
+    items.push({
+      description: "Registration Fee",
+      amount: `₱${Number(plan.registrationFee || 0).toLocaleString()}`,
+    })
+    items.push({
+      description: `Tuition Per Unit × Units (${plan.units} × ₱${Number(plan.tuitionPerUnit || 0).toLocaleString()})`,
+      amount: `₱${Number(totals.tuition || 0).toLocaleString()}`,
+    })
+    for (const f of plan.feeItems ?? []) {
+      items.push({
+        description: f.name,
+        amount: `₱${Number(f.amount || 0).toLocaleString()}`,
+      })
+    }
+    return items
+  }
+
+  /** If stored items are empty or just a generic "Payment", prefer plan items to match Online Receipt style */
+  function preferPlanItemsIfGeneric(stored: { description: string; amount: string }[], plan?: FeePlanDoc | null) {
+    const generic =
+      !stored?.length ||
+      (stored.length === 1 && typeof stored[0]?.description === "string" && stored[0].description.toLowerCase() === "payment")
+    if (generic) {
+      const fromPlan = buildItemsFromPlan(plan)
+      return fromPlan.length ? fromPlan : stored
+    }
+    return stored
+  }
 
   /* ================= Filters ================= */
 
@@ -276,6 +396,15 @@ export default function CashierTransactionsPage() {
     [filteredTransactions]
   )
 
+  // NEW: Pending Online Payments list (exclude OTC cash/card)
+  const pendingOnlinePayments = useMemo(
+    () =>
+      (allPayments ?? []).filter(
+        (p) => p.status === "Pending" && !["cash", "card"].includes((p.method || "").toLowerCase())
+      ),
+    [allPayments]
+  )
+
   /* ================= Receipt view & verification ================= */
 
   const handleViewReceipt = async (payment: PaymentDoc) => {
@@ -286,13 +415,9 @@ export default function CashierTransactionsPage() {
 
     try {
       const { DB_ID, USERS_COL_ID } = getEnvIds()
-      const RECEIPTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPTS_COLLECTION_ID as string | undefined
-      const RECEIPT_ITEMS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPT_ITEMS_COLLECTION_ID as string | undefined
-
       if (!DB_ID || !USERS_COL_ID) {
         throw new Error("Missing Appwrite IDs for receipts. Set NEXT_PUBLIC_* env vars accordingly.")
       }
-
       const db = getDatabases()
 
       // ensure student profile
@@ -302,56 +427,106 @@ export default function CashierTransactionsPage() {
         if (userRes) student = userRes as unknown as UserProfileDoc
       }
 
-      // try to find receipt for this payment
+      // --- Load receipt for this payment (to pick up planId from the receipt itself) ---
+      let rec: any = null
       if (RECEIPTS_COL_ID) {
         const rres = await db
           .listDocuments<any>(DB_ID, RECEIPTS_COL_ID, [Query.equal("paymentId", payment.$id), Query.limit(1)])
           .catch(() => null)
-        const rec = rres?.documents?.[0]
+        rec = rres?.documents?.[0] ?? null
+      }
 
-        if (rec) {
-          // fetch line items (optional) — relationship field is "receipts"
-          let lineItems: { description: string; amount: string }[] = []
-          if (RECEIPT_ITEMS_COL_ID) {
-            const itemsRes = await db
-              .listDocuments<any>(DB_ID, RECEIPT_ITEMS_COL_ID, [Query.equal("receipts", rec.$id), Query.limit(100)])
-              .catch(() => null)
+      // Determine planId (prefer receipt.planId, then payment.planId)
+      const planId: string | null = rec?.planId ?? payment.planId ?? null
 
-            lineItems = (itemsRes?.documents ?? []).map((i: any) => {
-              const qty = Number(i.quantity ?? 1) || 1
-              const subtotal = Number(i.amount || 0) * qty
-              return {
-                description: qty > 1 ? `${i.label} × ${qty}` : i.label,
-                amount: `₱${subtotal.toLocaleString()}`,
-              }
-            })
-          }
-
-          setReceiptData({
-            receiptNumber: rec.$id,
-            date: new Date(rec.issuedAt ?? payment.$createdAt).toISOString().split("T")[0],
-            studentId: student?.studentId ?? student?.$id ?? "—",
-            studentName: student?.fullName ?? "—",
-            paymentMethod: rec.method ?? methodLabel(payment.method),
-            items: lineItems.length ? lineItems : undefined, // <-- only real items
-            total: `₱${Number(rec.total || payment.amount || 0).toLocaleString()}`,
-          })
-          return
+      // Fetch fee plan (if any)
+      let feePlanDoc: FeePlanDoc | null = null
+      if (planId) {
+        try {
+          feePlanDoc = await getFeePlan(planId)
+        } catch {
+          feePlanDoc = null
         }
       }
 
-      // fallback preview from payment — show total only
+      // Build plan + summary FIRST so they're always present in the preview
+      const { plan, summary } = buildSummaryAndPlan(payment, feePlanDoc)
+
+      // Try to load stored line items
+      let lineItems: { description: string; amount: string }[] = []
+      if (rec && RECEIPT_ITEMS_COL_ID) {
+        const itemsRes = await db
+          .listDocuments<any>(DB_ID, RECEIPT_ITEMS_COL_ID, [Query.equal("receipts", rec.$id), Query.limit(100)])
+          .catch(() => null)
+        lineItems =
+          (itemsRes?.documents ?? []).map((i: any) => {
+            const qty = Number(i.quantity ?? 1) || 1
+            const subtotal = Number(i.amount || 0) * qty
+            return {
+              description: qty > 1 ? `${i.label} × ${qty}` : i.label,
+              amount: `₱${subtotal.toLocaleString()}`,
+            }
+          }) ?? []
+      }
+
+      // If stored items are empty or just "Payment", rebuild from plan to mirror Online Receipt
+      const items = preferPlanItemsIfGeneric(lineItems, feePlanDoc)
+
+      if (rec) {
+        setReceiptData({
+          receiptNumber: rec.$id,
+          date: new Date(rec.issuedAt ?? payment.$createdAt).toISOString().split("T")[0],
+          studentId: student?.studentId ?? student?.$id ?? "—",
+          studentName: student?.fullName ?? "—",
+          paymentMethod: rec.method ?? methodLabel(payment.method),
+          items: items.length ? items : undefined,
+          total: `₱${Number(rec.total || payment.amount || 0).toLocaleString()}`,
+          plan,
+          summary,
+        })
+        return
+      }
+
+      // No receipt doc found — fallback preview from payment, but still show plan & plan-based items if available
+      const planItems = buildItemsFromPlan(feePlanDoc)
       setReceiptData({
         receiptNumber: payment.reference || payment.$id,
         date: new Date(payment.$createdAt).toISOString().split("T")[0],
         studentId: student?.studentId ?? student?.$id ?? "—",
         studentName: student?.fullName ?? "—",
         paymentMethod: methodLabel(payment.method),
-        items: undefined, // <-- no fabricated equal split
+        items: planItems.length ? planItems : undefined,
         total: `₱${Number(payment.amount || 0).toLocaleString()}`,
+        plan,
+        summary,
       })
     } catch (e: any) {
       toast.error("Unable to open receipt", { description: e?.message ?? "Please try again." })
+    }
+  }
+
+  // NEW: Verify directly from the Pending Online list, then open the receipt
+  const verifyFromList = async (payment: PaymentDoc) => {
+    if (payment.status !== "Pending") return
+    setVerifyingRowId(payment.$id)
+    try {
+      const result = await verifyPendingPaymentAndIssueReceipt(payment.$id)
+      const receipt = result.receipt as any
+
+      // update table + mark receipt existence
+      setAllPayments((prev) => prev.map((p) => (p.$id === payment.$id ? result.payment : p)))
+      setReceiptsByPaymentId((prev) => ({ ...prev, [payment.$id]: receipt.$id }))
+
+      toast.success("Payment verified", {
+        description: result.receiptUrl ? "Receipt sent to student." : "Receipt issued.",
+      })
+
+      // open/refresh receipt dialog for this payment
+      await handleViewReceipt(result.payment)
+    } catch (e: any) {
+      toast.error("Verification failed", { description: e?.message ?? "Please try again." })
+    } finally {
+      setVerifyingRowId(null)
     }
   }
 
@@ -361,16 +536,17 @@ export default function CashierTransactionsPage() {
     try {
       const result = await verifyPendingPaymentAndIssueReceipt(selectedPayment.$id)
 
-      // Attempt to load line items from receipt items collection if present; otherwise show total only
+      // After verification, prefer planId from the newly created receipt
+      const receipt = result.receipt as any
       const { DB_ID } = getEnvIds()
-      const RECEIPT_ITEMS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPT_ITEMS_COLLECTION_ID as string | undefined
       let verifiedItems: { description: string; amount: string }[] = []
 
+      // Try loading stored items
       if (DB_ID && RECEIPT_ITEMS_COL_ID) {
         try {
           const db = getDatabases()
           const itemsRes = await db.listDocuments<any>(DB_ID, RECEIPT_ITEMS_COL_ID, [
-            Query.equal("receipts", result.receipt.$id),
+            Query.equal("receipts", receipt.$id),
             Query.limit(100),
           ])
           verifiedItems = (itemsRes?.documents ?? []).map((i: any) => {
@@ -382,23 +558,47 @@ export default function CashierTransactionsPage() {
             }
           })
         } catch {
-          /* fall back below */
+          /* ignore; we’ll fallback to plan items below */
         }
       }
 
+      // Fetch fee plan by receipt.planId (fallback to payment.planId)
+      let feePlanDoc: FeePlanDoc | null = null
+      const planId = receipt?.planId ?? selectedPayment.planId ?? null
+      if (planId) {
+        try {
+          feePlanDoc = await getFeePlan(planId)
+        } catch {
+          feePlanDoc = null
+        }
+      }
+
+      // Rebuild plan + summary after verification (mark this payment as completed for summary math)
+      const { plan, summary } = buildSummaryAndPlan(
+        { ...selectedPayment, status: "Completed" },
+        feePlanDoc
+      )
+
+      // Prefer plan items if stored items are empty or generic
+      const items = preferPlanItemsIfGeneric(verifiedItems, feePlanDoc)
+
       // Update table row
       setAllPayments((prev) => prev.map((p) => (p.$id === selectedPayment.$id ? result.payment : p)))
+      // Mark that this payment now has a receipt so the “View Receipt” button can show
+      setReceiptsByPaymentId((prev) => ({ ...prev, [selectedPayment.$id]: receipt.$id }))
 
       // Refresh receipt view right away
       setReceiptData({
-        receiptNumber: result.receipt.$id,
-        date: new Date(result.receipt.issuedAt).toISOString().split("T")[0],
+        receiptNumber: receipt.$id,
+        date: new Date(receipt.issuedAt).toISOString().split("T")[0],
         studentId: receiptData?.studentId ?? "—",
         studentName: receiptData?.studentName ?? "—",
         paymentMethod: "Online",
-        items: verifiedItems.length ? verifiedItems : undefined, // <-- only if DB saved
-        total: `₱${Number(result.receipt.total || 0).toLocaleString()}`,
+        items: items.length ? items : undefined,
+        total: `₱${Number(receipt.total || 0).toLocaleString()}`,
         downloadUrl: result.receiptUrl ?? null,
+        plan,
+        summary,
       })
       setSelectedPayment({ ...selectedPayment, status: "Completed" })
       toast.success("Payment verified", { description: "Receipt issued successfully." })
@@ -598,6 +798,65 @@ export default function CashierTransactionsPage() {
           </CardContent>
         </Card>
 
+        {/* NEW: Pending Online Payments quick actions */}
+        {pendingOnlinePayments.length > 0 && (
+          <Card className="bg-slate-800/60 border-slate-700 text-white mb-8">
+            <CardHeader>
+              <CardTitle>Pending Online Payments</CardTitle>
+              <CardDescription className="text-gray-300">Verify and issue receipts</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {pendingOnlinePayments.map((p) => (
+                  <div
+                    key={p.$id}
+                    className="flex items-center justify-between rounded-lg border border-slate-700 p-3"
+                  >
+                    <div>
+                      <div className="font-medium">
+                        {Array.isArray(p.fees) && p.fees.length ? p.fees.join(", ") : "Payment"} — {peso(p.amount)}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        Ref: {p.reference || p.$id} • {new Date(p.$createdAt).toLocaleString()} • Method:{" "}
+                        {methodLabel(p.method)}
+                      </div>
+                      {p.planId ? (
+                        <div className="text-xs text-gray-400 mt-1">Plan: {p.planId}</div>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        className="border-slate-600"
+                        size="sm"
+                        onClick={() => handleViewReceipt(p)}
+                        title="Preview receipt details"
+                      >
+                        <Eye className="mr-2 h-4 w-4" />
+                        Preview
+                      </Button>
+                      <Button
+                        onClick={() => verifyFromList(p)}
+                        disabled={verifyingRowId === p.$id}
+                        title="Verify payment and issue receipt"
+                      >
+                        {verifyingRowId === p.$id ? (
+                          <span className="flex items-center">
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Verifying…
+                          </span>
+                        ) : (
+                          "Verify & Issue Receipt"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Tabs */}
         <Tabs defaultValue="all" className="w-full">
           <TabsList className="bg-slate-800 border-slate-700 mb-8 grid w-full grid-cols-4 lg:max-w-[800px]">
@@ -732,9 +991,6 @@ export default function CashierTransactionsPage() {
           >
             <DialogHeader className="px-5 pt-5 pb-3">
               <DialogTitle>Payment Receipt</DialogTitle>
-              <DialogDescription className="text-gray-300">
-                Preview and (if pending) verify to issue the official receipt.
-              </DialogDescription>
             </DialogHeader>
 
             {/* Scrollable body */}
@@ -770,6 +1026,8 @@ export default function CashierTransactionsPage() {
                       paymentMethod={receiptData.paymentMethod}
                       items={receiptData.items}
                       total={receiptData.total}
+                      plan={receiptData.plan ?? null}
+                      summary={receiptData.summary}
                     />
                   </div>
 
@@ -875,10 +1133,11 @@ export default function CashierTransactionsPage() {
                   <div className="space-y-2">
                     <label className="text-sm text-gray-200">Your Reply</label>
                     <textarea
-                      className="min-h-[110px] w-full rounded-md border border-slate-700 bg-slate-900 p-3 text-sm text-gray-100 outline-none focus:ring-2 focus:ring-primary/60"
+                      className="min-h[110px] w-full rounded-md border border-slate-700 bg-slate-900 p-3 text-sm text-gray-100 outline-none focus:ring-2 focus:ring-primary/60"
                       value={replyText}
                       onChange={(e) => setReplyText(e.target.value)}
                       placeholder="Type your reply here…"
+                      style={{ minHeight: 110 }}
                     />
                   </div>
 
@@ -972,8 +1231,9 @@ export default function CashierTransactionsPage() {
                     Array.isArray(t.fees) && t.fees.length > 0
                       ? `Fees: ${t.fees.join(", ")}`
                       : t.planId
-                      ? "Fee Plan Payment"
-                      : "Payment"
+                        ? "Fee Plan Payment"
+                        : "Payment"
+                  const hasReceipt = !!receiptsByPaymentId[t.$id]
                   return (
                     <tr key={t.$id} className="text-sm">
                       <td className="whitespace-nowrap px-6 py-4 font-medium">{t.reference || t.$id}</td>
@@ -1005,16 +1265,37 @@ export default function CashierTransactionsPage() {
                         )}
                       </td>
                       <td className="whitespace-nowrap px-6 py-4">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-slate-600 text-white hover:bg-slate-700"
-                          onClick={() => handleViewReceipt(t)}
-                          title="View or verify"
-                        >
-                          <Eye className="mr-2 h-4 w-4" />
-                          View
-                        </Button>
+                        {hasReceipt ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-slate-600 text-white hover:bg-slate-700"
+                            onClick={() => handleViewReceipt(t)}
+                            title="View receipt"
+                          >
+                            <Eye className="mr-2 h-4 w-4" />
+                            View Receipt
+                          </Button>
+                        ) : t.status === "Pending" && !["cash", "card"].includes((t.method || "").toLowerCase()) ? (
+                          // Offer inline verify for pending online items even in table
+                          <Button
+                            size="sm"
+                            onClick={() => verifyFromList(t)}
+                            disabled={verifyingRowId === t.$id}
+                            title="Verify payment and issue receipt"
+                          >
+                            {verifyingRowId === t.$id ? (
+                              <span className="flex items-center">
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Verifying…
+                              </span>
+                            ) : (
+                              "Verify & Issue"
+                            )}
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-gray-400">No receipt yet</span>
+                        )}
                       </td>
                     </tr>
                   )

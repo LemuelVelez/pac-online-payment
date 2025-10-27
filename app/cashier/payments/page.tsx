@@ -1,14 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useRef, useCallback } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { CreditCard, Wallet, Search, CheckCircle, Loader2, Download as DownloadIcon } from "lucide-react"
+import { CreditCard, Wallet, Search, Loader2 } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { PaymentReceipt } from "@/components/payment/payment-receipt"
@@ -45,6 +45,33 @@ import { Checkbox } from "@/components/ui/checkbox"
 
 type FeeKey = "tuition" | "laboratory" | "library" | "miscellaneous"
 type FeePlanLegacy = Partial<Record<FeeKey | "total", number>>
+
+type ReceiptData = {
+    receiptNumber: string
+    date: string
+    studentId: string
+    studentName: string
+    paymentMethod: string
+    /** Only DB-backed items. Omit to show total only. */
+    items?: { description: string; amount: string }[]
+    total: string
+    downloadUrl?: string | null
+    /** Selected plan + summary (to mirror transactions page) */
+    plan?: {
+        program: string
+        units: number
+        tuitionPerUnit: number
+        registrationFee: number
+        feeItems: { name: string; amount: number }[]
+        planTotal?: number
+    } | null
+    summary?: {
+        totalFees?: number
+        previouslyPaid?: number
+        amountPaidNow?: number
+        balanceAfter?: number
+    }
+}
 
 function normalizeCourseId(input?: string | null): UserProfileDoc["courseId"] | undefined {
     if (!input) return undefined
@@ -84,7 +111,7 @@ export default function CashierPaymentsPage() {
 
     const [processing, setProcessing] = useState(false)
     const [showReceipt, setShowReceipt] = useState(false)
-    const [receiptData, setReceiptData] = useState<any>(null)
+    const [receiptData, setReceiptData] = useState<ReceiptData | null>(null)
 
     /** Plan breakdown (mirrors make-payment) */
     const [activePlans, setActivePlans] = useState<FeePlanDoc[]>([])
@@ -141,14 +168,124 @@ export default function CashierPaymentsPage() {
             typeof feePlanLegacy.library === "number" ||
             typeof feePlanLegacy.miscellaneous === "number")
 
-    const lineItemsFromPayment = (p: PaymentDoc): { description: string; amount: string }[] => {
-        const amount = Number(p.amount) || 0
-        const fees = Array.isArray(p.fees) && p.fees.length ? p.fees : ["miscellaneous"]
-        const share = fees.length ? amount / fees.length : amount
-        return fees.map((f) => ({
-            description: f[0].toUpperCase() + f.slice(1),
-            amount: `₱${Number(share).toLocaleString()}`,
-        }))
+    /** ---------- NEW HELPERS: Build line items from selected plan or legacy, no hardcoded splits ---------- */
+
+    /** Build receipt items directly from the currently selected active plan */
+    const buildItemsFromPlan = (plan: FeePlanDoc): { description: string; amount: string }[] => {
+        const totals = computeTotals({
+            units: plan.units,
+            tuitionPerUnit: plan.tuitionPerUnit,
+            registrationFee: plan.registrationFee,
+            feeItems: plan.feeItems,
+        })
+
+        const items: { description: string; amount: string }[] = []
+
+        // Registration fee
+        items.push({
+            description: "Registration Fee",
+            amount: `₱${Number(plan.registrationFee || 0).toLocaleString()}`,
+        })
+
+        // Tuition
+        items.push({
+            description: `Tuition Per Unit × Units (${plan.units} × ₱${Number(plan.tuitionPerUnit || 0).toLocaleString()})`,
+            amount: `₱${Number(totals.tuition || 0).toLocaleString()}`,
+        })
+
+        // Other fee items
+        for (const f of plan.feeItems) {
+            items.push({
+                description: f.name,
+                amount: `₱${Number(f.amount || 0).toLocaleString()}`,
+            })
+        }
+
+        return items
+    }
+
+    /** If we only have legacy per-fee totals, map fees to those real amounts (no even split). */
+    const buildItemsFromLegacyFees = (
+        fees: string[],
+        legacy: FeePlanLegacy
+    ): { description: string; amount: string }[] => {
+        const labelMap: Record<string, keyof FeePlanLegacy> = {
+            tuition: "tuition",
+            laboratory: "laboratory",
+            library: "library",
+            miscellaneous: "miscellaneous",
+        }
+        const seen = new Set<string>()
+        const items: { description: string; amount: string }[] = []
+        for (const raw of fees) {
+            const key = String(raw || "").toLowerCase()
+            const mapped = labelMap[key]
+            if (!mapped || seen.has(mapped)) continue
+            const val = Number(legacy[mapped] ?? 0) || 0
+            if (val > 0) {
+                items.push({
+                    description: key[0].toUpperCase() + key.slice(1),
+                    amount: `₱${val.toLocaleString()}`,
+                })
+                seen.add(mapped)
+            }
+        }
+        // If nothing matched, show one consolidated line
+        if (!items.length) {
+            const total =
+                (typeof legacy.tuition === "number" ? legacy.tuition : 0) +
+                (typeof legacy.laboratory === "number" ? legacy.laboratory : 0) +
+                (typeof legacy.library === "number" ? legacy.library : 0) +
+                (typeof legacy.miscellaneous === "number" ? legacy.miscellaneous : 0)
+            if (total > 0) {
+                items.push({ description: "Payment", amount: `₱${total.toLocaleString()}` })
+            }
+        }
+        return items
+    }
+
+    /** As a very last fallback (avoid even splits), show a single consolidated payment line. */
+    const lineItemsFromPayment = (p?: PaymentDoc): { description: string; amount: string }[] => {
+        const amt = Number(p?.amount || 0) || 0
+        return [
+            {
+                description: "Payment",
+                amount: `₱${amt.toLocaleString()}`,
+            },
+        ]
+    }
+
+    /** Build plan + summary (mirror of transactions page, using what we have locally) */
+    const buildPlanAndSummary = (amountPaidNow: number): {
+        plan: ReceiptData["plan"]
+        summary: ReceiptData["summary"]
+    } => {
+        const plan =
+            selectedPlan && selectedPlanTotals
+                ? {
+                    program: selectedPlan.program,
+                    units: selectedPlan.units,
+                    tuitionPerUnit: selectedPlan.tuitionPerUnit,
+                    registrationFee: selectedPlan.registrationFee,
+                    feeItems: (selectedPlan.feeItems ?? []).map((f) => ({ name: f.name, amount: f.amount })),
+                    planTotal: selectedPlanTotals.total,
+                }
+                : null
+
+        const totalFeesLocal = plan?.planTotal ?? (typeof legacyTotal === "number" ? legacyTotal : undefined)
+        const previouslyPaid = Number(paidTotalAll || 0)
+        const balanceAfter =
+            typeof totalFeesLocal === "number" ? Math.max(0, totalFeesLocal - (previouslyPaid + (amountPaidNow || 0))) : undefined
+
+        return {
+            plan,
+            summary: {
+                totalFees: totalFeesLocal ?? undefined,
+                previouslyPaid,
+                amountPaidNow,
+                balanceAfter: balanceAfter ?? undefined,
+            },
+        }
     }
 
     /** Load a student and hydrate plan data + paid totals */
@@ -242,8 +379,11 @@ export default function CashierPaymentsPage() {
         void loadStudent(studentId)
     }
 
-    /** Read receipt items from collection; fallback to payment fees */
-    const loadReceiptItems = async (receiptId: string, fallbackPayment?: PaymentDoc) => {
+    /** Read receipt items from collection; fallback now uses ACTIVE SELECTED PLAN (no hardcoded splits) */
+    const loadReceiptItems = async (
+        receiptId: string,
+        opts?: { payment?: PaymentDoc | undefined; plan?: FeePlanDoc | null; legacy?: FeePlanLegacy | null }
+    ) => {
         const RECEIPT_ITEMS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPT_ITEMS_COLLECTION_ID as
             | string
             | undefined
@@ -266,8 +406,17 @@ export default function CashierPaymentsPage() {
             if (items.length) return items
             throw new Error("empty-items")
         } catch {
-            if (fallbackPayment) return lineItemsFromPayment(fallbackPayment)
-            return []
+            // PRIMARY FALLBACK: use the currently selected active plan for real-time description & amount
+            if (opts?.plan) return buildItemsFromPlan(opts.plan)
+
+            // SECONDARY: if legacy per-fee info exists and payment specifies fees, map them directly (no splitting)
+            if (opts?.payment && Array.isArray(opts.payment.fees) && opts?.legacy) {
+                const built = buildItemsFromLegacyFees(opts.payment.fees as string[], opts.legacy)
+                if (built.length) return built
+            }
+
+            // LAST RESORT: single consolidated line (avoid even-split hardcoding)
+            return lineItemsFromPayment(opts?.payment)
         }
     }
 
@@ -276,17 +425,27 @@ export default function CashierPaymentsPage() {
         setError("")
         try {
             const res = await verifyPendingPaymentAndIssueReceipt(paymentId)
-            const items = await loadReceiptItems(res.receipt.$id, res.payment)
+
+            const items = await loadReceiptItems(res.receipt.$id, {
+                payment: res.payment,
+                plan: selectedPlan,
+                legacy: feePlanLegacy,
+            })
+
+            const amountPaidNow = Number(res.receipt.total || res.payment.amount || 0) || 0
+            const { plan, summary } = buildPlanAndSummary(amountPaidNow)
 
             setReceiptData({
                 receiptNumber: res.receipt.$id,
                 date: new Date(res.receipt.issuedAt).toISOString().split("T")[0],
-                studentId: student?.studentId ?? student?.$id,
-                studentName: student?.fullName ?? "",
+                studentId: student?.studentId ?? student?.$id ?? "—",
+                studentName: student?.fullName ?? "—",
                 paymentMethod: "Online",
                 items,
                 total: `₱${Number(res.receipt.total || 0).toLocaleString()}`,
                 downloadUrl: res.receiptUrl ?? null,
+                plan,
+                summary,
             })
             setShowReceipt(true)
             await loadStudent(studentId)
@@ -319,17 +478,30 @@ export default function CashierPaymentsPage() {
             // method is strictly "cash" or "credit-card" to satisfy Appwrite enum
             const methodToPersist = method
 
-            const res = await recordCounterPaymentAndReceipt({
+            // 🔴 IMPORTANT CHANGE: When a plan is selected, persist planId & planRef (parity with make-payment)
+            const payload: any = {
                 userId: student.$id,
                 courseId: cId,
                 yearId: yId,
                 amount: amt,
-                // If a plan is in use (cashier used plan total/balance), tag all fees like online does
                 fees: selectedPlan ? (["tuition", "laboratory", "library", "miscellaneous"] as any) : selectedFees,
                 method: methodToPersist,
+            }
+            if (selectedPlan) {
+                payload.planId = selectedPlan.$id
+                payload.planRef = selectedPlan.$id
+            }
+
+            const res = await recordCounterPaymentAndReceipt(payload)
+
+            const items = await loadReceiptItems(res.receipt.$id, {
+                payment: res.payment,
+                plan: selectedPlan,
+                legacy: feePlanLegacy,
             })
 
-            const items = await loadReceiptItems(res.receipt.$id, res.payment)
+            const amountPaidNow = Number(res.receipt.total || res.payment.amount || 0) || 0
+            const { plan, summary } = buildPlanAndSummary(amountPaidNow)
 
             setReceiptData({
                 receiptNumber: res.receipt.$id,
@@ -340,6 +512,8 @@ export default function CashierPaymentsPage() {
                 items,
                 total: `₱${Number(res.receipt.total || 0).toLocaleString()}`,
                 downloadUrl: res.receiptUrl ?? null,
+                plan,
+                summary,
             })
             setShowReceipt(true)
             await loadStudent(studentId)
@@ -384,6 +558,51 @@ export default function CashierPaymentsPage() {
         setShowReceipt(false)
         setReceiptData(null)
     }
+
+    /** ---------- Receipt PNG download (mirror of transactions page) ---------- */
+    const receiptRef = useRef<HTMLDivElement>(null)
+    const downloadReceiptPng = useCallback(async () => {
+        if (!receiptRef.current || !receiptData) {
+            toast.error("Nothing to download yet.")
+            return
+        }
+        try {
+            // Prefer html-to-image, fall back to dom-to-image-more
+            let dataUrl: string | null = null
+            try {
+                const { toPng } = await import("html-to-image")
+                dataUrl = await toPng(receiptRef.current, {
+                    cacheBust: true,
+                    backgroundColor: "#ffffff",
+                    pixelRatio: 2,
+                })
+            } catch {
+                const mod = await import("dom-to-image-more")
+                const domtoimage = ((mod as any).default ?? mod) as {
+                    toPng(node: HTMLElement, options?: { cacheBust?: boolean; bgcolor?: string; quality?: number }): Promise<string>
+                }
+                dataUrl = await domtoimage.toPng(receiptRef.current, {
+                    cacheBust: true,
+                    bgcolor: "#ffffff",
+                    quality: 1,
+                })
+            }
+            if (!dataUrl) throw new Error("Failed to render image.")
+
+            const safeName = (s: string) => s.replace(/[^\w\-]+/g, "_")
+            const fileName = `receipt_${safeName(receiptData.receiptNumber)}.png`
+
+            const link = document.createElement("a")
+            link.download = fileName
+            link.href = dataUrl
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            toast.success("Receipt downloaded", { description: fileName })
+        } catch (e: any) {
+            toast.error("Download failed", { description: e?.message ?? "Could not generate image." })
+        }
+    }, [receiptData])
 
     return (
         <DashboardLayout allowedRoles={["cashier"]}>
@@ -743,28 +962,27 @@ export default function CashierPaymentsPage() {
                         )}
                     </div>
 
+                    {/* Receipt Preview — follows online Payment Receipt layout used in Transactions */}
                     <div>
                         <Card className="bg-slate-800/60 border-slate-700 text-white sticky top-4">
                             <CardHeader>
                                 <CardTitle>Receipt Preview</CardTitle>
+                                <CardDescription className="text-gray-300">
+                                    Matches the online payment receipt layout
+                                </CardDescription>
                             </CardHeader>
                             <CardContent>
-                                {!showReceipt ? (
+                                {!showReceipt || !receiptData ? (
                                     <div className="text-gray-400">
                                         No receipt yet. Verify a pending payment or record a counter payment.
                                     </div>
                                 ) : (
-                                    <Card className="bg-white text-slate-900">
-                                        <CardContent className="p-0">
-                                            <div className="bg-green-500 p-6 text-white text-center">
-                                                <CheckCircle className="h-12 w-12 mx-auto mb-2" />
-                                                <h2 className="text-xl font-bold">Receipt Issued</h2>
-                                                <p>
-                                                    The receipt has been generated{receiptData?.downloadUrl ? " and sent to the student." : "."}
-                                                </p>
-                                            </div>
-                                            {receiptData && (
-                                                <div className="p-6">
+                                    <div className="space-y-4">
+                                        {/* ⬇️ Horizontal scroll wrapper to prevent shrinking the Official Receipt */}
+                                        <div className="overflow-x-auto">
+                                            <div className="inline-block w-fit min-w-max shrink-0">
+                                                {/* Capture-only area for PNG download */}
+                                                <div ref={receiptRef} className="bg-white text-slate-900 rounded-md overflow-hidden max-w-none">
                                                     <PaymentReceipt
                                                         receiptNumber={receiptData.receiptNumber}
                                                         date={receiptData.date}
@@ -773,31 +991,27 @@ export default function CashierPaymentsPage() {
                                                         paymentMethod={receiptData.paymentMethod}
                                                         items={receiptData.items}
                                                         total={receiptData.total}
+                                                        plan={receiptData.plan ?? null}
+                                                        summary={receiptData.summary}
                                                     />
-                                                    <div className="mt-4 flex flex-wrap gap-3">
-                                                        <Button variant="outline" className="border-slate-600" onClick={() => window.print()}>
-                                                            Print
-                                                        </Button>
-                                                        {receiptData.downloadUrl ? (
-                                                            <a
-                                                                href={receiptData.downloadUrl}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="inline-flex"
-                                                                title="Open/download the receipt file"
-                                                            >
-                                                                <Button variant="outline" className="border-slate-600">
-                                                                    <DownloadIcon className="mr-2 h-4 w-4" />
-                                                                    Download
-                                                                </Button>
-                                                            </a>
-                                                        ) : null}
-                                                        <Button onClick={resetFlow}>OK</Button>
-                                                    </div>
                                                 </div>
-                                            )}
-                                        </CardContent>
-                                    </Card>
+                                            </div>
+                                        </div>
+
+                                        {/* Actions: Download PNG + OK */}
+                                        <div className="flex flex-wrap gap-3">
+                                            <Button
+                                                variant="outline"
+                                                className="border-slate-600"
+                                                onClick={downloadReceiptPng}
+                                                title="Download this receipt as PNG"
+                                            >
+                                                Download PNG
+                                            </Button>
+
+                                            <Button onClick={resetFlow}>OK</Button>
+                                        </div>
+                                    </div>
                                 )}
                             </CardContent>
                         </Card>

@@ -428,7 +428,7 @@ export async function recordCounterPaymentAndReceipt(
   const payment = await db.createDocument<PaymentDoc>(DB_ID, PAYMENTS_COL_ID, ID.unique(), {
     ...rec,
     status: "Completed",
-    reference: `CTR-${Date.now()}`,
+    reference: `${Date.now()}`,
   })
 
   const amount = Number(payment.amount) || 0
