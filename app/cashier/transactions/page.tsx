@@ -126,10 +126,25 @@ export default function CashierTransactionsPage() {
   // For inline “Pending Online Payments” list verification
   const [verifyingRowId, setVerifyingRowId] = useState<string | null>(null)
 
+  // Prevent duplicate side effects in React Strict Mode (dev)
+  const didInitRef = useRef(false)
+
+  // --- Toast helper to prevent duplicates (keyed toasts) ---
+  // Make this stable so hooks that depend on it can safely include it.
+  const T = useMemo(
+    () => ({
+      ok: (id: string, msg: string, opts?: any) => toast.success(msg, { id, ...opts }),
+      info: (id: string, msg: string, opts?: any) => toast.info(msg, { id, ...opts }),
+      err: (id: string, msg: string, opts?: any) => toast.error(msg, { id, ...opts }),
+      warn: (id: string, msg: string, opts?: any) => toast.warning?.(msg, { id, ...opts }),
+    }),
+    []
+  )
+
   // Helper: download current receipt as PNG
   const downloadReceiptPng = useCallback(async () => {
     if (!receiptRef.current || !receiptData) {
-      toast.error("Nothing to download yet.")
+      T.err("dl-none", "Nothing to download yet.")
       return
     }
     try {
@@ -165,11 +180,11 @@ export default function CashierTransactionsPage() {
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-      toast.success("Receipt downloaded", { description: fileName })
+      T.ok("dl-ok", "Receipt downloaded", { description: fileName })
     } catch (e: any) {
-      toast.error("Download failed", { description: e?.message ?? "Could not generate image." })
+      T.err("dl-err", "Download failed", { description: e?.message ?? "Could not generate image." })
     }
-  }, [receiptData])
+  }, [receiptData, T])
 
   /* ================= Loaders ================= */
 
@@ -221,13 +236,13 @@ export default function CashierTransactionsPage() {
         setReceiptsByPaymentId(byPayment)
       }
 
-      toast.success("Transactions loaded", { description: `${payments.length} record(s)` })
+      T.ok("load-ok", "Transactions loaded", { description: `${payments.length} record(s)` })
     } catch (e: any) {
-      toast.error("Failed to load transactions", { description: e?.message ?? "Please try again." })
+      T.err("load-err", "Failed to load transactions", { description: e?.message ?? "Please try again." })
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [T])
 
   const loadMessages = useCallback(async (opts?: { silent?: boolean }) => {
     setMessagesLoading(true)
@@ -247,16 +262,19 @@ export default function CashierTransactionsPage() {
       setMessages(normalized)
       if (!opts?.silent) {
         const unread = normalized.filter((m) => (m.status ?? "new") === "new").length
-        toast.success("Messages refreshed", { description: `${normalized.length} total • ${unread} new` })
+        T.ok("msg-ok", "Messages refreshed", { description: `${normalized.length} total • ${unread} new` })
       }
     } catch (e: any) {
-      toast.error("Failed to load messages", { description: e?.message ?? "Please try again." })
+      T.err("msg-err", "Failed to load messages", { description: e?.message ?? "Please try again." })
     } finally {
       setMessagesLoading(false)
     }
-  }, [meId])
+  }, [meId, T])
 
   useEffect(() => {
+    // Guard so Strict Mode doesn't trigger our loaders twice in dev
+    if (didInitRef.current) return
+    didInitRef.current = true
     load()
     loadMessages({ silent: true })
   }, [load, loadMessages])
@@ -411,7 +429,7 @@ export default function CashierTransactionsPage() {
     setIsReceiptDialogOpen(true)
     setReceiptData(null)
     setSelectedPayment(payment)
-    toast.info("Preparing receipt…")
+    T.info("prep-receipt", "Preparing receipt…")
 
     try {
       const { DB_ID, USERS_COL_ID } = getEnvIds()
@@ -501,7 +519,7 @@ export default function CashierTransactionsPage() {
         summary,
       })
     } catch (e: any) {
-      toast.error("Unable to open receipt", { description: e?.message ?? "Please try again." })
+      T.err("view-err", "Unable to open receipt", { description: e?.message ?? "Please try again." })
     }
   }
 
@@ -517,14 +535,14 @@ export default function CashierTransactionsPage() {
       setAllPayments((prev) => prev.map((p) => (p.$id === payment.$id ? result.payment : p)))
       setReceiptsByPaymentId((prev) => ({ ...prev, [payment.$id]: receipt.$id }))
 
-      toast.success("Payment verified", {
+      T.ok("verify-ok", "Payment verified", {
         description: result.receiptUrl ? "Receipt sent to student." : "Receipt issued.",
       })
 
       // open/refresh receipt dialog for this payment
       await handleViewReceipt(result.payment)
     } catch (e: any) {
-      toast.error("Verification failed", { description: e?.message ?? "Please try again." })
+      T.err("verify-err", "Verification failed", { description: e?.message ?? "Please try again." })
     } finally {
       setVerifyingRowId(null)
     }
@@ -601,9 +619,9 @@ export default function CashierTransactionsPage() {
         summary,
       })
       setSelectedPayment({ ...selectedPayment, status: "Completed" })
-      toast.success("Payment verified", { description: "Receipt issued successfully." })
+      T.ok("verify-ok", "Payment verified", { description: "Receipt issued successfully." })
     } catch (e: any) {
-      toast.error("Verification failed", { description: e?.message ?? "Please try again." })
+      T.err("verify-err", "Verification failed", { description: e?.message ?? "Please try again." })
     } finally {
       setVerifying(false)
     }
@@ -621,7 +639,9 @@ export default function CashierTransactionsPage() {
       try {
         updatedFromServer = await markMessageRead(msg.$id)
       } catch (e: any) {
-        toast.warning("Couldn’t mark as read on server", { description: e?.message ?? "Using local state instead." })
+        T.warn?.("mark-read-warn", "Couldn’t mark as read on server", {
+          description: e?.message ?? "Using local state instead.",
+        })
       }
 
       const set = getLocalReadSet(cashierId)
@@ -648,7 +668,7 @@ export default function CashierTransactionsPage() {
 
       setSelectedMessage(updatedFromServer ?? { ...msg, status: "read" as any })
     } catch (e: any) {
-      toast.error("Unable to open message", { description: e?.message ?? "Please try again." })
+      T.err("open-msg-err", "Unable to open message", { description: e?.message ?? "Please try again." })
     }
   }
 
@@ -675,7 +695,7 @@ export default function CashierTransactionsPage() {
   const sendReply = async () => {
     if (!selectedMessage) return
     if (!replyText.trim()) {
-      toast.error("Reply cannot be empty")
+      T.err("reply-empty", "Reply cannot be empty")
       return
     }
     setSendingReply(true)
@@ -700,11 +720,11 @@ export default function CashierTransactionsPage() {
 
       setMessages((prev) => prev.map((m) => (m.$id === updated.$id ? updated : m)))
       setSelectedMessage(updated)
-      toast.success("Reply sent", {
+      T.ok("reply-ok", "Reply sent", {
         description: uploaded?.fileId ? "Receipt attached for the student." : "The student can now see your response.",
       })
     } catch (e: any) {
-      toast.error("Failed to send reply", { description: e?.message ?? "Please try again." })
+      T.err("reply-err", "Failed to send reply", { description: e?.message ?? "Please try again." })
     } finally {
       setSendingReply(false)
     }
@@ -976,7 +996,7 @@ export default function CashierTransactionsPage() {
           </TabsContent>
         </Tabs>
 
-        {/* Receipt Dialog (view + verify) — medium height & scrollable */}
+        {/* Receipt Dialog (view & verify) — medium height & scrollable */}
         <Dialog open={isReceiptDialogOpen} onOpenChange={setIsReceiptDialogOpen}>
           <DialogContent
             className="
@@ -1120,7 +1140,6 @@ export default function CashierTransactionsPage() {
                         </a>
                       </div>
                     ) : null}
-
                     <div className="mt-3 text-xs text-gray-400">
                       From: {studentsById[selectedMessage.userId]?.fullName ?? selectedMessage.userId} •{" "}
                       {new Date(selectedMessage.$createdAt).toLocaleString()}

@@ -9,8 +9,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { CreditCard, Landmark, Wallet, ExternalLink, AlertCircle, GraduationCap, BadgeCheck } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { CreditCard, Landmark, Wallet, ExternalLink, AlertCircle, GraduationCap, BadgeCheck, Mail } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { createPaymentLink } from "@/lib/paymongo-api"
 import { getCurrentUserSafe, getDatabases, getEnvIds } from "@/lib/appwrite"
@@ -202,11 +202,12 @@ export default function MakePaymentPage() {
   }, [feePlanLegacy, selectedFees])
 
   // Prefer NEW plan total when a plan is selected; fall back to legacy/provided total
-  const totalFees = typeof selectedPlanTotals?.total === "number"
-    ? selectedPlanTotals.total
-    : typeof feePlanLegacy?.total === "number"
-      ? feePlanLegacy.total!
-      : undefined
+  const totalFees =
+    typeof selectedPlanTotals?.total === "number"
+      ? selectedPlanTotals.total
+      : typeof feePlanLegacy?.total === "number"
+        ? feePlanLegacy.total!
+        : undefined
 
   const currentBalance = typeof totalFees === "number" ? Math.max(0, totalFees - paidTotal) : undefined
   const remainingAfterPayment =
@@ -322,6 +323,21 @@ export default function MakePaymentPage() {
               <span className="font-medium">Year: {yearLabel}</span>
             </span>
           </div>
+
+          {/* 🔔 HIGH-VISIBILITY GMAIL REMINDER (Top banner) */}
+          <Alert
+            role="status"
+            aria-live="polite"
+            className="mt-3 bg-amber-500/20 border-amber-500 text-amber-100 ring-1 ring-amber-400/40"
+          >
+            <Mail className="h-5 w-5" />
+            <AlertTitle className="text-amber-100">PayMongo Receipt</AlertTitle>
+            <AlertDescription className="text-amber-100 text-[0.95rem]">
+              {/* UPDATED EXACT WORDING */}
+              Please check the Gmail you use to input during your transaction in paymongo to see your PayMongo receipt
+              after you made a payment with PayMongo.
+            </AlertDescription>
+          </Alert>
         </div>
 
         {loading ? (
@@ -356,7 +372,7 @@ export default function MakePaymentPage() {
                           value={selectedPlanId ?? ""}
                           onValueChange={(v) => {
                             setSelectedPlanId(v)
-                            const picked = activePlans.find(p => p.$id === v)
+                            const picked = activePlans.find((p) => p.$id === v)
                             if (picked) {
                               const t = computeTotals({
                                 units: picked.units,
@@ -421,9 +437,7 @@ export default function MakePaymentPage() {
                                 ))}
                                 <TableRow>
                                   <TableCell className="font-medium">TOTAL</TableCell>
-                                  <TableCell className="text-right font-semibold">
-                                    ₱{selectedPlanTotals.total.toLocaleString()}
-                                  </TableCell>
+                                  <TableCell className="text-right font-semibold">₱{selectedPlanTotals.total.toLocaleString()}</TableCell>
                                 </TableRow>
                               </TableBody>
                             </Table>
@@ -490,9 +504,7 @@ export default function MakePaymentPage() {
                       </div>
                     </CardContent>
                     <CardFooter className="flex items-center justify-between">
-                      <div className="text-sm text-gray-400">
-                        Selected fees total: ₱{selectedFeesTotal.toLocaleString()}
-                      </div>
+                      <div className="text-sm text-gray-400">Selected fees total: ₱{selectedFeesTotal.toLocaleString()}</div>
                       <Button type="button" variant="outline" className="border-slate-600" onClick={fillSelectedTotal}>
                         Use selected total
                       </Button>
@@ -585,16 +597,10 @@ export default function MakePaymentPage() {
                               Previously paid: <span className="text-white">₱{paidTotal.toLocaleString()}</span>
                             </p>
                             <p>
-                              Current balance:{" "}
-                              <span className="text-white">
-                                ₱{Math.max(0, totalFees - paidTotal).toLocaleString()}
-                              </span>
+                              Current balance: <span className="text-white">₱{Math.max(0, totalFees - paidTotal).toLocaleString()}</span>
                             </p>
                             <p>
-                              Remaining after this payment:{" "}
-                              <span className="text-white">
-                                ₱{(remainingAfterPayment ?? 0).toLocaleString()}
-                              </span>
+                              Remaining after this payment: <span className="text-white">₱{(remainingAfterPayment ?? 0).toLocaleString()}</span>
                             </p>
                           </>
                         )}
@@ -713,6 +719,17 @@ export default function MakePaymentPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
+              {/* ✅ High-visibility Gmail reminder INSIDE dialog */}
+              <Alert className="bg-amber-500/20 border-amber-500/50 text-amber-100 ring-1 ring-amber-400/40">
+                <Mail className="h-4 w-4" />
+                <AlertTitle className="text-amber-100">Don’t miss your receipt</AlertTitle>
+                <AlertDescription>
+                  {/* UPDATED EXACT WORDING */}
+                  Please check the Gmail you use to input during your transaction in paymongo to see your PayMongo receipt
+                  after you made a payment with PayMongo.
+                </AlertDescription>
+              </Alert>
+
               <div className="rounded-lg bg-slate-900 p-4">
                 <div className="mb-2 text-sm font-medium text-gray-300">Payment Details</div>
                 <div className="space-y-2">
@@ -744,13 +761,14 @@ export default function MakePaymentPage() {
                   )}
                 </div>
               </div>
-              <div className="flex items-center rounded-lg bg-blue-500/20 p-4 text-blue-200">
-                <AlertCircle className="mr-2 h-5 w-5" />
-                <div className="text-sm">
+
+              <Alert className="bg-blue-500/20 border-blue-500/50 text-blue-200">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
                   For security reasons, do not close your browser during the payment process. You will be redirected back
                   after completing your payment.
-                </div>
-              </div>
+                </AlertDescription>
+              </Alert>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowPaymongoDialog(false)} className="border-slate-600">
