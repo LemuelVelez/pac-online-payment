@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -8,341 +9,280 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Camera, Mail, Phone, Save, User, X } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
+import { Camera, Save, Loader2 } from "lucide-react"
+import { toast } from "sonner"
+
+import {
+    getUserProfile,
+    updateUserProfile,
+    uploadProfilePhoto,
+    getPhotoUrl,
+} from "@/lib/profile"
 
 export default function ProfilePage() {
-    const [isEditing, setIsEditing] = useState(false)
+    const [loading, setLoading] = useState(true)
+    const [saving, setSaving] = useState(false)
+    const [uploading, setUploading] = useState(false)
 
-    // Mock student data
-    const studentData = {
-        id: "2023-0001",
-        name: "John Smith",
-        email: "johnsmith@example.com",
-        phone: "(123) 456-7890",
-        course: "BS Computer Science",
-        yearLevel: "Third Year",
-        address: "123 College St., Salug, Zamboanga del Norte",
-        birthdate: "1999-05-15",
-        gender: "Male",
-        emergencyContact: "Mary Smith",
-        emergencyPhone: "(123) 456-7891",
-        joinedDate: "August 2021",
+    const [fullName, setFullName] = useState("")
+    const [email, setEmail] = useState("")
+    const [studentId, setStudentId] = useState("")
+    const [course, setCourse] = useState("")
+    const [yearLevel, setYearLevel] = useState<"1st" | "2nd" | "3rd" | "4th" | "">("")
+    const [photoUrl, setPhotoUrl] = useState<string | null>(null)
+
+    const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+    useEffect(() => {
+        ; (async () => {
+            setLoading(true)
+            try {
+                const p = await getUserProfile()
+                if (!p) {
+                    setFullName("")
+                    setEmail("")
+                    setStudentId("")
+                    setCourse("")
+                    setYearLevel("")
+                    setPhotoUrl(null)
+                    return
+                }
+                setFullName(p.fullName ?? "")
+                setEmail(p.email ?? "")
+                setStudentId(p.studentId ?? "")
+                setCourse(p.course ?? "")
+                setYearLevel((p.yearLevel as any) ?? "")
+
+                const url = getPhotoUrl({
+                    directUrl: p.photoUrl ?? null,
+                    bucketId: p.photoBucketId ?? null,
+                    fileId: p.photoFileId ?? null,
+                })
+                setPhotoUrl(url)
+            } catch (e: any) {
+                toast.error("Failed to load profile", { description: e?.message ?? "Please try again." })
+            } finally {
+                setLoading(false)
+            }
+        })()
+    }, [])
+
+    const initials = useMemo(() => {
+        const n = (fullName || "").trim()
+        if (!n) return "NA"
+        const parts = n.split(/\s+/).slice(0, 2)
+        return parts.map((s) => s[0]?.toUpperCase()).join("")
+    }, [fullName])
+
+    const onSave = async () => {
+        setSaving(true)
+        try {
+            await updateUserProfile({
+                fullName: fullName.trim(),
+                email: email.trim(),
+                studentId: studentId.trim(),
+                course: course.trim(),
+                yearLevel: yearLevel || undefined,
+            })
+            toast.success("Profile saved")
+        } catch (e: any) {
+            toast.error("Save failed", { description: e?.message ?? "Please try again." })
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const onPickFile = () => fileInputRef.current?.click()
+
+    const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const f = e.target.files?.[0]
+        if (!f) return
+        setUploading(true)
+        try {
+            const res = await uploadProfilePhoto(f) // returns { bucketId, fileId, url }
+
+            await updateUserProfile({
+                photoBucketId: res.bucketId,
+                photoFileId: res.fileId,
+                photoUrl: res.url, // store the direct URL
+                photoUpdatedAt: new Date().toISOString(),
+            })
+
+            const displayUrl = getPhotoUrl({ directUrl: res.url })
+            setPhotoUrl(displayUrl)
+
+            toast.success("Profile photo updated")
+        } catch (e: any) {
+            toast.error("Upload failed", { description: e?.message ?? "Please try again." })
+        } finally {
+            if (fileInputRef.current) fileInputRef.current.value = ""
+            setUploading(false)
+        }
     }
 
     return (
         <DashboardLayout>
             <div className="container mx-auto px-4 py-8">
-                <div className="mb-8">
+                <div className="mb-6">
                     <h1 className="text-2xl font-bold text-white">My Profile</h1>
-                    <p className="text-gray-300">View and manage your personal information</p>
+                    <p className="text-gray-300">Update your details and profile photo</p>
                 </div>
 
-                <Tabs defaultValue="info" className="w-full">
-                    <TabsList className="bg-slate-800 border-slate-700 mb-8 grid w-full grid-cols-2 lg:max-w-[400px]">
-                        <TabsTrigger value="info" className="cursor-pointer">
-                            Personal Information
-                        </TabsTrigger>
-                        <TabsTrigger value="academic" className="cursor-pointer">
-                            Academic Profile
-                        </TabsTrigger>
-                    </TabsList>
-
-                    <TabsContent value="info">
-                        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-                            <Card className="lg:col-span-2 bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader className="flex flex-row items-center justify-between">
-                                    <div>
-                                        <CardTitle>Personal Information</CardTitle>
-                                        <CardDescription className="text-gray-300">Manage your personal details</CardDescription>
-                                    </div>
-                                    {!isEditing ? (
-                                        <Button
-                                            onClick={() => setIsEditing(true)}
-                                            className="bg-primary hover:bg-primary/90 cursor-pointer"
-                                        >
-                                            Edit Profile
-                                        </Button>
+                <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+                    {/* Photo card */}
+                    <Card className="bg-slate-800/60 border-slate-700 text-white">
+                        <CardHeader>
+                            <CardTitle>Profile Photo</CardTitle>
+                            <CardDescription className="text-gray-300">Upload a clear, recent photo</CardDescription>
+                        </CardHeader>
+                        <CardContent className="flex flex-col items-center">
+                            <div className="relative mb-4">
+                                <Avatar className="h-32 w-32 border-4 border-slate-700">
+                                    {photoUrl ? (
+                                        <AvatarImage
+                                            src={photoUrl}
+                                            alt="Profile Photo"
+                                            onError={() => setPhotoUrl(null)}
+                                        />
                                     ) : (
-                                        <div className="flex gap-2">
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() => setIsEditing(false)}
-                                                className="text-gray-400 hover:text-white cursor-pointer"
-                                            >
-                                                <X className="h-5 w-5" />
-                                            </Button>
-                                            <Button className="bg-primary hover:bg-primary/90 cursor-pointer">
-                                                <Save className="mr-2 h-4 w-4" />
-                                                Save Changes
-                                            </Button>
-                                        </div>
+                                        <AvatarImage src="" alt="Profile Photo" />
                                     )}
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="space-y-6">
-                                        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                                            <div className="space-y-2">
-                                                <Label htmlFor="fullName">Full Name</Label>
-                                                <Input
-                                                    id="fullName"
-                                                    defaultValue={studentData.name}
-                                                    readOnly={!isEditing}
-                                                    className="bg-slate-700 border-slate-600"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="studentId">Student ID</Label>
-                                                <Input
-                                                    id="studentId"
-                                                    defaultValue={studentData.id}
-                                                    readOnly={true}
-                                                    className="bg-slate-700 border-slate-600"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="email">Email Address</Label>
-                                                <Input
-                                                    id="email"
-                                                    type="email"
-                                                    defaultValue={studentData.email}
-                                                    readOnly={!isEditing}
-                                                    className="bg-slate-700 border-slate-600"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="phone">Phone Number</Label>
-                                                <Input
-                                                    id="phone"
-                                                    defaultValue={studentData.phone}
-                                                    readOnly={!isEditing}
-                                                    className="bg-slate-700 border-slate-600"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="birthdate">Date of Birth</Label>
-                                                <Input
-                                                    id="birthdate"
-                                                    type="date"
-                                                    defaultValue={studentData.birthdate}
-                                                    readOnly={!isEditing}
-                                                    className="bg-slate-700 border-slate-600"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="gender">Gender</Label>
-                                                <Select disabled={!isEditing} defaultValue={studentData.gender.toLowerCase()}>
-                                                    <SelectTrigger id="gender" className="bg-slate-700 border-slate-600">
-                                                        <SelectValue placeholder="Select gender" />
-                                                    </SelectTrigger>
-                                                    <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                                        <SelectItem value="male">Male</SelectItem>
-                                                        <SelectItem value="female">Female</SelectItem>
-                                                        <SelectItem value="other">Other</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-                                        </div>
+                                    <AvatarFallback className="bg-slate-700 text-3xl">{initials}</AvatarFallback>
+                                </Avatar>
+                                <button
+                                    type="button"
+                                    onClick={onPickFile}
+                                    className="absolute -bottom-2 -right-2 rounded-full bg-primary p-2 text-white shadow cursor-pointer"
+                                    title="Change photo"
+                                >
+                                    {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                                </button>
+                            </div>
 
-                                        <Separator className="bg-slate-700" />
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={onUpload}
+                            />
 
+                            <p className="text-xs text-gray-400">PNG/JPG up to ~3–5MB recommended</p>
+                        </CardContent>
+                    </Card>
+
+                    {/* Form card */}
+                    <Card className="lg:col-span-2 bg-slate-800/60 border-slate-700 text-white">
+                        <CardHeader className="flex flex-row items-center justify-between">
+                            <div>
+                                <CardTitle>Profile Information</CardTitle>
+                                <CardDescription className="text-gray-300">
+                                    Only required fields are shown
+                                </CardDescription>
+                            </div>
+                        </CardHeader>
+
+                        <CardContent>
+                            {loading ? (
+                                <div className="flex items-center gap-2 text-gray-300">
+                                    <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+                                </div>
+                            ) : (
+                                <div className="space-y-6">
+                                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                                         <div className="space-y-2">
-                                            <Label htmlFor="address">Address</Label>
+                                            <Label htmlFor="fullName">Full Name</Label>
                                             <Input
-                                                id="address"
-                                                defaultValue={studentData.address}
-                                                readOnly={!isEditing}
+                                                id="fullName"
+                                                value={fullName}
+                                                onChange={(e) => setFullName(e.target.value)}
                                                 className="bg-slate-700 border-slate-600"
+                                                placeholder="e.g., Juan Dela Cruz"
                                             />
                                         </div>
 
-                                        <Separator className="bg-slate-700" />
+                                        <div className="space-y-2">
+                                            <Label htmlFor="email">Email</Label>
+                                            <Input
+                                                id="email"
+                                                type="email"
+                                                value={email}
+                                                onChange={(e) => setEmail(e.target.value)}
+                                                className="bg-slate-700 border-slate-600"
+                                                placeholder="name@example.com"
+                                            />
+                                        </div>
 
-                                        <div>
-                                            <h3 className="mb-4 text-lg font-medium">Emergency Contact</h3>
-                                            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="emergencyName">Contact Name</Label>
-                                                    <Input
-                                                        id="emergencyName"
-                                                        defaultValue={studentData.emergencyContact}
-                                                        readOnly={!isEditing}
-                                                        className="bg-slate-700 border-slate-600"
-                                                    />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="emergencyPhone">Contact Phone</Label>
-                                                    <Input
-                                                        id="emergencyPhone"
-                                                        defaultValue={studentData.emergencyPhone}
-                                                        readOnly={!isEditing}
-                                                        className="bg-slate-700 border-slate-600"
-                                                    />
-                                                </div>
-                                            </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="studentId">Student ID</Label>
+                                            <Input
+                                                id="studentId"
+                                                value={studentId}
+                                                onChange={(e) => setStudentId(e.target.value)}
+                                                className="bg-slate-700 border-slate-600"
+                                                placeholder="e.g., 2025-000123"
+                                            />
                                         </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
 
-                            <div className="space-y-8">
-                                <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                    <CardHeader>
-                                        <CardTitle>Profile Photo</CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="flex flex-col items-center">
-                                        <div className="relative mb-4">
-                                            <Avatar className="h-32 w-32 border-4 border-slate-700">
-                                                <AvatarImage src="https://github.com/shadcn.png" alt="Profile" />
-                                                <AvatarFallback className="bg-slate-700 text-4xl">JS</AvatarFallback>
-                                            </Avatar>
-                                            {isEditing && (
-                                                <div className="absolute -bottom-2 -right-2 rounded-full bg-primary p-2 text-white cursor-pointer">
-                                                    <Camera className="h-4 w-4" />
-                                                </div>
-                                            )}
+                                        <div className="space-y-2">
+                                            <Label htmlFor="course">Course</Label>
+                                            <Input
+                                                id="course"
+                                                value={course}
+                                                onChange={(e) => setCourse(e.target.value)}
+                                                className="bg-slate-700 border-slate-600"
+                                                placeholder="e.g., BS Computer Science"
+                                            />
                                         </div>
-                                        <div className="text-center">
-                                            <h3 className="font-medium text-lg">{studentData.name}</h3>
-                                            <p className="text-gray-400 text-sm">{studentData.id}</p>
-                                        </div>
-                                        {isEditing && (
-                                            <Button
-                                                variant="outline"
-                                                className="mt-4 border-slate-600 text-white hover:bg-slate-700 cursor-pointer"
+
+                                        <div className="space-y-2">
+                                            <Label htmlFor="yearLevel">Year Level</Label>
+                                            <Select
+                                                value={yearLevel || ""}
+                                                onValueChange={(v) => setYearLevel(v as any)}
                                             >
-                                                Upload New Photo
-                                            </Button>
-                                        )}
-                                    </CardContent>
-                                </Card>
-
-                                <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                    <CardHeader>
-                                        <CardTitle>Contact Information</CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="space-y-4">
-                                            <div className="flex items-center">
-                                                <Mail className="mr-2 h-5 w-5 text-gray-400" />
-                                                <div>
-                                                    <p className="text-sm text-gray-400">Email</p>
-                                                    <p>{studentData.email}</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center">
-                                                <Phone className="mr-2 h-5 w-5 text-gray-400" />
-                                                <div>
-                                                    <p className="text-sm text-gray-400">Phone</p>
-                                                    <p>{studentData.phone}</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center">
-                                                <User className="mr-2 h-5 w-5 text-gray-400" />
-                                                <div>
-                                                    <p className="text-sm text-gray-400">Member since</p>
-                                                    <p>{studentData.joinedDate}</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            </div>
-                        </div>
-                    </TabsContent>
-
-                    <TabsContent value="academic">
-                        <div className="grid grid-cols-1 gap-8">
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>Academic Information</CardTitle>
-                                    <CardDescription className="text-gray-300">Your current academic details</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="space-y-6">
-                                        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                                            <div className="space-y-2">
-                                                <Label>Course</Label>
-                                                <div className="rounded-md bg-slate-700 px-3 py-2 border border-slate-600">
-                                                    {studentData.course}
-                                                </div>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label>Year Level</Label>
-                                                <div className="rounded-md bg-slate-700 px-3 py-2 border border-slate-600">
-                                                    {studentData.yearLevel}
-                                                </div>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label>Enrolled Since</Label>
-                                                <div className="rounded-md bg-slate-700 px-3 py-2 border border-slate-600">
-                                                    {studentData.joinedDate}
-                                                </div>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label>Current Status</Label>
-                                                <div className="rounded-md bg-green-700/20 text-green-400 px-3 py-2 border border-green-700/30">
-                                                    Enrolled
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <Separator className="bg-slate-700" />
-
-                                        <div>
-                                            <h3 className="mb-4 text-lg font-medium">Current Term</h3>
-                                            <div className="overflow-hidden overflow-x-auto rounded-lg border border-slate-700">
-                                                <table className="w-full">
-                                                    <thead>
-                                                        <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
-                                                            <th className="px-6 py-3">Subject Code</th>
-                                                            <th className="px-6 py-3">Subject Name</th>
-                                                            <th className="px-6 py-3">Units</th>
-                                                            <th className="px-6 py-3">Schedule</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-slate-700">
-                                                        <tr className="text-sm">
-                                                            <td className="px-6 py-4 font-medium">CS101</td>
-                                                            <td className="px-6 py-4">Introduction to Programming</td>
-                                                            <td className="px-6 py-4">3</td>
-                                                            <td className="px-6 py-4">MWF 8:30-10:00 AM</td>
-                                                        </tr>
-                                                        <tr className="text-sm">
-                                                            <td className="px-6 py-4 font-medium">CS202</td>
-                                                            <td className="px-6 py-4">Data Structures and Algorithms</td>
-                                                            <td className="px-6 py-4">3</td>
-                                                            <td className="px-6 py-4">TTh 1:00-2:30 PM</td>
-                                                        </tr>
-                                                        <tr className="text-sm">
-                                                            <td className="px-6 py-4 font-medium">MATH201</td>
-                                                            <td className="px-6 py-4">Calculus</td>
-                                                            <td className="px-6 py-4">3</td>
-                                                            <td className="px-6 py-4">MWF 10:30-12:00 PM</td>
-                                                        </tr>
-                                                        <tr className="text-sm">
-                                                            <td className="px-6 py-4 font-medium">ENG101</td>
-                                                            <td className="px-6 py-4">English Composition</td>
-                                                            <td className="px-6 py-4">3</td>
-                                                            <td className="px-6 py-4">TTh 8:30-10:00 AM</td>
-                                                        </tr>
-                                                    </tbody>
-                                                </table>
-                                            </div>
+                                                <SelectTrigger id="yearLevel" className="bg-slate-700 border-slate-600">
+                                                    <SelectValue placeholder="Select year level" />
+                                                </SelectTrigger>
+                                                <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                                                    <SelectItem value="1st" className="cursor-pointer">1st</SelectItem>
+                                                    <SelectItem value="2nd" className="cursor-pointer">2nd</SelectItem>
+                                                    <SelectItem value="3rd" className="cursor-pointer">3rd</SelectItem>
+                                                    <SelectItem value="4th" className="cursor-pointer">4th</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                     </div>
-                                </CardContent>
-                                <CardFooter className="border-t border-slate-700 pt-6">
-                                    <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-700 cursor-pointer">
-                                        Print Enrollment Certificate
-                                    </Button>
-                                </CardFooter>
-                            </Card>
-                        </div>
-                    </TabsContent>
-                </Tabs>
+
+                                    <Separator className="bg-slate-700" />
+
+                                    <div className="text-sm text-gray-400">
+                                        Make sure your email matches the one you use in payments so receipts reach you.
+                                    </div>
+                                </div>
+                            )}
+                        </CardContent>
+
+                        <CardFooter className="flex justify-end gap-3">
+                            <Button
+                                onClick={onSave}
+                                disabled={saving || loading}
+                                className="cursor-pointer"
+                            >
+                                {saving ? (
+                                    <span className="inline-flex items-center">
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center">
+                                        <Save className="mr-2 h-4 w-4" /> Save Changes
+                                    </span>
+                                )}
+                            </Button>
+                        </CardFooter>
+                    </Card>
+                </div>
             </div>
         </DashboardLayout>
     )
