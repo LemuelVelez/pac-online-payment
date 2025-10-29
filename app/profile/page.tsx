@@ -18,6 +18,7 @@ import {
     updateUserProfile,
     uploadProfilePhoto,
     getPhotoUrl,
+    rememberProfilePhotoUrl,
 } from "@/lib/profile"
 
 export default function ProfilePage() {
@@ -59,7 +60,10 @@ export default function ProfilePage() {
                     bucketId: p.photoBucketId ?? null,
                     fileId: p.photoFileId ?? null,
                 })
-                setPhotoUrl(url)
+                if (url) {
+                    setPhotoUrl(url)
+                    rememberProfilePhotoUrl(url) // keep header/avatar in sync
+                }
             } catch (e: any) {
                 toast.error("Failed to load profile", { description: e?.message ?? "Please try again." })
             } finally {
@@ -85,7 +89,7 @@ export default function ProfilePage() {
                 course: course.trim(),
                 yearLevel: yearLevel || undefined,
             })
-            toast.success("Profile saved")
+            toast.success("Profile saved.")
         } catch (e: any) {
             toast.error("Save failed", { description: e?.message ?? "Please try again." })
         } finally {
@@ -100,18 +104,18 @@ export default function ProfilePage() {
         if (!f) return
         setUploading(true)
         try {
-            const res = await uploadProfilePhoto(f) // returns { bucketId, fileId, url }
-
+            const res = await uploadProfilePhoto(f) // { bucketId, fileId, url }
             await updateUserProfile({
                 photoBucketId: res.bucketId,
                 photoFileId: res.fileId,
                 photoUrl: res.url, // store the direct URL
                 photoUpdatedAt: new Date().toISOString(),
             })
-
             const displayUrl = getPhotoUrl({ directUrl: res.url })
-            setPhotoUrl(displayUrl)
-
+            if (displayUrl) {
+                setPhotoUrl(displayUrl)
+                rememberProfilePhotoUrl(displayUrl) // keep header/avatar in sync
+            }
             toast.success("Profile photo updated")
         } catch (e: any) {
             toast.error("Upload failed", { description: e?.message ?? "Please try again." })
@@ -177,9 +181,7 @@ export default function ProfilePage() {
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
                                 <CardTitle>Profile Information</CardTitle>
-                                <CardDescription className="text-gray-300">
-                                    Only required fields are shown
-                                </CardDescription>
+                                <CardDescription className="text-gray-300">Only required fields are shown</CardDescription>
                             </div>
                         </CardHeader>
 
@@ -265,11 +267,7 @@ export default function ProfilePage() {
                         </CardContent>
 
                         <CardFooter className="flex justify-end gap-3">
-                            <Button
-                                onClick={onSave}
-                                disabled={saving || loading}
-                                className="cursor-pointer"
-                            >
+                            <Button onClick={onSave} disabled={saving || loading} className="cursor-pointer">
                                 {saving ? (
                                     <span className="inline-flex items-center">
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Bell, Menu, User, Settings, LogOut, Power, Loader2 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { useAuth } from "@/components/auth/auth-provider"
 import { roleDisplayNames } from "@/components/navigation/role-navigation"
+import { getCachedProfilePhoto } from "@/lib/profile"
 
 interface DashboardHeaderProps {
   onOpenSidebar: () => void
@@ -41,6 +42,31 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
   // Loading states for spinners
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [isLoggingOutAll, setIsLoggingOutAll] = useState(false)
+
+  // Avatar handling (use profile photo if available, fall back to user.avatar)
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(user?.avatar || getCachedProfilePhoto() || undefined)
+
+  useEffect(() => {
+    // Whenever auth user changes, refresh avatar (user.avatar may come from provider)
+    setAvatarUrl(user?.avatar || getCachedProfilePhoto() || undefined)
+  }, [user?.avatar])
+
+  useEffect(() => {
+    // Listen to updates from profile page (upload/save)
+    const onChanged = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail
+      if (detail?.url) setAvatarUrl(detail.url as string)
+      else setAvatarUrl(getCachedProfilePhoto() || user?.avatar || undefined)
+    }
+    const onStorage = () => setAvatarUrl(getCachedProfilePhoto() || user?.avatar || undefined)
+
+    window.addEventListener("profile-photo-changed", onChanged as EventListener)
+    window.addEventListener("storage", onStorage)
+    return () => {
+      window.removeEventListener("profile-photo-changed", onChanged as EventListener)
+      window.removeEventListener("storage", onStorage)
+    }
+  }, [user?.avatar])
 
   const handleLogout = async () => {
     setIsLoggingOut(true)
@@ -81,6 +107,13 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
   const displayName = user?.role ? roleDisplayNames[user.role] : "Dashboard"
   const notificationCount = user?.role === "admin" ? 5 : user?.role === "business-office" ? 4 : 3
 
+  const initials = useMemo(() => {
+    const n = (user?.name || "").trim()
+    if (!n) return "U"
+    const parts = n.split(/\s+/).slice(0, 2)
+    return parts.map((s) => s[0]?.toUpperCase()).join("")
+  }, [user?.name])
+
   return (
     <header className="bg-slate-800/50 border-b border-slate-700 p-4">
       <div className="flex items-center justify-between">
@@ -102,9 +135,9 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
             <DropdownMenuTrigger asChild>
               <Avatar className="h-8 w-8 cursor-pointer border border-slate-600">
-                <AvatarImage src={user?.avatar || ""} alt={user?.name} />
+                <AvatarImage src={avatarUrl || ""} alt={user?.name || "Avatar"} />
                 <AvatarFallback className="bg-slate-700 text-white">
-                  {user?.name?.split(" ").map((n) => n[0]).join("") || "U"}
+                  {initials}
                 </AvatarFallback>
               </Avatar>
             </DropdownMenuTrigger>
@@ -155,7 +188,6 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
           <AlertDialog
             open={confirmLogoutAllOpen}
             onOpenChange={(open) => {
-              // Prevent closing while logging out
               if (!isLoggingOutAll) setConfirmLogoutAllOpen(open)
             }}
           >
@@ -168,10 +200,7 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel
-                  className="bg-slate-800 text-white border-slate-700"
-                  disabled={isLoggingOutAll}
-                >
+                <AlertDialogCancel className="bg-slate-800 text-white border-slate-700" disabled={isLoggingOutAll}>
                   Cancel
                 </AlertDialogCancel>
                 <AlertDialogAction
@@ -200,7 +229,6 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
           <AlertDialog
             open={confirmLogoutOpen}
             onOpenChange={(open) => {
-              // Prevent closing while logging out
               if (!isLoggingOut) setConfirmLogoutOpen(open)
             }}
           >
@@ -212,10 +240,7 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel
-                  className="bg-slate-800 text-white border-slate-700"
-                  disabled={isLoggingOut}
-                >
+                <AlertDialogCancel className="bg-slate-800 text-white border-slate-700" disabled={isLoggingOut}>
                   Cancel
                 </AlertDialogCancel>
                 <AlertDialogAction
