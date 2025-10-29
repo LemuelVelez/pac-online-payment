@@ -1,258 +1,223 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
-
-import type React from "react"
 
 import { useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Switch } from "@/components/ui/switch"
-import { Separator } from "@/components/ui/separator"
-import { Check, Info, Lock, Save, Shield, User } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { getAccount } from "@/lib/appwrite"
+import { Loader2, Lock, KeyRound, CheckCircle2, Eye, EyeOff } from "lucide-react"
+import { toast } from "sonner"
 
 export default function SettingsPage() {
-    const [passwordChanged, setPasswordChanged] = useState(false)
+    const [currentPassword, setCurrentPassword] = useState("")
+    const [newPassword, setNewPassword] = useState("")
+    const [confirmPassword, setConfirmPassword] = useState("")
+    const [showCurrent, setShowCurrent] = useState(false)
+    const [showNew, setShowNew] = useState(false)
+    const [showConfirm, setShowConfirm] = useState(false)
+    const [showMsg, setShowMsg] = useState<{ type: "error" | "success"; text: string } | null>(null)
+    const [submitting, setSubmitting] = useState(false)
 
-    const handlePasswordChange = (e: React.FormEvent) => {
+    const validate = () => {
+        if (!currentPassword || !newPassword || !confirmPassword) {
+            return "Please fill in all fields."
+        }
+        if (newPassword.length < 8) {
+            return "New password must be at least 8 characters long."
+        }
+        if (newPassword !== confirmPassword) {
+            return "New password and confirmation do not match."
+        }
+        if (currentPassword === newPassword) {
+            return "New password must be different from your current password."
+        }
+        return null
+    }
+
+    const onSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        setPasswordChanged(true)
-        // In a real app, this would actually change the password
-        setTimeout(() => {
-            setPasswordChanged(false)
-        }, 3000)
+        setShowMsg(null)
+        const err = validate()
+        if (err) {
+            setShowMsg({ type: "error", text: err })
+            return
+        }
+
+        setSubmitting(true)
+        try {
+            const account = getAccount()
+
+            // Appwrite SDK signature compatibility:
+            // Try (newPassword, oldPassword), then fall back to object form if needed.
+            try {
+                await (account as any).updatePassword(newPassword, currentPassword)
+            } catch {
+                await (account as any).updatePassword({ password: newPassword, oldPassword: currentPassword })
+            }
+
+            setShowMsg({ type: "success", text: "Password updated successfully." })
+            toast.success("Password changed", { description: "Your password was updated." })
+            setCurrentPassword("")
+            setNewPassword("")
+            setConfirmPassword("")
+            setShowCurrent(false)
+            setShowNew(false)
+            setShowConfirm(false)
+        } catch (e: any) {
+            const message =
+                e?.message ||
+                e?.response?.message ||
+                "Failed to update password. Please make sure your current password is correct."
+            setShowMsg({ type: "error", text: message })
+            toast.error("Save failed", { description: message })
+        } finally {
+            setSubmitting(false)
+        }
     }
 
     return (
         <DashboardLayout>
-            <div className="container mx-auto px-4 py-8">
-                <div className="mb-8">
-                    <h1 className="text-2xl font-bold text-white">Settings</h1>
-                    <p className="text-gray-300">Manage your account settings and preferences</p>
+            <div className="mx-auto max-w-2xl px-4 py-8">
+                <div className="mb-6">
+                    <h1 className="text-2xl font-bold text-white">Password</h1>
+                    <p className="text-gray-300">Change your password</p>
                 </div>
 
-                <Tabs defaultValue="account" className="w-full">
-                    <TabsList className="bg-slate-800 border-slate-700 mb-8 grid w-full grid-cols-2 lg:max-w-[400px]">
-                        <TabsTrigger value="account" className="cursor-pointer">
-                            Account
-                        </TabsTrigger>
-                        <TabsTrigger value="notifications" className="cursor-pointer">
-                            Notifications
-                        </TabsTrigger>
-                    </TabsList>
+                {showMsg?.type === "error" ? (
+                    <Alert className="mb-6 bg-red-500/20 border-red-500/50 text-red-200">
+                        <AlertDescription>{showMsg.text}</AlertDescription>
+                    </Alert>
+                ) : null}
 
-                    <TabsContent value="account">
-                        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle className="flex items-center">
-                                        <User className="mr-2 h-5 w-5" />
-                                        Account Information
-                                    </CardTitle>
-                                    <CardDescription className="text-gray-300">Update your account details</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="space-y-6">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="username">Username</Label>
-                                            <Input id="username" defaultValue="johnsmith2023" className="bg-slate-700 border-slate-600" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="email">Email Address</Label>
-                                            <Input
-                                                id="email"
-                                                type="email"
-                                                defaultValue="johnsmith@example.com"
-                                                className="bg-slate-700 border-slate-600"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="phone">Phone Number</Label>
-                                            <Input id="phone" defaultValue="(123) 456-7890" className="bg-slate-700 border-slate-600" />
-                                        </div>
-                                        <div className="flex lg:items-center lg:justify-between mt-4 flex-col overflow-x-auto space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3 md:mt-0">
-                                            <div className="flex items-center space-x-2">
-                                                <Shield className="h-5 w-5 text-green-500" />
-                                                <span className="text-sm text-green-500">Your account is secure</span>
-                                            </div>
-                                            <Button className="bg-primary hover:bg-primary/90 cursor-pointer">
-                                                <Save className="mr-2 h-4 w-4" />
-                                                Save Changes
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
+                {showMsg?.type === "success" ? (
+                    <Alert className="mb-6 bg-emerald-500/20 border-emerald-500/50 text-emerald-200">
+                        <AlertDescription className="flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4" />
+                            {showMsg.text}
+                        </AlertDescription>
+                    </Alert>
+                ) : null}
 
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle className="flex items-center">
-                                        <Lock className="mr-2 h-5 w-5" />
-                                        Password
-                                    </CardTitle>
-                                    <CardDescription className="text-gray-300">Change your password</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    {passwordChanged && (
-                                        <Alert className="mb-6 bg-green-500/20 border-green-500/50 text-green-200">
-                                            <Check className="h-4 w-4" />
-                                            <AlertDescription>Your password has been changed successfully!</AlertDescription>
-                                        </Alert>
-                                    )}
-                                    <form onSubmit={handlePasswordChange} className="space-y-6">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="current-password">Current Password</Label>
-                                            <Input id="current-password" type="password" className="bg-slate-700 border-slate-600" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="new-password">New Password</Label>
-                                            <Input id="new-password" type="password" className="bg-slate-700 border-slate-600" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="confirm-password">Confirm New Password</Label>
-                                            <Input id="confirm-password" type="password" className="bg-slate-700 border-slate-600" />
-                                        </div>
-                                        <Alert className="bg-blue-500/20 border-blue-500/50 text-blue-200">
-                                            <Info className="h-4 w-4" />
-                                            <AlertDescription>
-                                                Password must be at least 8 characters long and include uppercase letters, numbers, and special
-                                                characters.
-                                            </AlertDescription>
-                                        </Alert>
-                                        <Button type="submit" className="w-full bg-primary hover:bg-primary/90 cursor-pointer">
-                                            Change Password
-                                        </Button>
-                                    </form>
-                                </CardContent>
-                            </Card>
+                <Card className="bg-slate-800/60 border-slate-700 text-white">
+                    <form onSubmit={onSubmit}>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Lock className="h-5 w-5" />
+                                Change Password
+                            </CardTitle>
+                            <CardDescription className="text-gray-300">
+                                Enter your current password and choose a new one.
+                            </CardDescription>
+                        </CardHeader>
 
-                            <Card className="bg-slate-800/60 border-slate-700 text-white lg:col-span-2">
-                                <CardHeader>
-                                    <CardTitle>Security Settings</CardTitle>
-                                    <CardDescription className="text-gray-300">Manage your account security preferences</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="space-y-6">
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <h3 className="font-medium">Two-Factor Authentication</h3>
-                                                <p className="text-sm text-gray-400">Add an extra layer of security to your account</p>
-                                            </div>
-                                            <Switch id="two-factor" className="cursor-pointer" />
-                                        </div>
-                                        <Separator className="bg-slate-700" />
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <h3 className="font-medium">Login Notifications</h3>
-                                                <p className="text-sm text-gray-400">Receive alerts when someone logs into your account</p>
-                                            </div>
-                                            <Switch id="login-alerts" defaultChecked className="cursor-pointer" />
-                                        </div>
-                                        <Separator className="bg-slate-700" />
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <h3 className="font-medium">Session Management</h3>
-                                                <p className="text-sm text-gray-400">Manage your active sessions and devices</p>
-                                            </div>
-                                            <Button
-                                                variant="outline"
-                                                className="border-slate-600 text-white hover:bg-slate-700 cursor-pointer"
-                                            >
-                                                View Sessions
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-                    </TabsContent>
-
-                    <TabsContent value="notifications">
-                        <Card className="bg-slate-800/60 border-slate-700 text-white">
-                            <CardHeader>
-                                <CardTitle>Notification Preferences</CardTitle>
-                                <CardDescription className="text-gray-300">Manage how you receive notifications</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-6">
-                                    <div>
-                                        <h3 className="mb-4 font-medium">Email Notifications</h3>
-                                        <div className="space-y-4">
-                                            <div className="flex items-center justify-between">
-                                                <div>
-                                                    <p>Payment Confirmations</p>
-                                                    <p className="text-sm text-gray-400">Receive emails for payment confirmations</p>
-                                                </div>
-                                                <Switch id="email-payments" defaultChecked className="cursor-pointer" />
-                                            </div>
-                                            <div className="flex items-center justify-between">
-                                                <div>
-                                                    <p>Payment Reminders</p>
-                                                    <p className="text-sm text-gray-400">Get reminded when payments are due</p>
-                                                </div>
-                                                <Switch id="email-reminders" defaultChecked className="cursor-pointer" />
-                                            </div>
-                                            <div className="flex items-center justify-between">
-                                                <div>
-                                                    <p>System Updates</p>
-                                                    <p className="text-sm text-gray-400">Receive emails about system updates and maintenance</p>
-                                                </div>
-                                                <Switch id="email-updates" className="cursor-pointer" />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <Separator className="bg-slate-700" />
-
-                                    <div>
-                                        <h3 className="mb-4 font-medium">SMS Notifications</h3>
-                                        <div className="space-y-4">
-                                            <div className="flex items-center justify-between">
-                                                <div>
-                                                    <p>Payment Confirmations</p>
-                                                    <p className="text-sm text-gray-400">Receive SMS for payment confirmations</p>
-                                                </div>
-                                                <Switch id="sms-payments" className="cursor-pointer" />
-                                            </div>
-                                            <div className="flex items-center justify-between">
-                                                <div>
-                                                    <p>Payment Reminders</p>
-                                                    <p className="text-sm text-gray-400">Get SMS reminders when payments are due</p>
-                                                </div>
-                                                <Switch id="sms-reminders" className="cursor-pointer" />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <Separator className="bg-slate-700" />
-
-                                    <div>
-                                        <h3 className="mb-4 font-medium">In-App Notifications</h3>
-                                        <div className="space-y-4">
-                                            <div className="flex items-center justify-between">
-                                                <div>
-                                                    <p>Payment Activity</p>
-                                                    <p className="text-sm text-gray-400">Notifications for all payment activities</p>
-                                                </div>
-                                                <Switch id="app-payments" defaultChecked className="cursor-pointer" />
-                                            </div>
-                                            <div className="flex items-center justify-between">
-                                                <div>
-                                                    <p>System Announcements</p>
-                                                    <p className="text-sm text-gray-400">Important announcements from PAC Salug</p>
-                                                </div>
-                                                <Switch id="app-announcements" defaultChecked className="cursor-pointer" />
-                                            </div>
-                                        </div>
-                                    </div>
+                        <CardContent className="space-y-5">
+                            {/* Current password */}
+                            <div className="space-y-2">
+                                <Label htmlFor="current" className="text-gray-200">
+                                    Current password
+                                </Label>
+                                <div className="relative">
+                                    <Input
+                                        id="current"
+                                        type={showCurrent ? "text" : "password"}
+                                        autoComplete="current-password"
+                                        className="bg-slate-700 border-slate-600 pr-10"
+                                        value={currentPassword}
+                                        onChange={(e) => setCurrentPassword(e.target.value)}
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        aria-label={showCurrent ? "Hide current password" : "Show current password"}
+                                        aria-pressed={showCurrent}
+                                        onClick={() => setShowCurrent((s) => !s)}
+                                        className="absolute inset-y-0 right-1 my-auto h-8 w-8 text-gray-300 hover:text-white"
+                                    >
+                                        {showCurrent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                    </Button>
                                 </div>
-                            </CardContent>
-                        </Card>
-                    </TabsContent>
-                </Tabs>
+                            </div>
+
+                            {/* New password */}
+                            <div className="space-y-2">
+                                <Label htmlFor="new" className="text-gray-200">
+                                    New password
+                                </Label>
+                                <div className="relative">
+                                    <Input
+                                        id="new"
+                                        type={showNew ? "text" : "password"}
+                                        autoComplete="new-password"
+                                        className="bg-slate-700 border-slate-600 pr-10"
+                                        value={newPassword}
+                                        onChange={(e) => setNewPassword(e.target.value)}
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        aria-label={showNew ? "Hide new password" : "Show new password"}
+                                        aria-pressed={showNew}
+                                        onClick={() => setShowNew((s) => !s)}
+                                        className="absolute inset-y-0 right-1 my-auto h-8 w-8 text-gray-300 hover:text-white"
+                                    >
+                                        {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                    </Button>
+                                </div>
+                                <p className="text-xs text-gray-400">Minimum 8 characters.</p>
+                            </div>
+
+                            {/* Confirm new password */}
+                            <div className="space-y-2">
+                                <Label htmlFor="confirm" className="text-gray-200">
+                                    Confirm new password
+                                </Label>
+                                <div className="relative">
+                                    <Input
+                                        id="confirm"
+                                        type={showConfirm ? "text" : "password"}
+                                        autoComplete="new-password"
+                                        className="bg-slate-700 border-slate-600 pr-10"
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        aria-label={showConfirm ? "Hide confirm password" : "Show confirm password"}
+                                        aria-pressed={showConfirm}
+                                        onClick={() => setShowConfirm((s) => !s)}
+                                        className="absolute inset-y-0 right-1 my-auto h-8 w-8 text-gray-300 hover:text-white"
+                                    >
+                                        {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                    </Button>
+                                </div>
+                            </div>
+                        </CardContent>
+
+                        <CardFooter className="flex justify-end mt-4">
+                            <Button type="submit" disabled={submitting} className="cursor-pointer">
+                                {submitting ? (
+                                    <span className="inline-flex items-center">
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Saving…
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center">
+                                        <KeyRound className="mr-2 h-4 w-4" />
+                                        Save Changes
+                                    </span>
+                                )}
+                            </Button>
+                        </CardFooter>
+                    </form>
+                </Card>
             </div>
         </DashboardLayout>
     )
