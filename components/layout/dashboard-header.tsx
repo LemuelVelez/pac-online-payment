@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
@@ -105,7 +106,6 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
   }
 
   const displayName = user?.role ? roleDisplayNames[user.role] : "Dashboard"
-  const notificationCount = user?.role === "admin" ? 5 : user?.role === "business-office" ? 4 : 3
 
   const initials = useMemo(() => {
     const n = (user?.name || "").trim()
@@ -113,6 +113,104 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
     const parts = n.split(/\s+/).slice(0, 2)
     return parts.map((s) => s[0]?.toUpperCase()).join("")
   }, [user?.name])
+
+  // ---------- Notifications (student-only, persisted read state) ----------
+  type Notif = { id: string; title: string; description?: string; href?: string; priority?: number }
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [notifs, setNotifs] = useState<Notif[]>([])
+  const userId = (user as any)?.$id || (user as any)?.id || (user as any)?.userId || "guest"
+  const readKey = `notif.read.v2.${userId}`
+  const [readIds, setReadIds] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(readKey)
+      if (raw) setReadIds(new Set(JSON.parse(raw)))
+      else setReadIds(new Set())
+    } catch {
+      setReadIds(new Set())
+    }
+  }, [readKey])
+
+  const markAsRead = (id: string) => {
+    setReadIds((prev) => {
+      const next = new Set(prev)
+      next.add(id)
+      try {
+        window.localStorage.setItem(readKey, JSON.stringify(Array.from(next)))
+      } catch { }
+      return next
+    })
+  }
+
+  useEffect(() => {
+    if ((user?.role || "").toLowerCase() !== "student") {
+      setNotifs([])
+      return
+    }
+
+    const getNum = (k: string): number | undefined => {
+      const v = window.localStorage.getItem(k)
+      if (!v) return undefined
+      const n = Number(v)
+      return Number.isFinite(n) ? n : undefined
+    }
+
+    const pendingCount = getNum("student.notif.pendingCount") ?? getNum("payment.pendingCount") ?? 0
+    const repliedCount = getNum("student.notif.repliedCount") ?? getNum("message.repliedCount") ?? 0
+    const totalFees = getNum("student.notif.totalFees") ?? getNum("fees.total")
+    const paidTotal = getNum("student.notif.paidTotal") ?? getNum("fees.paidTotal")
+
+    const items: Notif[] = []
+
+    items.push({
+      id: "gmail-reminder-1",
+      title: "PayMongo receipt",
+      description:
+        "Please check the Gmail you use to input during your transaction in PayMongo to see your PayMongo receipt after you made a payment.",
+      href: "/make-payment",
+      priority: 1,
+    })
+
+    if (pendingCount && pendingCount > 0) {
+      items.push({
+        id: `pending-${pendingCount}`,
+        title: `${pendingCount} pending payment${pendingCount > 1 ? "s" : ""}`,
+        description: "Finish your checkout to complete the payment.",
+        href: "/payment-history",
+        priority: 2,
+      })
+    }
+
+    if (repliedCount && repliedCount > 0) {
+      items.push({
+        id: `cashier-replies-${repliedCount}`,
+        title: `Cashier replied (${repliedCount})`,
+        description: "Open Payment History to view messages and attachments.",
+        href: "/payment-history",
+        priority: 3,
+      })
+    }
+
+    if (typeof totalFees === "number" && Number.isFinite(totalFees)) {
+      const paid = (typeof paidTotal === "number" && Number.isFinite(paidTotal)) ? paidTotal : 0
+      const balance = Math.max(0, totalFees - paid)
+      items.push({
+        id: `balance-${Math.round(balance)}`,
+        title: `Current balance: ₱${balance.toLocaleString()}`,
+        description: `Total fees: ₱${totalFees.toLocaleString()} • Paid: ₱${paid.toLocaleString()}`,
+        href: "/make-payment",
+        priority: 4,
+      })
+    }
+
+    items.sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99))
+    setNotifs(items)
+  }, [user?.role])
+
+  const visibleNotifs = useMemo(() => notifs.filter((n) => !readIds.has(n.id)), [notifs, readIds])
+  const unreadCount = visibleNotifs.length
+  // -----------------------------------------------------------------------
 
   return (
     <header className="bg-slate-800/50 border-b border-slate-700 p-4">
@@ -125,12 +223,76 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
         </div>
 
         <div className="flex items-center gap-3">
-          <button className="relative text-gray-400 hover:text-white cursor-pointer" aria-label="Notifications">
-            <Bell className="h-6 w-6" />
-            <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
-              {notificationCount}
-            </span>
-          </button>
+          {/* ====== ONLY THIS NOTIFICATION BLOCK MODIFIED ====== */}
+          <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}>
+            <DropdownMenuTrigger asChild>
+              <button className="relative text-gray-400 hover:text-white cursor-pointer" aria-label="Notifications">
+                <Bell className="h-6 w-6" />
+                {/* Hide badge entirely when there are zero unread */}
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+            </DropdownMenuTrigger>
+
+            <DropdownMenuContent align="end" className="w-96 bg-slate-800 border-slate-700 text-white">
+              <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+              <DropdownMenuSeparator className="bg-slate-700" />
+
+              {user?.role?.toLowerCase() === "student" ? (
+                visibleNotifs.length === 0 ? (
+                  <div className="px-3 py-4 text-sm text-slate-300">No notifications.</div>
+                ) : (
+                  <div className="max-h-[70vh] overflow-y-auto">
+                    {visibleNotifs.map((n, i) => (
+                      <div key={n.id}>
+                        <DropdownMenuItem
+                          className="hover:bg-slate-700 cursor-pointer py-3"
+                          onSelect={(e) => {
+                            e.preventDefault()
+                            markAsRead(n.id)
+                            setNotifOpen(false)
+                            if (n.href) router.push(n.href)
+                          }}
+                        >
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium">{n.title}</span>
+                            {n.description ? (
+                              <span className="mt-0.5 text-xs text-slate-300">{n.description}</span>
+                            ) : null}
+                          </div>
+                        </DropdownMenuItem>
+                        {i < visibleNotifs.length - 1 ? (
+                          <DropdownMenuSeparator className="bg-slate-700" />
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <div className="px-3 py-4 text-sm text-slate-300">No notifications for your role.</div>
+              )}
+
+              {visibleNotifs.length > 0 ? (
+                <>
+                  <DropdownMenuSeparator className="bg-slate-700" />
+                  <DropdownMenuItem
+                    className="hover:bg-slate-700 cursor-pointer"
+                    onSelect={(e) => {
+                      e.preventDefault()
+                      visibleNotifs.forEach((n) => markAsRead(n.id))
+                      setNotifOpen(false)
+                    }}
+                  >
+                    Mark all as read
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {/* ====== END OF NOTIFICATION BLOCK MOD ====== */}
 
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
             <DropdownMenuTrigger asChild>
