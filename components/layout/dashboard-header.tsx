@@ -1,9 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Bell, Menu, User, Settings, LogOut, Power, Loader2 } from "lucide-react"
+import { Bell, Menu, User, Settings, LogOut, Power, Loader2, Trash2 as Delete, Check } from "lucide-react"
+import { toast } from "sonner"
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -22,45 +24,66 @@ import {
   AlertDialogFooter,
   AlertDialogCancel,
   AlertDialogAction,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { useAuth } from "@/components/auth/auth-provider"
 import { roleDisplayNames } from "@/components/navigation/role-navigation"
 import { getCachedProfilePhoto } from "@/lib/profile"
 
+import {
+  type NotificationDoc,
+  listUserNotifications,
+  subscribeToNotificationFeed,
+  startPaymentAndMessageBridges,
+  markNotificationRead,
+  markAllNotificationsRead,
+  deleteNotification,
+  parseNotificationText,
+} from "@/lib/notification"
+
 interface DashboardHeaderProps {
   onOpenSidebar: () => void
 }
+
+function timeAgo(iso?: string | null) {
+  if (!iso) return ""
+  const d = new Date(iso)
+  const diff = Math.max(0, Date.now() - d.getTime())
+  const s = Math.floor(diff / 1000)
+  if (s < 60) return `${s}s ago`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  const dd = Math.floor(h / 24)
+  return `${dd}d ago`
+}
+
+type RowState = { saving?: boolean; deleting?: boolean }
 
 export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
   const router = useRouter()
   const { user, logout } = useAuth()
 
-  // Control the dropdown and dialogs explicitly to avoid focus/overlay glitches
+  // Profile menu state
   const [menuOpen, setMenuOpen] = useState(false)
   const [confirmLogoutOpen, setConfirmLogoutOpen] = useState(false)
   const [confirmLogoutAllOpen, setConfirmLogoutAllOpen] = useState(false)
-
-  // Loading states for spinners
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [isLoggingOutAll, setIsLoggingOutAll] = useState(false)
 
-  // Avatar handling (use profile photo if available, fall back to user.avatar)
+  // Avatar
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>(user?.avatar || getCachedProfilePhoto() || undefined)
-
   useEffect(() => {
-    // Whenever auth user changes, refresh avatar (user.avatar may come from provider)
     setAvatarUrl(user?.avatar || getCachedProfilePhoto() || undefined)
   }, [user?.avatar])
-
   useEffect(() => {
-    // Listen to updates from profile page (upload/save)
     const onChanged = (e: Event) => {
       const detail = (e as CustomEvent)?.detail
       if (detail?.url) setAvatarUrl(detail.url as string)
       else setAvatarUrl(getCachedProfilePhoto() || user?.avatar || undefined)
     }
     const onStorage = () => setAvatarUrl(getCachedProfilePhoto() || user?.avatar || undefined)
-
     window.addEventListener("profile-photo-changed", onChanged as EventListener)
     window.addEventListener("storage", onStorage)
     return () => {
@@ -71,42 +94,25 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
 
   const handleLogout = async () => {
     setIsLoggingOut(true)
-    try {
-      await logout()
-    } finally {
-      setIsLoggingOut(false)
-    }
+    try { await logout() } finally { setIsLoggingOut(false) }
   }
   const handleLogoutAll = async () => {
     setIsLoggingOutAll(true)
-    try {
-      await logout(true) // all devices
-    } finally {
-      setIsLoggingOutAll(false)
-    }
+    try { await logout(true) } finally { setIsLoggingOutAll(false) }
   }
-
-  const openConfirmLogout = () => {
-    setMenuOpen(false)
-    setConfirmLogoutOpen(true)
-  }
-  const openConfirmLogoutAll = () => {
-    setMenuOpen(false)
-    setConfirmLogoutAllOpen(true)
-  }
+  const openConfirmLogout = () => { setMenuOpen(false); setConfirmLogoutOpen(true) }
+  const openConfirmLogoutAll = () => { setMenuOpen(false); setConfirmLogoutAllOpen(true) }
 
   const handleProfileClick = () => {
     const rolePrefix = user?.role === "student" ? "" : `/${user?.role}`
     router.push(`${rolePrefix}/profile`)
   }
-
   const handleSettingsClick = () => {
     const rolePrefix = user?.role === "student" ? "" : `/${user?.role}`
     router.push(`${rolePrefix}/settings`)
   }
 
   const displayName = user?.role ? roleDisplayNames[user.role] : "Dashboard"
-
   const initials = useMemo(() => {
     const n = (user?.name || "").trim()
     if (!n) return "U"
@@ -114,103 +120,121 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
     return parts.map((s) => s[0]?.toUpperCase()).join("")
   }, [user?.name])
 
-  // ---------- Notifications (student-only, persisted read state) ----------
-  type Notif = { id: string; title: string; description?: string; href?: string; priority?: number }
+  /* ===================== Appwrite Notifications (userId-based) ===================== */
   const [notifOpen, setNotifOpen] = useState(false)
-  const [notifs, setNotifs] = useState<Notif[]>([])
-  const userId = (user as any)?.$id || (user as any)?.id || (user as any)?.userId || "guest"
-  const readKey = `notif.read.v2.${userId}`
-  const [readIds, setReadIds] = useState<Set<string>>(new Set())
+  const [loadingNotifs, setLoadingNotifs] = useState(true)
+  const [items, setItems] = useState<NotificationDoc[]>([])
+  const [rowState, setRowState] = useState<Record<string, RowState>>({})
+  const meRef = useRef<{ id: string } | null>(null)
+  const userId: string | undefined =
+    (user as any)?.$id || (user as any)?.id || (user as any)?.userId || undefined
+
+  const unreadCount = useMemo(() => items.filter((n) => n.status === "unread").length, [items])
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(readKey)
-      if (raw) setReadIds(new Set(JSON.parse(raw)))
-      else setReadIds(new Set())
-    } catch {
-      setReadIds(new Set())
-    }
-  }, [readKey])
-
-  const markAsRead = (id: string) => {
-    setReadIds((prev) => {
-      const next = new Set(prev)
-      next.add(id)
-      try {
-        window.localStorage.setItem(readKey, JSON.stringify(Array.from(next)))
-      } catch { }
-      return next
-    })
-  }
-
-  useEffect(() => {
-    if ((user?.role || "").toLowerCase() !== "student") {
-      setNotifs([])
+    if (!userId) {
+      setItems([])
+      setLoadingNotifs(false)
       return
     }
+    meRef.current = { id: String(userId) }
 
-    const getNum = (k: string): number | undefined => {
-      const v = window.localStorage.getItem(k)
-      if (!v) return undefined
-      const n = Number(v)
-      return Number.isFinite(n) ? n : undefined
+    let stopNotifs: null | (() => void) = null
+    let stopBridges: null | (() => void) = null
+    let mounted = true
+
+      ; (async () => {
+        setLoadingNotifs(true)
+        try {
+          const list = await listUserNotifications(userId, 50)
+          if (!mounted) return
+          setItems(list)
+
+          stopNotifs = subscribeToNotificationFeed(
+            userId,
+            (doc) => {
+              setItems((prev) => {
+                const exists = prev.some((p) => p.$id === doc.$id)
+                return exists ? prev : [doc, ...prev].sort((a, b) => b.$createdAt.localeCompare(a.$createdAt))
+              })
+            },
+            (doc) => setItems((prev) => prev.map((p) => (p.$id === doc.$id ? doc : p))),
+            (removedId) => setItems((prev) => prev.filter((p) => p.$id !== removedId))
+          )
+
+          stopBridges = startPaymentAndMessageBridges(userId)
+        } catch (err: any) {
+          toast.error("Notifications failed to load", { description: err?.message || "Please try again." })
+        } finally {
+          if (mounted) setLoadingNotifs(false)
+        }
+      })()
+
+    return () => {
+      mounted = false
+      try { stopNotifs?.() } catch { }
+      try { stopBridges?.() } catch { }
     }
+  }, [userId])
 
-    const pendingCount = getNum("student.notif.pendingCount") ?? getNum("payment.pendingCount") ?? 0
-    const repliedCount = getNum("student.notif.repliedCount") ?? getNum("message.repliedCount") ?? 0
-    const totalFees = getNum("student.notif.totalFees") ?? getNum("fees.total")
-    const paidTotal = getNum("student.notif.paidTotal") ?? getNum("fees.paidTotal")
-
-    const items: Notif[] = []
-
-    items.push({
-      id: "gmail-reminder-1",
-      title: "PayMongo receipt",
-      description:
-        "Please check the Gmail you use to input during your transaction in PayMongo to see your PayMongo receipt after you made a payment.",
-      href: "/make-payment",
-      priority: 1,
-    })
-
-    if (pendingCount && pendingCount > 0) {
-      items.push({
-        id: `pending-${pendingCount}`,
-        title: `${pendingCount} pending payment${pendingCount > 1 ? "s" : ""}`,
-        description: "Finish your checkout to complete the payment.",
-        href: "/payment-history",
-        priority: 2,
-      })
+  const onMarkAsRead = useCallback(async (id: string) => {
+    setRowState((s) => ({ ...s, [id]: { ...s[id], saving: true } }))
+    try {
+      const updated = await markNotificationRead(id)
+      setItems((prev) => prev.map((p) => (p.$id === id ? updated : p)))
+      toast.success("Marked as read")
+    } catch (e: any) {
+      toast.error("Failed to mark as read", { description: e?.message || "Please try again." })
+    } finally {
+      setRowState((s) => ({ ...s, [id]: { ...s[id], saving: false } }))
     }
+  }, [])
 
-    if (repliedCount && repliedCount > 0) {
-      items.push({
-        id: `cashier-replies-${repliedCount}`,
-        title: `Cashier replied (${repliedCount})`,
-        description: "Open Payment History to view messages and attachments.",
-        href: "/payment-history",
-        priority: 3,
-      })
+  const onDelete = useCallback(async (id: string) => {
+    setRowState((s) => ({ ...s, [id]: { ...s[id], deleting: true } }))
+    try {
+      await deleteNotification(id, { onlyIfRead: true })
+      setItems((prev) => prev.filter((p) => p.$id !== id))
+      toast.success("Notification deleted")
+    } catch (e: any) {
+      toast.error("Delete failed", { description: e?.message || "Please mark it as read first." })
+    } finally {
+      setRowState((s) => ({ ...s, [id]: { ...s[id], deleting: false } }))
     }
+  }, [])
 
-    if (typeof totalFees === "number" && Number.isFinite(totalFees)) {
-      const paid = (typeof paidTotal === "number" && Number.isFinite(paidTotal)) ? paidTotal : 0
-      const balance = Math.max(0, totalFees - paid)
-      items.push({
-        id: `balance-${Math.round(balance)}`,
-        title: `Current balance: ₱${balance.toLocaleString()}`,
-        description: `Total fees: ₱${totalFees.toLocaleString()} • Paid: ₱${paid.toLocaleString()}`,
-        href: "/make-payment",
-        priority: 4,
-      })
+  const onMarkAllRead = useCallback(async () => {
+    if (!meRef.current) return
+    try {
+      await markAllNotificationsRead(meRef.current.id)
+      setItems((prev) => prev.map((p) => (p.status === "unread" ? { ...p, status: "read" } : p)))
+      toast.success("All notifications marked as read")
+    } catch (e: any) {
+      toast.error("Could not mark all as read", { description: e?.message || "Please try again." })
     }
+  }, [])
 
-    items.sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99))
-    setNotifs(items)
-  }, [user?.role])
+  /** Fallback: route guesser for legacy notifications without href tag */
+  const fallbackHref = (cleanText: string): string | undefined => {
+    const t = cleanText.toLowerCase()
+    if (t.includes("cashier replied") || t.includes("payment ")) return "/payment-history"
+    return undefined
+  }
 
-  const visibleNotifs = useMemo(() => notifs.filter((n) => !readIds.has(n.id)), [notifs, readIds])
-  const unreadCount = visibleNotifs.length
-  // -----------------------------------------------------------------------
+  const handleOpenNotification = async (doc: NotificationDoc) => {
+    const { clean, href } = parseNotificationText(doc.notification)
+    // mark as read first (UX expectation)
+    if (doc.status === "unread") {
+      try { await onMarkAsRead(doc.$id) } catch { }
+    }
+    const target = href || fallbackHref(clean)
+    setNotifOpen(false)
+    if (target) {
+      // Navigate to the page where the notification came from
+      router.push(target)
+    }
+  }
+  /* ============================================================================= */
 
   return (
     <header className="bg-slate-800/50 border-b border-slate-700 p-4">
@@ -223,14 +247,13 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* ====== ONLY THIS NOTIFICATION BLOCK MODIFIED ====== */}
+          {/* ====== NOTIFICATIONS (Appwrite, userId-based, realtime) ====== */}
           <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}>
             <DropdownMenuTrigger asChild>
               <button className="relative text-gray-400 hover:text-white cursor-pointer" aria-label="Notifications">
                 <Bell className="h-6 w-6" />
-                {/* Hide badge entirely when there are zero unread */}
                 {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
+                  <span className="absolute -top-1 -right-1 h-4 min-w-4 px-1 rounded-full bg-red-500 text-white text-[10px] leading-4 flex items-center justify-center">
                     {unreadCount}
                   </span>
                 )}
@@ -241,48 +264,118 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
               <DropdownMenuLabel>Notifications</DropdownMenuLabel>
               <DropdownMenuSeparator className="bg-slate-700" />
 
-              {user?.role?.toLowerCase() === "student" ? (
-                visibleNotifs.length === 0 ? (
-                  <div className="px-3 py-4 text-sm text-slate-300">No notifications.</div>
-                ) : (
-                  <div className="max-h-[70vh] overflow-y-auto">
-                    {visibleNotifs.map((n, i) => (
-                      <div key={n.id}>
+              {/* List */}
+              {loadingNotifs ? (
+                <div className="px-3 py-6 text-sm text-slate-300 flex items-center">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Loading…
+                </div>
+              ) : items.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-slate-300">No notifications.</div>
+              ) : (
+                <div className="max-h-[70vh] overflow-y-auto">
+                  {items.map((n, i) => {
+                    const st = rowState[n.$id] || {}
+                    const unread = n.status === "unread"
+                    const { clean, href } = parseNotificationText(n.notification)
+                    return (
+                      <div key={n.$id}>
                         <DropdownMenuItem
                           className="hover:bg-slate-700 cursor-pointer py-3"
-                          onSelect={(e) => {
+                          onSelect={async (e) => {
                             e.preventDefault()
-                            markAsRead(n.id)
-                            setNotifOpen(false)
-                            if (n.href) router.push(n.href)
+                            await handleOpenNotification(n)
                           }}
                         >
-                          <div className="flex flex-col">
-                            <span className="text-sm font-medium">{n.title}</span>
-                            {n.description ? (
-                              <span className="mt-0.5 text-xs text-slate-300">{n.description}</span>
-                            ) : null}
+                          <div className="flex w-full items-start gap-3">
+                            {/* unread dot */}
+                            <span
+                              className={`mt-2 h-2 w-2 rounded-full ${unread ? "bg-blue-400" : "bg-slate-600"}`}
+                              aria-hidden
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm">{clean}</div>
+                              <div className="mt-1 text-xs text-slate-300">{timeAgo(n.$createdAt)}</div>
+                              {/* optional little hint on hover if href exists */}
+                              {href ? (
+                                <span className="sr-only">Opens {href}</span>
+                              ) : null}
+                            </div>
+                            {/* actions */}
+                            <div className="flex items-center gap-1">
+                              {unread ? (
+                                <button
+                                  className="text-blue-300 hover:text-blue-200"
+                                  title="Mark as read"
+                                  onClick={async (e) => {
+                                    e.stopPropagation()
+                                    e.preventDefault()
+                                    await onMarkAsRead(n.$id)
+                                  }}
+                                  disabled={!!st.saving}
+                                >
+                                  {st.saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                                </button>
+                              ) : (
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <button
+                                      className="text-red-300 hover:text-red-200"
+                                      title="Delete (only read)"
+                                      disabled={!!st.deleting}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {st.deleting ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <Delete className="h-4 w-4" />
+                                      )}
+                                    </button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent className="bg-slate-900 border-slate-700 text-white">
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete notification?</AlertDialogTitle>
+                                      <AlertDialogDescription className="text-slate-300">
+                                        This action cannot be undone. Only <b>read</b> notifications can be deleted.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel className="bg-slate-800 text-white border-slate-700">
+                                        Cancel
+                                      </AlertDialogCancel>
+                                      <AlertDialogAction
+                                        className="bg-red-600 hover:bg-red-700"
+                                        onClick={async () => {
+                                          await onDelete(n.$id)
+                                        }}
+                                      >
+                                        Delete
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              )}
+                            </div>
                           </div>
                         </DropdownMenuItem>
-                        {i < visibleNotifs.length - 1 ? (
+                        {i < items.length - 1 ? (
                           <DropdownMenuSeparator className="bg-slate-700" />
                         ) : null}
                       </div>
-                    ))}
-                  </div>
-                )
-              ) : (
-                <div className="px-3 py-4 text-sm text-slate-300">No notifications for your role.</div>
+                    )
+                  })}
+                </div>
               )}
 
-              {visibleNotifs.length > 0 ? (
+              {/* Footer actions */}
+              {items.length > 0 ? (
                 <>
                   <DropdownMenuSeparator className="bg-slate-700" />
                   <DropdownMenuItem
                     className="hover:bg-slate-700 cursor-pointer"
-                    onSelect={(e) => {
+                    onSelect={async (e) => {
                       e.preventDefault()
-                      visibleNotifs.forEach((n) => markAsRead(n.id))
+                      await onMarkAllRead()
                       setNotifOpen(false)
                     }}
                   >
@@ -292,8 +385,9 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
               ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
-          {/* ====== END OF NOTIFICATION BLOCK MOD ====== */}
+          {/* ====== END NOTIFICATIONS ====== */}
 
+          {/* Profile + Menu (restored) */}
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
             <DropdownMenuTrigger asChild>
               <Avatar className="h-8 w-8 cursor-pointer border border-slate-600">
@@ -320,7 +414,6 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
 
               <DropdownMenuSeparator className="bg-slate-700" />
 
-              {/* Log out (all devices) — open controlled dialog */}
               <DropdownMenuItem
                 className="hover:bg-slate-700 cursor-pointer"
                 onSelect={(e) => {
@@ -332,7 +425,6 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
                 <span>Log out (all devices)</span>
               </DropdownMenuItem>
 
-              {/* Logout (current device) — open controlled dialog */}
               <DropdownMenuItem
                 className="hover:bg-slate-700 cursor-pointer"
                 onSelect={(e) => {
