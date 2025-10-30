@@ -25,7 +25,7 @@ type UpdateInput = Partial<Pick<UserProfileDoc,
 /** Safe env gather: never throw if public envs are missing on the client */
 function ids() {
   const { DB_ID, USERS_COL_ID } = getEnvIds()
-  const PROFILE_BUCKET_ID = process.env.NEXT_PUBLIC_APPWRITE_PROFILE_BUCKET_ID as string | undefined
+  const PROFILE_BUCKET_ID = process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID as string | undefined
 
   const rawEndpoint = (process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || "") as string
   const ENDPOINT = rawEndpoint ? rawEndpoint.replace(/\/+$/, "") : ""
@@ -270,7 +270,7 @@ export async function updateUserProfile(input: UpdateInput): Promise<void> {
 export async function uploadProfilePhoto(file: File): Promise<{ bucketId: string; fileId: string; url: string }> {
   const storage = getStorage()
   const { PROFILE_BUCKET_ID } = ids()
-  if (!PROFILE_BUCKET_ID) throw new Error("Missing NEXT_PUBLIC_APPWRITE_PROFILE_BUCKET_ID")
+  if (!PROFILE_BUCKET_ID) throw new Error("Missing NEXT_PUBLIC_APPWRITE_BUCKET_ID")
 
   const created: any = await storage.createFile(PROFILE_BUCKET_ID, ID.unique(), file, [
     Permission.read(Role.any()),
