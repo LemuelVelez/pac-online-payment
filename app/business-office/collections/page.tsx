@@ -1,1069 +1,388 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { DateRangePicker } from "@/components/admin/date-range-picker"
-import { PaymentChart } from "@/components/dashboard/payment-chart"
-import { PaymentPieChart } from "@/components/dashboard/payment-pie-chart"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
-import {
-    Download,
-    TrendingUp,
-    Search,
-    Filter,
-    AlertCircle,
-    Users,
-    Calendar,
-    FileText,
-    CreditCard,
-    Clock,
-    CheckCircle,
-    MoreVertical,
-    SlidersHorizontal,
-} from "lucide-react"
+import { RefreshCw, Download } from "lucide-react"
 
-// Mock data for collections (same as before)
-const collectionsData = [
-    {
-        id: "COL-2023-001",
-        date: "2023-09-01",
-        studentId: "2023-0001",
-        studentName: "John Smith",
-        course: "BS Computer Science",
-        feeType: "Tuition Fee",
-        amount: 15000,
-        paymentMethod: "Credit Card",
-        status: "Collected",
-        cashier: "Maria Garcia",
-    },
-    {
-        id: "COL-2023-002",
-        date: "2023-09-01",
-        studentId: "2023-0002",
-        studentName: "Sarah Williams",
-        course: "BS Information Technology",
-        feeType: "Laboratory Fee",
-        amount: 5000,
-        paymentMethod: "E-Wallet",
-        status: "Collected",
-        cashier: "Maria Garcia",
-    },
-    {
-        id: "COL-2023-003",
-        date: "2023-08-31",
-        studentId: "2023-0003",
-        studentName: "David Brown",
-        course: "BS Electronics Engineering",
-        feeType: "Tuition Fee",
-        amount: 12000,
-        paymentMethod: "Bank Transfer",
-        status: "Collected",
-        cashier: "Elizabeth Wilson",
-    },
-    {
-        id: "COL-2023-004",
-        date: "2023-08-30",
-        studentId: "2023-0004",
-        studentName: "Michael Miller",
-        course: "BS Business Administration",
-        feeType: "Tuition Fee",
-        amount: 8000,
-        paymentMethod: "Credit Card",
-        status: "Pending",
-        cashier: "Maria Garcia",
-    },
-    {
-        id: "COL-2023-005",
-        date: "2023-08-29",
-        studentId: "2023-0005",
-        studentName: "Jennifer Davis",
-        course: "BS Education",
-        feeType: "Library Fee",
-        amount: 1500,
-        paymentMethod: "E-Wallet",
-        status: "Collected",
-        cashier: "Elizabeth Wilson",
-    },
-]
+import { getDatabases, Query, getEnvIds } from "@/lib/appwrite"
+import type { PaymentDoc } from "@/lib/appwrite-payments"
+import type { UserProfileDoc } from "@/lib/profile"
 
-const outstandingData = [
-    {
-        studentId: "2023-0006",
-        studentName: "James Moore",
-        course: "BS Computer Science",
-        totalFees: 35000,
-        amountPaid: 15000,
-        balance: 20000,
-        dueDate: "2023-09-30",
-        daysOverdue: 0,
-        status: "Current",
-    },
-    {
-        studentId: "2023-0007",
-        studentName: "Patricia Taylor",
-        course: "BS Information Technology",
-        totalFees: 32000,
-        amountPaid: 0,
-        balance: 32000,
-        dueDate: "2023-08-31",
-        daysOverdue: 1,
-        status: "Overdue",
-    },
-    {
-        studentId: "2023-0008",
-        studentName: "Robert Johnson",
-        course: "BS Electronics Engineering",
-        totalFees: 38500,
-        amountPaid: 10000,
-        balance: 28500,
-        dueDate: "2023-09-15",
-        daysOverdue: 0,
-        status: "Current",
-    },
-]
+/* ----------------------------- helpers ----------------------------- */
 
-const collectionTrend = [
-    { month: "Jan", amount: 1200000 },
-    { month: "Feb", amount: 1450000 },
-    { month: "Mar", amount: 1350000 },
-    { month: "Apr", amount: 1500000 },
-    { month: "May", amount: 1800000 },
-    { month: "Jun", amount: 1700000 },
-    { month: "Jul", amount: 1900000 },
-    { month: "Aug", amount: 2100000 },
-]
-
-const paymentMethodDistribution = [
-    { name: "Credit Card", value: 4500000 },
-    { name: "E-Wallet", value: 3200000 },
-    { name: "Bank Transfer", value: 2300000 },
-    { name: "Cash", value: 500000 },
-]
-
-const courseCollectionDistribution = [
-    { name: "BS Computer Science", value: 3500000 },
-    { name: "BS Information Technology", value: 2800000 },
-    { name: "BS Electronics Engineering", value: 2200000 },
-    { name: "BS Business Administration", value: 1500000 },
-    { name: "BS Education", value: 500000 },
-]
-
-// Mobile Actions Component
-function MobileActions() {
-    return (
-        <div className="flex items-center gap-2 md:hidden">
-            {/* Date Range Picker - Mobile */}
-            <Sheet>
-                <SheetTrigger asChild>
-                    <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
-                        <Calendar className="h-4 w-4" />
-                    </Button>
-                </SheetTrigger>
-                <SheetContent side="bottom" className="bg-slate-800 border-slate-700">
-                    <div className="py-4">
-                        <h3 className="text-lg font-medium text-white mb-4">Select Date Range</h3>
-                        <DateRangePicker />
-                    </div>
-                </SheetContent>
-            </Sheet>
-
-            {/* Actions Menu */}
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
-                        <MoreVertical className="h-4 w-4" />
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700 text-white">
-                    <DropdownMenuItem className="hover:bg-slate-700">
-                        <Download className="mr-2 h-4 w-4" />
-                        Export Report
-                    </DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
-        </div>
-    )
+function startOfDayIso(d: Date) {
+    const x = new Date(d)
+    x.setHours(0, 0, 0, 0)
+    return x.toISOString()
+}
+function endOfDayIso(d: Date) {
+    const x = new Date(d)
+    x.setHours(23, 59, 59, 999)
+    return x.toISOString()
+}
+function fmtPeso(n: number) {
+    return `₱${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+function toCsv(rows: Array<Record<string, any>>) {
+    const headers = Object.keys(rows[0] || {})
+    const esc = (v: any) => {
+        const s = String(v ?? "")
+        if (/[,"\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+        return s
+    }
+    const lines = [headers.join(","), ...rows.map((r) => headers.map((h) => esc(r[h])).join(","))]
+    return lines.join("\n")
 }
 
-// Desktop Actions Component
-function DesktopActions() {
-    return (
-        <div className="hidden md:flex space-x-3">
-            <DateRangePicker />
-            <Button className="bg-primary hover:bg-primary/90">
-                <Download className="mr-2 h-4 w-4" />
-                Export Report
-            </Button>
-        </div>
-    )
-}
+/* ----------------------------- page ----------------------------- */
 
-// Mobile Tabs Component
-function MobileTabs({ value, onValueChange }: { value: string; onValueChange: (value: string) => void }) {
-    const tabs = [
-        { value: "collections", label: "Collections", shortLabel: "Collections" },
-        { value: "outstanding", label: "Outstanding", shortLabel: "Outstanding" },
-        { value: "trends", label: "Trends", shortLabel: "Trends" },
-        { value: "analysis", label: "Analysis", shortLabel: "Analysis" },
-    ]
-
-    return (
-        <div className="md:hidden mb-6">
-            <ScrollArea className="w-full whitespace-nowrap">
-                <div className="flex space-x-1 p-1 bg-slate-800 rounded-lg border border-slate-700">
-                    {tabs.map((tab) => (
-                        <button
-                            key={tab.value}
-                            onClick={() => onValueChange(tab.value)}
-                            className={`
-                                flex-shrink-0 px-4 py-2 text-sm font-medium rounded-md transition-colors
-                                ${value === tab.value
-                                    ? "bg-slate-700 text-white shadow-sm"
-                                    : "text-slate-400 hover:text-white hover:bg-slate-700/50"
-                                }
-                            `}
-                        >
-                            {tab.shortLabel}
-                        </button>
-                    ))}
-                </div>
-                <ScrollBar orientation="horizontal" className="invisible" />
-            </ScrollArea>
-        </div>
-    )
-}
-
-// Desktop Tabs Component
-function DesktopTabs() {
-    return (
-        <TabsList className="hidden md:grid bg-slate-800 border-slate-700 mb-8 w-full grid-cols-4 lg:max-w-[800px]">
-            <TabsTrigger value="collections" className="cursor-pointer">
-                Collections
-            </TabsTrigger>
-            <TabsTrigger value="outstanding" className="cursor-pointer">
-                Outstanding
-            </TabsTrigger>
-            <TabsTrigger value="trends" className="cursor-pointer">
-                Trends
-            </TabsTrigger>
-            <TabsTrigger value="analysis" className="cursor-pointer">
-                Analysis
-            </TabsTrigger>
-        </TabsList>
-    )
-}
-
-// Mobile Filters Component
-function MobileFilters({
-    searchTerm,
-    setSearchTerm,
-    statusFilter,
-    setStatusFilter,
-    courseFilter,
-    setCourseFilter,
-    paymentMethodFilter,
-    setPaymentMethodFilter,
-}: {
-    searchTerm: string
-    setSearchTerm: (value: string) => void
-    statusFilter: string
-    setStatusFilter: (value: string) => void
-    courseFilter: string
-    setCourseFilter: (value: string) => void
-    paymentMethodFilter: string
-    setPaymentMethodFilter: (value: string) => void
-}) {
-    return (
-        <div className="md:hidden mb-4">
-            {/* Search Bar */}
-            <div className="relative mb-4">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                    placeholder="Search by ID, student name..."
-                    className="pl-10 bg-slate-700 border-slate-600"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                />
-            </div>
-
-            {/* Filters Sheet */}
-            <Sheet>
-                <SheetTrigger asChild>
-                    <Button variant="outline" className="w-full border-slate-600 text-white hover:bg-slate-700">
-                        <SlidersHorizontal className="mr-2 h-4 w-4" />
-                        Filters
-                    </Button>
-                </SheetTrigger>
-                <SheetContent side="bottom" className="bg-slate-800 border-slate-700">
-                    <div className="py-4 space-y-4">
-                        <h3 className="text-lg font-medium text-white mb-4">Filter Options</h3>
-
-                        <div>
-                            <Label htmlFor="mobile-status" className="text-white">
-                                Status
-                            </Label>
-                            <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                <SelectTrigger id="mobile-status" className="bg-slate-700 border-slate-600 text-white mt-2">
-                                    <SelectValue placeholder="All Status" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                    <SelectItem value="all">All Status</SelectItem>
-                                    <SelectItem value="collected">Collected</SelectItem>
-                                    <SelectItem value="pending">Pending</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div>
-                            <Label htmlFor="mobile-course" className="text-white">
-                                Course
-                            </Label>
-                            <Select value={courseFilter} onValueChange={setCourseFilter}>
-                                <SelectTrigger id="mobile-course" className="bg-slate-700 border-slate-600 text-white mt-2">
-                                    <SelectValue placeholder="All Courses" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                    <SelectItem value="all">All Courses</SelectItem>
-                                    <SelectItem value="Computer Science">BS Computer Science</SelectItem>
-                                    <SelectItem value="Information Technology">BS Information Technology</SelectItem>
-                                    <SelectItem value="Electronics Engineering">BS Electronics Engineering</SelectItem>
-                                    <SelectItem value="Business Administration">BS Business Administration</SelectItem>
-                                    <SelectItem value="Education">BS Education</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div>
-                            <Label htmlFor="mobile-payment" className="text-white">
-                                Payment Method
-                            </Label>
-                            <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
-                                <SelectTrigger id="mobile-payment" className="bg-slate-700 border-slate-600 text-white mt-2">
-                                    <SelectValue placeholder="All Methods" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                                    <SelectItem value="all">All Methods</SelectItem>
-                                    <SelectItem value="credit-card">Credit Card</SelectItem>
-                                    <SelectItem value="e-wallet">E-Wallet</SelectItem>
-                                    <SelectItem value="bank-transfer">Bank Transfer</SelectItem>
-                                    <SelectItem value="cash">Cash</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-                </SheetContent>
-            </Sheet>
-        </div>
-    )
-}
-
-// Desktop Filters Component
-function DesktopFilters({
-    searchTerm,
-    setSearchTerm,
-    statusFilter,
-    setStatusFilter,
-    courseFilter,
-    setCourseFilter,
-    paymentMethodFilter,
-    setPaymentMethodFilter,
-}: {
-    searchTerm: string
-    setSearchTerm: (value: string) => void
-    statusFilter: string
-    setStatusFilter: (value: string) => void
-    courseFilter: string
-    setCourseFilter: (value: string) => void
-    paymentMethodFilter: string
-    setPaymentMethodFilter: (value: string) => void
-}) {
-    return (
-        <div className="hidden md:flex flex-col space-y-4 md:flex-row md:items-center md:space-x-4 md:space-y-0">
-            <div className="relative flex-1">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                    placeholder="Search by ID, student name..."
-                    className="pl-10 bg-slate-700 border-slate-600"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                />
-            </div>
-            <div className="flex space-x-4">
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-[150px] bg-slate-700 border-slate-600">
-                        <div className="flex items-center">
-                            <Filter className="mr-2 h-4 w-4 text-gray-400" />
-                            <span className="truncate">Status</span>
-                        </div>
-                    </SelectTrigger>
-                    <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                        <SelectItem value="all">All Status</SelectItem>
-                        <SelectItem value="collected">Collected</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
-                    </SelectContent>
-                </Select>
-                <Select value={courseFilter} onValueChange={setCourseFilter}>
-                    <SelectTrigger className="w-[180px] bg-slate-700 border-slate-600">
-                        <div className="flex items-center">
-                            <Filter className="mr-2 h-4 w-4 text-gray-400" />
-                            <span className="truncate">Course</span>
-                        </div>
-                    </SelectTrigger>
-                    <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                        <SelectItem value="all">All Courses</SelectItem>
-                        <SelectItem value="Computer Science">BS Computer Science</SelectItem>
-                        <SelectItem value="Information Technology">BS Information Technology</SelectItem>
-                        <SelectItem value="Electronics Engineering">BS Electronics Engineering</SelectItem>
-                        <SelectItem value="Business Administration">BS Business Administration</SelectItem>
-                        <SelectItem value="Education">BS Education</SelectItem>
-                    </SelectContent>
-                </Select>
-                <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
-                    <SelectTrigger className="w-[180px] bg-slate-700 border-slate-600">
-                        <div className="flex items-center">
-                            <Filter className="mr-2 h-4 w-4 text-gray-400" />
-                            <span className="truncate">Payment Method</span>
-                        </div>
-                    </SelectTrigger>
-                    <SelectContent className="bg-slate-700 border-slate-600 text-white">
-                        <SelectItem value="all">All Methods</SelectItem>
-                        <SelectItem value="credit-card">Credit Card</SelectItem>
-                        <SelectItem value="e-wallet">E-Wallet</SelectItem>
-                        <SelectItem value="bank-transfer">Bank Transfer</SelectItem>
-                        <SelectItem value="cash">Cash</SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
-        </div>
-    )
-}
+type MethodFilter = "all" | "cash" | "card" | "credit-card" | "e-wallet" | "online-banking"
+type StatusFilter = "all" | "finalized" | "pending"
 
 export default function BusinessOfficeCollectionsPage() {
-    const [searchTerm, setSearchTerm] = useState("")
-    const [statusFilter, setStatusFilter] = useState("all")
-    const [courseFilter, setCourseFilter] = useState("all")
-    const [paymentMethodFilter, setPaymentMethodFilter] = useState("all")
-    const [activeTab, setActiveTab] = useState("collections")
-
-    // Filter collections based on search and filters
-    const filteredCollections = collectionsData.filter((collection) => {
-        const matchesSearch =
-            collection.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            collection.studentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            collection.id.toLowerCase().includes(searchTerm.toLowerCase())
-
-        const matchesStatus = statusFilter === "all" || collection.status.toLowerCase() === statusFilter.toLowerCase()
-        const matchesCourse = courseFilter === "all" || collection.course.includes(courseFilter)
-        const matchesPaymentMethod =
-            paymentMethodFilter === "all" || collection.paymentMethod.toLowerCase().replace(" ", "-") === paymentMethodFilter
-
-        return matchesSearch && matchesStatus && matchesCourse && matchesPaymentMethod
+    // filters
+    const [startDate, setStartDate] = useState(() => {
+        const d = new Date()
+        d.setDate(d.getDate() - 30) // last 30 days by default
+        return d.toISOString().slice(0, 10)
     })
+    const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10))
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
+    const [methodFilter, setMethodFilter] = useState<MethodFilter>("all")
+    const [search, setSearch] = useState("")
 
-    // Filter outstanding balances
-    const filteredOutstanding = outstandingData.filter((student) => {
-        const matchesSearch =
-            student.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            student.studentId.toLowerCase().includes(searchTerm.toLowerCase())
+    // data
+    const [loading, setLoading] = useState(false)
+    const [error, setError] = useState<string>("")
+    const [payments, setPayments] = useState<PaymentDoc[]>([])
+    const [usersById, setUsersById] = useState<Record<string, Pick<UserProfileDoc, "fullName" | "studentId" | "course">>>({})
+    const [nextCursor, setNextCursor] = useState<string | undefined>(undefined)
 
-        const matchesCourse = courseFilter === "all" || student.course.includes(courseFilter)
+    const DB_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string
+    const PAYMENTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_PAYMENTS_COLLECTION_ID as string
 
-        return matchesSearch && matchesCourse
-    })
+    const startIso = useMemo(() => startOfDayIso(new Date(startDate)), [startDate])
+    const endIso = useMemo(() => endOfDayIso(new Date(endDate)), [endDate])
+
+    async function fetchPage(opts?: { cursorAfter?: string; replace?: boolean }) {
+        if (!DB_ID || !PAYMENTS_COL_ID) {
+            setError("Missing Appwrite Database/Payments collection env IDs.")
+            return
+        }
+        setLoading(true)
+        setError("")
+
+        try {
+            const db = getDatabases()
+            const queries: string[] = [
+                Query.greaterThanEqual("$createdAt", startIso),
+                Query.lessThan("$createdAt", endIso),
+                Query.orderDesc("$createdAt"),
+                Query.limit(50),
+            ]
+
+            if (opts?.cursorAfter) queries.push(Query.cursorAfter(opts.cursorAfter))
+            if (statusFilter === "finalized") queries.push(Query.equal("status", ["Completed", "Succeeded"]))
+            if (statusFilter === "pending") queries.push(Query.equal("status", "Pending"))
+            if (methodFilter !== "all") queries.push(Query.equal("method", methodFilter))
+
+            const res = await db.listDocuments<PaymentDoc>(DB_ID, PAYMENTS_COL_ID, queries)
+            const docs = res.documents ?? []
+
+            // join with users (names/studentId/course)
+            const userIds = Array.from(new Set(docs.map((d) => d.userId).filter(Boolean)))
+            const joined: Record<string, Pick<UserProfileDoc, "fullName" | "studentId" | "course">> = {}
+
+            if (userIds.length) {
+                const { USERS_COL_ID } = getEnvIds()
+                try {
+                    const usersRes = await db.listDocuments<UserProfileDoc>(DB_ID, USERS_COL_ID, [
+                        Query.equal("$id", userIds),
+                        Query.limit(Math.max(100, userIds.length)),
+                    ])
+                    for (const u of usersRes.documents ?? []) {
+                        joined[u.$id] = { fullName: u.fullName, studentId: u.studentId, course: u.course }
+                    }
+                } catch {
+                    /* no-op, keep names blank if users fetch fails */
+                }
+            }
+
+            setUsersById((prev) => ({ ...prev, ...joined }))
+            setPayments((prev) => (opts?.replace ? docs : [...prev, ...docs]))
+            setNextCursor(docs.length === 50 ? docs[docs.length - 1].$id : undefined)
+        } catch (e: any) {
+            setError(e?.message || "Failed to load collections.")
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    useEffect(() => {
+        // on filter change, reload from scratch
+        setPayments([])
+        setUsersById({})
+        setNextCursor(undefined)
+        fetchPage({ replace: true }).catch(() => { })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [startIso, endIso, statusFilter, methodFilter])
+
+    // client-side search
+    const filtered = useMemo(() => {
+        const q = search.trim().toLowerCase()
+        if (!q) return payments
+        return payments.filter((p) => {
+            const u = usersById[p.userId] || {}
+            return (
+                String(p.$id).toLowerCase().includes(q) ||
+                String(p.reference || "").toLowerCase().includes(q) ||
+                String(u.studentId || "").toLowerCase().includes(q) ||
+                String(u.fullName || "").toLowerCase().includes(q)
+            )
+        })
+    }, [payments, search, usersById])
+
+    const totalOnPage = useMemo(
+        () =>
+            filtered
+                .filter((p) => p.status === "Completed" || p.status === "Succeeded")
+                .reduce((s, p) => s + (Number(p.amount) || 0), 0),
+        [filtered]
+    )
+
+    function downloadCsv() {
+        if (!filtered.length) return
+        const rows = filtered.map((p) => {
+            const u = usersById[p.userId] || {}
+            return {
+                createdAt: p.$createdAt,
+                paymentId: p.$id,
+                reference: p.reference || "",
+                status: p.status,
+                method: p.method,
+                amount: Number(p.amount) || 0,
+                userId: p.userId,
+                studentId: u.studentId || "",
+                fullName: u.fullName || "",
+                course: u.course || "",
+            }
+        })
+        const csv = toCsv(rows)
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `collections_${startDate}_${endDate}.csv`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        URL.revokeObjectURL(url)
+    }
 
     return (
-        <DashboardLayout>
-            <div className="container mx-auto px-4 py-8">
-                {/* Header Section with Mobile-Optimized Actions */}
-                <div className="mb-8 flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+        <DashboardLayout allowedRoles={["business-office", "admin"]}>
+            {/* Full-width container + responsive padding */}
+            <div className="mx-auto max-w-none px-2 md:px-4 py-8">
+                {/* Header & actions (vertical on mobile) */}
+                <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold text-white">Collections Management</h1>
-                        <p className="text-gray-300">Monitor and manage fee collections</p>
+                        <h1 className="text-2xl font-bold text-white">Collections</h1>
+                        <p className="text-slate-300">Payments within a date range. Live data from Appwrite.</p>
                     </div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:gap-2 sm:items-center sm:justify-end w-full sm:w-auto">
+                        {/* Animated Refresh button: spins while loading; subtle rotate on hover when idle */}
+                        <Button
+                            className="group w-full sm:w-auto"
+                            onClick={() => fetchPage({ replace: true })}
+                            disabled={loading}
+                            aria-busy={loading}
+                        >
+                            <RefreshCw
+                                className={`mr-2 h-4 w-4 transition-transform duration-300 ${loading ? "animate-spin" : "group-hover:rotate-180"
+                                    }`}
+                            />
+                            {loading ? "Refreshing…" : "Refresh"}
+                        </Button>
 
-                    {/* Mobile Actions */}
-                    <MobileActions />
-
-                    {/* Desktop Actions */}
-                    <DesktopActions />
+                        <Button
+                            className="w-full sm:w-auto"
+                            variant="outline"
+                            onClick={downloadCsv}
+                            disabled={!filtered.length}
+                        >
+                            <Download className="mr-2 h-4 w-4" />
+                            Export CSV
+                        </Button>
+                    </div>
                 </div>
 
-                {/* KPI Cards - Mobile Optimized */}
-                <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    <Card className="bg-slate-800/60 border-slate-700 text-white">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium">Total Collections</CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-4 sm:p-6">
-                            <div className="text-xl sm:text-2xl font-bold">₱10,500,000</div>
-                            <p className="text-xs text-gray-400 mt-1">
-                                <TrendingUp className="inline h-3 w-3 text-green-500 mr-1" />
-                                +15% from last month
-                            </p>
-                        </CardContent>
-                    </Card>
+                {/* Filters (vertical on mobile, added spacing between label & select/input) */}
+                <Card className="bg-slate-900/60 border-slate-700 text-white mb-6">
+                    <CardContent className="pt-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+                            <div className="lg:col-span-1 space-y-2">
+                                <Label htmlFor="start" className="mb-1 block">Start date</Label>
+                                <Input
+                                    id="start"
+                                    type="date"
+                                    value={startDate}
+                                    onChange={(e) => setStartDate(e.target.value)}
+                                    className="bg-slate-800 border-slate-700 text-white"
+                                />
+                            </div>
+                            <div className="lg:col-span-1 space-y-2">
+                                <Label htmlFor="end" className="mb-1 block">End date</Label>
+                                <Input
+                                    id="end"
+                                    type="date"
+                                    value={endDate}
+                                    onChange={(e) => setEndDate(e.target.value)}
+                                    className="bg-slate-800 border-slate-700 text-white"
+                                />
+                            </div>
+                            <div className="lg:col-span-1 space-y-2">
+                                <Label className="mb-1 block">Status</Label>
+                                <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+                                    <SelectTrigger className="bg-slate-800 border-slate-700 mt-1">
+                                        <SelectValue placeholder="All" />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                                        <SelectItem value="all">All</SelectItem>
+                                        <SelectItem value="finalized">Completed/Succeeded</SelectItem>
+                                        <SelectItem value="pending">Pending</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="lg:col-span-1 space-y-2">
+                                <Label className="mb-1 block">Method</Label>
+                                <Select value={methodFilter} onValueChange={(v) => setMethodFilter(v as MethodFilter)}>
+                                    <SelectTrigger className="bg-slate-800 border-slate-700 mt-1">
+                                        <SelectValue placeholder="All" />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                                        <SelectItem value="all">All</SelectItem>
+                                        <SelectItem value="cash">Cash</SelectItem>
+                                        <SelectItem value="card">Card</SelectItem>
+                                        <SelectItem value="credit-card">Credit Card</SelectItem>
+                                        <SelectItem value="e-wallet">E-Wallet</SelectItem>
+                                        <SelectItem value="online-banking">Online Banking</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="lg:col-span-2 space-y-2">
+                                <Label htmlFor="search" className="mb-1 block">Search (ID / Ref / Student)</Label>
+                                <Input
+                                    id="search"
+                                    placeholder="e.g. COL-... / reference / student name or ID"
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    className="bg-slate-800 border-slate-700 text-white"
+                                />
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
 
-                    <Card className="bg-slate-800/60 border-slate-700 text-white">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium">Outstanding Balance</CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-4 sm:p-6">
-                            <div className="text-xl sm:text-2xl font-bold">₱850,000</div>
-                            <p className="text-xs text-gray-400 mt-1">
-                                <Users className="inline h-3 w-3 text-amber-500 mr-1" />
-                                45 students with balance
-                            </p>
-                        </CardContent>
-                    </Card>
+                {error && (
+                    <Alert className="mb-6 bg-red-500/15 border-red-500/30 text-red-200">
+                        <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                )}
 
-                    <Card className="bg-slate-800/60 border-slate-700 text-white">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium">Collection Rate</CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-4 sm:p-6">
-                            <div className="text-xl sm:text-2xl font-bold">92.5%</div>
-                            <p className="text-xs text-gray-400 mt-1">
-                                <CheckCircle className="inline h-3 w-3 text-green-500 mr-1" />
-                                Above target (90%)
-                            </p>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="bg-slate-800/60 border-slate-700 text-white">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium">Overdue Accounts</CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-4 sm:p-6">
-                            <div className="text-xl sm:text-2xl font-bold">12</div>
-                            <p className="text-xs text-gray-400 mt-1">
-                                <Clock className="inline h-3 w-3 text-red-500 mr-1" />
-                                Requires attention
-                            </p>
-                        </CardContent>
-                    </Card>
+                <div className="mb-3 text-sm text-slate-300">
+                    Showing <span className="font-semibold">{filtered.length}</span> payments
+                    {statusFilter === "finalized" && (
+                        <>
+                            {" "}
+                            • Finalized total on page: <span className="font-semibold">{fmtPeso(totalOnPage)}</span>
+                        </>
+                    )}
                 </div>
 
-                <Alert className="mb-8 bg-amber-500/20 border-amber-500/50 text-amber-200">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>
-                        There are 12 accounts with overdue payments totaling ₱320,000. Consider sending payment reminders.
-                    </AlertDescription>
-                </Alert>
-
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                    {/* Mobile Tabs */}
-                    <MobileTabs value={activeTab} onValueChange={setActiveTab} />
-
-                    {/* Desktop Tabs */}
-                    <DesktopTabs />
-
-                    <TabsContent value="collections">
-                        <Card className="bg-slate-800/60 border-slate-700 text-white mb-6">
-                            <CardContent className="p-4 sm:p-6">
-                                {/* Mobile Filters */}
-                                <MobileFilters
-                                    searchTerm={searchTerm}
-                                    setSearchTerm={setSearchTerm}
-                                    statusFilter={statusFilter}
-                                    setStatusFilter={setStatusFilter}
-                                    courseFilter={courseFilter}
-                                    setCourseFilter={setCourseFilter}
-                                    paymentMethodFilter={paymentMethodFilter}
-                                    setPaymentMethodFilter={setPaymentMethodFilter}
-                                />
-
-                                {/* Desktop Filters */}
-                                <DesktopFilters
-                                    searchTerm={searchTerm}
-                                    setSearchTerm={setSearchTerm}
-                                    statusFilter={statusFilter}
-                                    setStatusFilter={setStatusFilter}
-                                    courseFilter={courseFilter}
-                                    setCourseFilter={setCourseFilter}
-                                    paymentMethodFilter={paymentMethodFilter}
-                                    setPaymentMethodFilter={setPaymentMethodFilter}
-                                />
-                            </CardContent>
-                        </Card>
-
-                        <Card className="bg-slate-800/60 border-slate-700 text-white">
-                            <CardHeader>
-                                <CardTitle>Recent Collections</CardTitle>
-                                <CardDescription className="text-gray-300">
-                                    Showing {filteredCollections.length} collection records
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                {/* Mobile Card View */}
-                                <div className="md:hidden space-y-4">
-                                    {filteredCollections.map((collection) => (
-                                        <Card key={collection.id} className="bg-slate-700/50 border-slate-600">
-                                            <CardContent className="p-4">
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <div>
-                                                        <p className="font-medium text-white">{collection.studentName}</p>
-                                                        <p className="text-sm text-gray-400">{collection.studentId}</p>
+                {/* Table with full-width & horizontal scrollbar */}
+                <Card className="bg-slate-900/60 border-slate-700 text-white">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Recent Payments</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="w-full overflow-x-auto rounded-md border border-slate-700">
+                            <table className="min-w-[1100px] w-full text-sm">
+                                <thead className="bg-slate-900/70 text-slate-300">
+                                    <tr>
+                                        <th className="px-4 py-2 text-left whitespace-nowrap">Created</th>
+                                        <th className="px-4 py-2 text-left whitespace-nowrap">Payment / Ref</th>
+                                        <th className="px-4 py-2 text-left whitespace-nowrap">Student</th>
+                                        <th className="px-4 py-2 text-left whitespace-nowrap">Course</th>
+                                        <th className="px-4 py-2 text-left whitespace-nowrap">Method</th>
+                                        <th className="px-4 py-2 text-left whitespace-nowrap">Status</th>
+                                        <th className="px-4 py-2 text-right whitespace-nowrap">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-700">
+                                    {loading && payments.length === 0 && (
+                                        <tr>
+                                            <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
+                                                Loading…
+                                            </td>
+                                        </tr>
+                                    )}
+                                    {!loading && filtered.length === 0 && (
+                                        <tr>
+                                            <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
+                                                No records.
+                                            </td>
+                                        </tr>
+                                    )}
+                                    {filtered.map((p) => {
+                                        const u = usersById[p.userId] || {}
+                                        const name = u.fullName || "—"
+                                        const sid = u.studentId ? ` • ${u.studentId}` : ""
+                                        return (
+                                            <tr key={p.$id}>
+                                                <td className="px-4 py-2 whitespace-nowrap">{new Date(p.$createdAt).toLocaleString()}</td>
+                                                <td className="px-4 py-2">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-medium">{p.$id}</span>
+                                                        <span className="text-xs text-slate-400">{p.reference || "—"}</span>
                                                     </div>
-                                                    <div className="text-right">
-                                                        <p className="font-bold text-white">₱{collection.amount.toLocaleString()}</p>
-                                                        {collection.status === "Collected" ? (
-                                                            <span className="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-500">
-                                                                Collected
-                                                            </span>
-                                                        ) : (
-                                                            <span className="inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-500">
-                                                                Pending
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-2 text-sm text-gray-400">
-                                                    <div>
-                                                        <span className="block">ID: {collection.id}</span>
-                                                        <span className="block">Date: {collection.date}</span>
-                                                    </div>
-                                                    <div>
-                                                        <span className="block">Fee: {collection.feeType}</span>
-                                                        <span className="block">Method: {collection.paymentMethod}</span>
-                                                    </div>
-                                                </div>
-                                                <div className="mt-2 text-sm text-gray-400">Course: {collection.course}</div>
-                                            </CardContent>
-                                        </Card>
-                                    ))}
-                                </div>
-
-                                {/* Desktop Table View */}
-                                <div className="hidden md:block rounded-lg border border-slate-700">
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full">
-                                            <thead>
-                                                <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
-                                                    <th className="px-6 py-3">Collection ID</th>
-                                                    <th className="px-6 py-3">Date</th>
-                                                    <th className="px-6 py-3">Student</th>
-                                                    <th className="px-6 py-3">Course</th>
-                                                    <th className="px-6 py-3">Fee Type</th>
-                                                    <th className="px-6 py-3">Amount</th>
-                                                    <th className="px-6 py-3">Payment Method</th>
-                                                    <th className="px-6 py-3">Status</th>
-                                                    <th className="px-6 py-3">Cashier</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-700">
-                                                {filteredCollections.map((collection) => (
-                                                    <tr key={collection.id} className="text-sm">
-                                                        <td className="whitespace-nowrap px-6 py-4 font-medium">{collection.id}</td>
-                                                        <td className="whitespace-nowrap px-6 py-4">{collection.date}</td>
-                                                        <td className="px-6 py-4">
-                                                            <div>
-                                                                <p className="font-medium">{collection.studentName}</p>
-                                                                <p className="text-xs text-gray-400">{collection.studentId}</p>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-6 py-4">{collection.course}</td>
-                                                        <td className="px-6 py-4">{collection.feeType}</td>
-                                                        <td className="whitespace-nowrap px-6 py-4">₱{collection.amount.toLocaleString()}</td>
-                                                        <td className="px-6 py-4">{collection.paymentMethod}</td>
-                                                        <td className="whitespace-nowrap px-6 py-4">
-                                                            {collection.status === "Collected" ? (
-                                                                <span className="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-500">
-                                                                    Collected
-                                                                </span>
-                                                            ) : (
-                                                                <span className="inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-500">
-                                                                    Pending
-                                                                </span>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-6 py-4">{collection.cashier}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </TabsContent>
-
-                    <TabsContent value="outstanding">
-                        <Card className="bg-slate-800/60 border-slate-700 text-white">
-                            <CardHeader>
-                                <CardTitle>Outstanding Balances</CardTitle>
-                                <CardDescription className="text-gray-300">Students with unpaid or partially paid fees</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                {/* Mobile Card View */}
-                                <div className="md:hidden space-y-4 mb-6">
-                                    {filteredOutstanding.map((student) => (
-                                        <Card key={student.studentId} className="bg-slate-700/50 border-slate-600">
-                                            <CardContent className="p-4">
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <div>
-                                                        <p className="font-medium text-white">{student.studentName}</p>
-                                                        <p className="text-sm text-gray-400">{student.studentId}</p>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className="font-bold text-amber-500">₱{student.balance.toLocaleString()}</p>
-                                                        {student.status === "Overdue" ? (
-                                                            <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-500">
-                                                                Overdue
-                                                            </span>
-                                                        ) : (
-                                                            <span className="inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-500">
-                                                                Current
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-2 text-sm text-gray-400 mb-3">
-                                                    <div>
-                                                        <span className="block">Total: ₱{student.totalFees.toLocaleString()}</span>
-                                                        <span className="block">Paid: ₱{student.amountPaid.toLocaleString()}</span>
-                                                    </div>
-                                                    <div>
-                                                        <span className="block">Due: {student.dueDate}</span>
-                                                        <span className="block">
-                                                            {student.daysOverdue > 0 ? (
-                                                                <span className="text-red-500">{student.daysOverdue} days overdue</span>
-                                                            ) : (
-                                                                <span>Current</span>
-                                                            )}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <div className="text-sm text-gray-400 mb-3">Course: {student.course}</div>
-                                                <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    className="w-full border-slate-600 text-white hover:bg-slate-700"
-                                                >
-                                                    Send Reminder
-                                                </Button>
-                                            </CardContent>
-                                        </Card>
-                                    ))}
-                                </div>
-
-                                {/* Desktop Table View */}
-                                <div className="hidden md:block rounded-lg border border-slate-700">
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full">
-                                            <thead>
-                                                <tr className="border-b border-slate-700 bg-slate-900/50 text-left text-sm font-medium text-gray-300">
-                                                    <th className="px-6 py-3">Student ID</th>
-                                                    <th className="px-6 py-3">Student Name</th>
-                                                    <th className="px-6 py-3">Course</th>
-                                                    <th className="px-6 py-3">Total Fees</th>
-                                                    <th className="px-6 py-3">Amount Paid</th>
-                                                    <th className="px-6 py-3">Balance</th>
-                                                    <th className="px-6 py-3">Due Date</th>
-                                                    <th className="px-6 py-3">Days Overdue</th>
-                                                    <th className="px-6 py-3">Status</th>
-                                                    <th className="px-6 py-3">Action</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-700">
-                                                {filteredOutstanding.map((student) => (
-                                                    <tr key={student.studentId} className="text-sm">
-                                                        <td className="whitespace-nowrap px-6 py-4 font-medium">{student.studentId}</td>
-                                                        <td className="px-6 py-4">{student.studentName}</td>
-                                                        <td className="px-6 py-4">{student.course}</td>
-                                                        <td className="whitespace-nowrap px-6 py-4">₱{student.totalFees.toLocaleString()}</td>
-                                                        <td className="whitespace-nowrap px-6 py-4">₱{student.amountPaid.toLocaleString()}</td>
-                                                        <td className="whitespace-nowrap px-6 py-4 font-medium text-amber-500">
-                                                            ₱{student.balance.toLocaleString()}
-                                                        </td>
-                                                        <td className="whitespace-nowrap px-6 py-4">{student.dueDate}</td>
-                                                        <td className="whitespace-nowrap px-6 py-4">
-                                                            {student.daysOverdue > 0 ? (
-                                                                <span className="text-red-500">{student.daysOverdue} days</span>
-                                                            ) : (
-                                                                <span className="text-gray-400">-</span>
-                                                            )}
-                                                        </td>
-                                                        <td className="whitespace-nowrap px-6 py-4">
-                                                            {student.status === "Overdue" ? (
-                                                                <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-500">
-                                                                    Overdue
-                                                                </span>
-                                                            ) : (
-                                                                <span className="inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-500">
-                                                                    Current
-                                                                </span>
-                                                            )}
-                                                        </td>
-                                                        <td className="whitespace-nowrap px-6 py-4">
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                className="border-slate-600 text-white hover:bg-slate-700"
-                                                            >
-                                                                Send Reminder
-                                                            </Button>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-
-                                <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                    <Card className="bg-slate-700/50 border-slate-600">
-                                        <CardContent className="p-4">
-                                            <p className="text-sm text-gray-400">Total Outstanding</p>
-                                            <p className="text-xl sm:text-2xl font-bold">₱850,000</p>
-                                        </CardContent>
-                                    </Card>
-                                    <Card className="bg-slate-700/50 border-slate-600">
-                                        <CardContent className="p-4">
-                                            <p className="text-sm text-gray-400">Overdue Amount</p>
-                                            <p className="text-xl sm:text-2xl font-bold text-red-500">₱320,000</p>
-                                        </CardContent>
-                                    </Card>
-                                    <Card className="bg-slate-700/50 border-slate-600">
-                                        <CardContent className="p-4">
-                                            <p className="text-sm text-gray-400">Students with Balance</p>
-                                            <p className="text-xl sm:text-2xl font-bold">45</p>
-                                        </CardContent>
-                                    </Card>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </TabsContent>
-
-                    <TabsContent value="trends">
-                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>Collection Trends</CardTitle>
-                                    <CardDescription className="text-gray-300">Monthly collection performance</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="h-64 sm:h-80">
-                                        <PaymentChart data={collectionTrend} />
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>Payment Methods</CardTitle>
-                                    <CardDescription className="text-gray-300">Distribution by payment method</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="h-100 sm:h-80">
-                                        <PaymentPieChart data={paymentMethodDistribution} />
-                                    </div>
-                                </CardContent>
-                            </Card>
+                                                </td>
+                                                <td className="px-4 py-2 whitespace-nowrap">{name}{sid}</td>
+                                                <td className="px-4 py-2 whitespace-nowrap">{u.course || "—"}</td>
+                                                <td className="px-4 py-2 whitespace-nowrap">{String(p.method || "").toLowerCase() || "—"}</td>
+                                                <td className="px-4 py-2 whitespace-nowrap">{p.status}</td>
+                                                <td className="px-4 py-2 text-right whitespace-nowrap">{fmtPeso(Number(p.amount) || 0)}</td>
+                                            </tr>
+                                        )
+                                    })}
+                                </tbody>
+                            </table>
                         </div>
 
-                        <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>Collection Efficiency</CardTitle>
-                                    <CardDescription className="text-gray-300">Key performance metrics</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <span className="text-sm text-gray-400">Average Collection Time</span>
-                                            <span className="text-sm font-medium">3.2 days</span>
-                                        </div>
-                                        <div className="h-2 w-full rounded-full bg-slate-600">
-                                            <div className="h-2 rounded-full bg-green-500" style={{ width: "85%" }}></div>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <span className="text-sm text-gray-400">First Contact Resolution</span>
-                                            <span className="text-sm font-medium">78%</span>
-                                        </div>
-                                        <div className="h-2 w-full rounded-full bg-slate-600">
-                                            <div className="h-2 rounded-full bg-blue-500" style={{ width: "78%" }}></div>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <span className="text-sm text-gray-400">Payment Success Rate</span>
-                                            <span className="text-sm font-medium">95%</span>
-                                        </div>
-                                        <div className="h-2 w-full rounded-full bg-slate-600">
-                                            <div className="h-2 rounded-full bg-green-500" style={{ width: "95%" }}></div>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>Top Performing Courses</CardTitle>
-                                    <CardDescription className="text-gray-300">By collection rate</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-3">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm">BS Computer Science</span>
-                                        <span className="text-sm font-medium text-green-500">98%</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm">BS Information Technology</span>
-                                        <span className="text-sm font-medium text-green-500">95%</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm">BS Electronics Engineering</span>
-                                        <span className="text-sm font-medium text-amber-500">88%</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm">BS Business Administration</span>
-                                        <span className="text-sm font-medium text-amber-500">85%</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm">BS Education</span>
-                                        <span className="text-sm font-medium text-red-500">72%</span>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>Collection Forecast</CardTitle>
-                                    <CardDescription className="text-gray-300">Next month projection</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="text-center">
-                                        <p className="text-sm text-gray-400">Expected Collections</p>
-                                        <p className="text-2xl sm:text-3xl font-bold text-green-500">₱2.5M</p>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-gray-400">Tuition Fees</span>
-                                            <span>₱1.8M</span>
-                                        </div>
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-gray-400">Laboratory Fees</span>
-                                            <span>₱450K</span>
-                                        </div>
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-gray-400">Other Fees</span>
-                                            <span>₱250K</span>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
+                        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="text-xs text-slate-400">
+                                Loaded {payments.length} item(s)
+                                {nextCursor ? "" : " • End of results"}
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-2">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => fetchPage({ cursorAfter: payments[payments.length - 1]?.$id })}
+                                    disabled={loading || !nextCursor}
+                                    className="border-slate-600 w-full sm:w-auto"
+                                >
+                                    Load more
+                                </Button>
+                            </div>
                         </div>
-                    </TabsContent>
-
-                    <TabsContent value="analysis">
-                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>Collection by Course</CardTitle>
-                                    <CardDescription className="text-gray-300">Revenue distribution by program</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="h-100 sm:h-80">
-                                        <PaymentPieChart data={courseCollectionDistribution} />
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>Collection Analysis</CardTitle>
-                                    <CardDescription className="text-gray-300">Key insights and recommendations</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <Alert className="bg-green-500/20 border-green-500/50 text-green-200">
-                                        <CheckCircle className="h-4 w-4" />
-                                        <AlertDescription>
-                                            Collection rate has improved by 8% compared to last semester. Credit card payments show the
-                                            highest success rate.
-                                        </AlertDescription>
-                                    </Alert>
-
-                                    <Alert className="bg-amber-500/20 border-amber-500/50 text-amber-200">
-                                        <AlertCircle className="h-4 w-4" />
-                                        <AlertDescription>
-                                            BS Education program has the lowest collection rate at 72%. Consider implementing targeted payment
-                                            plans.
-                                        </AlertDescription>
-                                    </Alert>
-
-                                    <Alert className="bg-blue-500/20 border-blue-500/50 text-blue-200">
-                                        <TrendingUp className="h-4 w-4" />
-                                        <AlertDescription>
-                                            E-wallet payments increased by 35% this semester. Consider promoting this payment method for
-                                            faster collections.
-                                        </AlertDescription>
-                                    </Alert>
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        <Card className="bg-slate-800/60 border-slate-700 text-white mt-6">
-                            <CardHeader>
-                                <CardTitle>Recommended Actions</CardTitle>
-                                <CardDescription className="text-gray-300">Based on collection analysis</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                    <div className="rounded-lg bg-slate-700/50 p-4">
-                                        <div className="flex items-center mb-2">
-                                            <FileText className="h-5 w-5 text-blue-500 mr-2" />
-                                            <h3 className="font-medium">Payment Reminders</h3>
-                                        </div>
-                                        <p className="text-sm text-gray-400">Send automated reminders to 12 overdue accounts</p>
-                                        <Button size="sm" className="mt-3 w-full bg-primary hover:bg-primary/90">
-                                            Send Reminders
-                                        </Button>
-                                    </div>
-
-                                    <div className="rounded-lg bg-slate-700/50 p-4">
-                                        <div className="flex items-center mb-2">
-                                            <CreditCard className="h-5 w-5 text-green-500 mr-2" />
-                                            <h3 className="font-medium">Payment Plans</h3>
-                                        </div>
-                                        <p className="text-sm text-gray-400">Offer installment plans for students with large balances</p>
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="mt-3 w-full border-slate-600 text-white hover:bg-slate-700"
-                                        >
-                                            Create Plans
-                                        </Button>
-                                    </div>
-
-                                    <div className="rounded-lg bg-slate-700/50 p-4">
-                                        <div className="flex items-center mb-2">
-                                            <Calendar className="h-5 w-5 text-purple-500 mr-2" />
-                                            <h3 className="font-medium">Schedule Follow-ups</h3>
-                                        </div>
-                                        <p className="text-sm text-gray-400">Set up collection follow-up calls for high-value accounts</p>
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="mt-3 w-full border-slate-600 text-white hover:bg-slate-700"
-                                        >
-                                            Schedule Calls
-                                        </Button>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </TabsContent>
-                </Tabs>
+                    </CardContent>
+                </Card>
             </div>
         </DashboardLayout>
     )
