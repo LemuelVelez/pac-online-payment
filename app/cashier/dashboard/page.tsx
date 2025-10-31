@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { StatCard } from "@/components/dashboard/stat-card"
@@ -12,6 +13,19 @@ import { listTodayPayments, paymentsToHourlySeries } from "@/lib/appwrite-cashie
 import type { PaymentDoc } from "@/lib/appwrite-payments"
 
 type ChartPoint = { month: string; amount: number }
+
+function formatDuration(ms: number) {
+  const s = Math.floor(ms / 1000)
+  const m = Math.floor(s / 60)
+  const remS = s - m * 60
+  if (m >= 60) {
+    const h = Math.floor(m / 60)
+    const remM = m - h * 60
+    return `${h}h ${remM}m`
+  }
+  if (m > 0) return `${m}m ${remS}s`
+  return `${remS}s`
+}
 
 export default function CashierDashboardPage() {
   const [loading, setLoading] = useState(true)
@@ -29,6 +43,7 @@ export default function CashierDashboardPage() {
     })()
   }, [])
 
+  // KPI: Today's totals
   const totals = useMemo(() => {
     let collected = 0
     let count = 0
@@ -45,7 +60,20 @@ export default function CashierDashboardPage() {
     return { collected, count, pending, students: users.size }
   }, [today])
 
-  // Map hourly series to the shape expected by <PaymentChart />
+  // KPI: Avg. Processing Time (creation → completion) for today's completed/succeeded payments
+  const avgProcessingLabel = useMemo(() => {
+    const done = today.filter((p) => p.status === "Completed" || p.status === "Succeeded")
+    if (!done.length) return "—"
+    let sum = 0
+    for (const p of done) {
+      const started = new Date(p.$createdAt).getTime()
+      const finished = new Date(p.$updatedAt || p.$createdAt).getTime()
+      sum += Math.max(0, finished - started)
+    }
+    return formatDuration(Math.round(sum / done.length))
+  }, [today])
+
+  // Chart data: "Today's Transaction Flow" (hourly amounts)
   const chartData = useMemo<ChartPoint[]>(
     () =>
       paymentsToHourlySeries(today).map((d) => ({
@@ -63,6 +91,7 @@ export default function CashierDashboardPage() {
           <p className="text-gray-300">Process payments and manage transactions</p>
         </div>
 
+        {/* KPI cards */}
         <div className="grid grid-cols-1 gap-6 mb-8 md:grid-cols-2 lg:grid-cols-4">
           <StatCard
             title="Today's Collections"
@@ -95,14 +124,15 @@ export default function CashierDashboardPage() {
           />
           <StatCard
             title="Avg. Processing Time"
-            value="—"
+            value={avgProcessingLabel}
             icon={Clock}
             iconColor="text-yellow-500"
             iconBgColor="bg-yellow-500/20"
-            footer={<p className="text-gray-400 text-sm">coming soon</p>}
+            footer={<p className="text-gray-400 text-sm">creation → completion</p>}
           />
         </div>
 
+        {/* Charts + Recent */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card className="bg-slate-800/60 border-slate-700 text-white">
             <CardHeader>
@@ -122,9 +152,11 @@ export default function CashierDashboardPage() {
                 <CardTitle>Recent Transactions</CardTitle>
                 <CardDescription className="text-gray-300">Latest payment activities</CardDescription>
               </div>
-              <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
-                View All
-              </Button>
+              <Link href="/cashier/transactions">
+                <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700 cursor-pointer">
+                  View All
+                </Button>
+              </Link>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -133,19 +165,22 @@ export default function CashierDashboardPage() {
                 ) : today.length === 0 ? (
                   <div className="text-gray-400">No transactions today.</div>
                 ) : (
-                  today.slice(0, 8).map((p) => (
-                    <TransactionItem
-                      key={p.$id}
-                      icon={p.method === "credit-card" ? CreditCard : Receipt}
-                      iconColor={p.status === "Completed" ? "text-green-500" : "text-blue-500"}
-                      iconBgColor={p.status === "Completed" ? "bg-green-500/20" : "bg-blue-500/20"}
-                      title={Array.isArray(p.fees) && p.fees.length ? `${p.fees.join(", ")} Fee` : "Payment"}
-                      date={`${new Date(p.$createdAt).toLocaleString()}`}
-                      amount={`₱${Number(p.amount || 0).toLocaleString()}`}
-                      status={p.status}
-                      statusColor={p.status === "Completed" ? "text-green-500 text-sm" : "text-blue-500 text-sm"}
-                    />
-                  ))
+                  today.slice(0, 8).map((p) => {
+                    const isCard = String(p.method || "").toLowerCase().includes("card")
+                    return (
+                      <TransactionItem
+                        key={p.$id}
+                        icon={isCard ? CreditCard : Receipt}
+                        iconColor={p.status === "Completed" ? "text-green-500" : "text-blue-500"}
+                        iconBgColor={p.status === "Completed" ? "bg-green-500/20" : "bg-blue-500/20"}
+                        title={Array.isArray(p.fees) && p.fees.length ? `${p.fees.join(", ")} Fee` : "Payment"}
+                        date={`${new Date(p.$createdAt).toLocaleString()}`}
+                        amount={`₱${Number(p.amount || 0).toLocaleString()}`}
+                        status={p.status}
+                        statusColor={p.status === "Completed" ? "text-green-500 text-sm" : "text-blue-500 text-sm"}
+                      />
+                    )
+                  })
                 )}
               </div>
             </CardContent>
