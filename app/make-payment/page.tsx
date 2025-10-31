@@ -765,8 +765,7 @@ export default function MakePaymentPage() {
               <Alert className="bg-blue-500/20 border-blue-500/50 text-blue-200">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  For security reasons, do not close your browser during the payment process. You will be redirected back
-                  after completing your payment.
+                  For security reasons, do not close your browser during the payment process.
                 </AlertDescription>
               </Alert>
             </div>

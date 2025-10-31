@@ -968,9 +968,9 @@ Thank you!`
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel className="border-slate-600">Cancel</AlertDialogCancel>
+              <AlertDialogCancel className="border-slate-600 cursor-pointer">Cancel</AlertDialogCancel>
               <AlertDialogAction
-                className="bg-red-600 hover:bg-red-700"
+                className="bg-red-600 hover:bg-red-700 text-white cursor-pointer"
                 onClick={confirmDeleteMyMessage}
                 disabled={deleting}
               >
