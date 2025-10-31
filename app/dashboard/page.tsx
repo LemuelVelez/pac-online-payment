@@ -275,7 +275,8 @@ export default function DashboardPage() {
                 ? feePlanLegacy.total!
                 : undefined
 
-    const balance = typeof totalFees === "number" ? Math.max(0, totalFees - (isFinite(paidTotal) ? paidTotal : 0)) : undefined
+    const balance =
+        typeof totalFees === "number" ? Math.max(0, totalFees - (isFinite(paidTotal) ? paidTotal : 0)) : undefined
     const progressPct =
         typeof totalFees === "number" && totalFees > 0
             ? Math.min(100, Math.round(((isFinite(paidTotal) ? paidTotal : 0) / totalFees) * 100))
@@ -359,9 +360,17 @@ export default function DashboardPage() {
                                 <div className="mr-4 rounded-lg bg-emerald-500/20 p-3">
                                     <Wallet className="size-6 text-emerald-500" />
                                 </div>
-                                <div>
-                                    <p className="text-3xl font-bold">{typeof totalFees === "number" ? `₱${totalFees.toLocaleString()}` : "—"}</p>
-                                    <p className="text-sm text-gray-300">Selected plan total {selectedPlan ? `(${selectedPlan.program})` : ""}</p>
+                                {/* Allow the text column to actually shrink so the inner scroller can work */}
+                                <div className="min-w-0">
+                                    {/* H-scroll for long currency */}
+                                    <div className="overflow-x-auto max-w-full">
+                                        <div className="whitespace-nowrap text-3xl font-bold">
+                                            {typeof totalFees === "number" ? `₱${totalFees.toLocaleString()}` : "—"}
+                                        </div>
+                                    </div>
+                                    <p className="text-sm text-gray-300">
+                                        Selected plan total {selectedPlan ? `(${selectedPlan.program})` : ""}
+                                    </p>
                                 </div>
                             </div>
                         </CardContent>
@@ -377,9 +386,14 @@ export default function DashboardPage() {
                                 <div className="mr-4 rounded-lg bg-blue-500/20 p-3">
                                     <BookOpen className="size-6 text-blue-400" />
                                 </div>
-                                <div>
-                                    <p className="text-3xl font-bold">₱{paidTotal.toLocaleString()}</p>
-                                    <p className="text-sm text-gray-300">{typeof totalFees === "number" ? `${progressPct ?? 0}% of total` : "—"}</p>
+                                {/* Allow shrink so scroller appears on small widths */}
+                                <div className="min-w-0">
+                                    <div className="overflow-x-auto max-w-full">
+                                        <div className="whitespace-nowrap text-3xl font-bold">₱{paidTotal.toLocaleString()}</div>
+                                    </div>
+                                    <p className="text-sm text-gray-300">
+                                        {typeof totalFees === "number" ? `${progressPct ?? 0}% of total` : "—"}
+                                    </p>
                                 </div>
                             </div>
                         </CardContent>
@@ -395,10 +409,13 @@ export default function DashboardPage() {
                                 <div className="mr-4 rounded-lg bg-red-500/20 p-3">
                                     <CreditCard className="size-6 text-red-500" />
                                 </div>
-                                <div>
-                                    <p className="text-3xl font-bold">
-                                        {typeof balance === "number" ? `₱${balance.toLocaleString()}` : "—"}
-                                    </p>
+                                {/* Fix: min-w-0 enables the inner overflow-x container to take effect */}
+                                <div className="min-w-0">
+                                    <div className="overflow-x-auto max-w-full">
+                                        <div className="whitespace-nowrap text-3xl font-bold">
+                                            {typeof balance === "number" ? `₱${balance.toLocaleString()}` : "—"}
+                                        </div>
+                                    </div>
                                     <p className="text-sm text-gray-300">
                                         {typeof progressPct === "number" ? `${Math.max(0, 100 - progressPct)}% remaining` : "—"}
                                     </p>
@@ -438,13 +455,16 @@ export default function DashboardPage() {
                         <div className="space-y-4">
                             <div className="flex items-center justify-between">
                                 <span className="text-sm font-medium">Overall Progress</span>
-                                <span className="text-sm font-medium">{typeof progressPct === "number" ? `${progressPct}%` : "—"}</span>
+                                <span className="text-sm font-medium">
+                                    {typeof progressPct === "number" ? `${progressPct}%` : "—"}
+                                </span>
                             </div>
                             <Progress value={progressPct ?? 0} className="h-2 bg-slate-700" />
                             {typeof balance === "number" && balance > 0 && (
                                 <Alert className="mt-4 bg-amber-500/20 border-amber-500/50 text-amber-200">
                                     <AlertDescription>
-                                        You have a remaining balance of ₱{balance.toLocaleString()}. Please settle your payments before the deadline.
+                                        You have a remaining balance of ₱{balance.toLocaleString()}. Please settle your
+                                        payments before the deadline.
                                     </AlertDescription>
                                 </Alert>
                             )}

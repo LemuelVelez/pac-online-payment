@@ -39,6 +39,7 @@ import {
   markAllNotificationsRead,
   deleteNotification,
   parseNotificationText,
+  startCashierRealtimeBridge,
 } from "@/lib/notification"
 
 interface DashboardHeaderProps {
@@ -140,7 +141,8 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
     meRef.current = { id: String(userId) }
 
     let stopNotifs: null | (() => void) = null
-    let stopBridges: null | (() => void) = null
+    let stopStudentBridge: null | (() => void) = null
+    let stopCashierBridge: null | (() => void) = null
     let mounted = true
 
       ; (async () => {
@@ -162,7 +164,14 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
             (removedId) => setItems((prev) => prev.filter((p) => p.$id !== removedId))
           )
 
-          stopBridges = startPaymentAndMessageBridges(userId)
+          // Student-side bridge (kept): payment status + cashier replies → student notifications
+          stopStudentBridge = startPaymentAndMessageBridges(userId)
+
+          // Cashier-side global bridge: ensures cashier notifications update anywhere in the app
+          const isCashier = (user as any)?.role === "cashier"
+          if (isCashier) {
+            stopCashierBridge = startCashierRealtimeBridge(userId)
+          }
         } catch (err: any) {
           toast.error("Notifications failed to load", { description: err?.message || "Please try again." })
         } finally {
@@ -172,10 +181,11 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
 
     return () => {
       mounted = false
-      try { stopNotifs?.() } catch { }
-      try { stopBridges?.() } catch { }
+      try { stopNotifs?.() } catch { /* noop */ }
+      try { stopStudentBridge?.() } catch { /* noop */ }
+      try { stopCashierBridge?.() } catch { /* noop */ }
     }
-  }, [userId])
+  }, [userId, user])
 
   const onMarkAsRead = useCallback(async (id: string) => {
     setRowState((s) => ({ ...s, [id]: { ...s[id], saving: true } }))
@@ -218,6 +228,7 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
   const fallbackHref = (cleanText: string): string | undefined => {
     const t = cleanText.toLowerCase()
     if (t.includes("cashier replied") || t.includes("payment ")) return "/payment-history"
+    if (t.includes("pending") || t.includes("online payment") || t.includes("student message")) return "/cashier/transactions"
     return undefined
   }
 
@@ -225,7 +236,7 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
     const { clean, href } = parseNotificationText(doc.notification)
     // mark as read first (UX expectation)
     if (doc.status === "unread") {
-      try { await onMarkAsRead(doc.$id) } catch { }
+      try { await onMarkAsRead(doc.$id) } catch { /* noop */ }
     }
     const target = href || fallbackHref(clean)
     setNotifOpen(false)
@@ -454,11 +465,11 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel className="bg-slate-800 text-white border-slate-700" disabled={isLoggingOutAll}>
+                <AlertDialogCancel className="bg-slate-800 text-white border-slate-700 cursor-pointer" disabled={isLoggingOutAll}>
                   Cancel
                 </AlertDialogCancel>
                 <AlertDialogAction
-                  className="inline-flex items-center"
+                  className="inline-flex items-center cursor-pointer"
                   disabled={isLoggingOutAll}
                   onClick={handleLogoutAll}
                   aria-busy={isLoggingOutAll}
@@ -494,11 +505,11 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel className="bg-slate-800 text-white border-slate-700" disabled={isLoggingOut}>
+                <AlertDialogCancel className="bg-slate-800 text-white border-slate-700 cursor-pointer" disabled={isLoggingOut}>
                   Cancel
                 </AlertDialogCancel>
                 <AlertDialogAction
-                  className="inline-flex items-center"
+                  className="inline-flex items-center cursor-pointer"
                   disabled={isLoggingOut}
                   onClick={handleLogout}
                   aria-busy={isLoggingOut}

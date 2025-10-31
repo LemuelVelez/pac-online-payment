@@ -657,7 +657,7 @@ Thank you!`
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="border-slate-600"
+                                className="border-slate-600 cursor-pointer"
                                 onClick={() => setAskDialogFor(p)}
                               >
                                 Ask Cashier for Receipt
@@ -669,7 +669,7 @@ Thank you!`
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="border-slate-600"
+                                className="border-slate-600 cursor-pointer"
                                 onClick={() => handleViewReceipt(p)}
                                 title={
                                   hasReceiptDoc

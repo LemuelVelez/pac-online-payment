@@ -1,4 +1,3 @@
-// app/cashier/transactions/page.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
@@ -35,6 +34,7 @@ import {
 } from "@/lib/appwrite-messages"
 import { verifyPendingPaymentAndIssueReceipt } from "@/lib/appwrite-cashier"
 import { getFeePlan, type FeePlanDoc, computeTotals } from "@/lib/fee-plan"
+import { createUniqueNotification } from "@/lib/notification" // <-- NEW
 
 type ReceiptData = {
   receiptNumber: string
@@ -437,6 +437,76 @@ export default function CashierTransactionsPage() {
       ),
     [allPayments]
   )
+
+  // === NEW: derived counts for cashier notifications ===
+  const pendingAllCount = useMemo(
+    () => (allPayments ?? []).filter((p) => p.status === "Pending").length,
+    [allPayments]
+  )
+  const pendingTodayCount = useMemo(() => {
+    const t = new Date()
+    const y = t.getFullYear()
+    const m = t.getMonth()
+    const d = t.getDate()
+    return (allPayments ?? []).filter((p) => {
+      if (p.status !== "Pending") return false
+      const dt = new Date(p.$createdAt)
+      return dt.getFullYear() === y && dt.getMonth() === m && dt.getDate() === d
+    }).length
+  }, [allPayments])
+  const unreadMsgCount = useMemo(
+    () => (messages || []).filter((m) => (m.status ?? "new").toLowerCase() === "new").length,
+    [messages]
+  )
+
+  // === NEW: push cashier notifications (deduped) based on counts
+  useEffect(() => {
+    if (!meId) return
+    const tasks: Array<Promise<any>> = []
+
+    const online = pendingOnlinePayments.length
+    if (online > 0) {
+      tasks.push(
+        createUniqueNotification(
+          meId,
+          `Pending Online Payments: ${online}`,
+          "/cashier/transactions?tab=all&method=online"
+        )
+      )
+    }
+    if (pendingAllCount > 0) {
+      tasks.push(
+        createUniqueNotification(
+          meId,
+          `Pending (All Transactions): ${pendingAllCount}`,
+          "/cashier/transactions?tab=all&status=pending"
+        )
+      )
+    }
+    if (pendingTodayCount > 0) {
+      tasks.push(
+        createUniqueNotification(
+          meId,
+          `Pending Today: ${pendingTodayCount}`,
+          "/cashier/transactions?tab=today&status=pending"
+        )
+      )
+    }
+    if (unreadMsgCount > 0) {
+      tasks.push(
+        createUniqueNotification(
+          meId,
+          `Unread student messages: ${unreadMsgCount}`,
+          "/cashier/transactions?tab=messages"
+        )
+      )
+    }
+
+    if (tasks.length) {
+      Promise.allSettled(tasks).catch(() => { })
+    }
+  }, [meId, pendingOnlinePayments.length, pendingAllCount, pendingTodayCount, unreadMsgCount])
+  // === END new notifications ===
 
   /* ================= Receipt view & verification ================= */
 

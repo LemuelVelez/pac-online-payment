@@ -34,7 +34,7 @@ function ids() {
 const HREF_TAG_PREFIX = "[@href:"
 const HREF_TAG_RE = /\s*\[@href:([^\]]+)\]\s*$/ // captures trailing [@href:/route]
 
-/** Attach an href marker at the end of the text, e.g. "Cashier replied [@href:/payment-history]". */
+/** Attach an href marker at the end of the text, e.g., "Cashier replied [@href:/payment-history]". */
 export function encodeHref(text: string, href?: string): string {
   if (!href) return text
   return `${text} ${HREF_TAG_PREFIX}${href}]`
@@ -80,6 +80,30 @@ export async function createNotification(userId: string, text: string, href?: st
   return doc
 }
 
+/** Create only if an identical notification (same text+href) doesn't already exist for this user. */
+export async function createUniqueNotification(
+  userId: string,
+  text: string,
+  href?: string
+): Promise<NotificationDoc> {
+  const db = getDatabases()
+  const { DB_ID, NOTIFS_COL_ID } = ids()
+  const encoded = encodeHref((text || "").trim(), href)
+
+  const existing = await db
+    .listDocuments<NotificationDoc>(
+      DB_ID,
+      NOTIFS_COL_ID,
+      [Query.equal("userId", userId), Query.equal("notification", encoded), Query.limit(1)]
+    )
+    .catch(() => null)
+
+  const hit = existing?.documents?.[0]
+  if (hit) return hit
+
+  return createNotification(userId, text, href)
+}
+
 export async function markNotificationRead(id: string): Promise<NotificationDoc> {
   const db = getDatabases()
   const { DB_ID, NOTIFS_COL_ID } = ids()
@@ -110,7 +134,6 @@ export async function deleteNotification(id: string, opts?: { onlyIfRead?: boole
   const db = getDatabases()
   const { DB_ID, NOTIFS_COL_ID } = ids()
   if (opts?.onlyIfRead) {
-    // Fetch once to confirm status
     try {
       const doc = await db.getDocument<NotificationDoc>(DB_ID, NOTIFS_COL_ID, id)
       if ((doc.status as any) !== "read") {
@@ -134,7 +157,7 @@ async function listUnreadNotifications(userId: string, limit = 100): Promise<Not
   return res.documents ?? []
 }
 
-/* ----------------------------- Realtime feed ---------------------------- */
+/* ----------------------------- Realtime feed (notifications collection) ---------------------------- */
 
 export function subscribeToNotificationFeed(
   userId: string,
@@ -173,7 +196,7 @@ export function subscribeToNotificationFeed(
   }
 }
 
-/* -------- Bridge: Payments & Cashier Replies → Notifications (userId) -------- */
+/* -------- Student-side bridge: Payments & Cashier replies → student notifications -------- */
 
 export function startPaymentAndMessageBridges(userId: string): () => void {
   const { DB_ID, PAYMENTS_COL_ID, MESSAGES_COL_ID } = ids()
@@ -195,7 +218,7 @@ export function startPaymentAndMessageBridges(userId: string): () => void {
 
       const ref = p.reference || p.$id
       const msg = `Payment ${ref} is now ${status}.`
-      createNotification(userId, msg, "/payment-history").catch(() => {})
+      createUniqueNotification(userId, msg, "/payment-history").catch(() => {})
     })
     cleaners.push(() => {
       try { off() } catch {}
@@ -219,13 +242,217 @@ export function startPaymentAndMessageBridges(userId: string): () => void {
       if (replied) {
         const subject = m.subject ? `“${m.subject}”` : m.$id
         const msg = `Cashier replied to ${subject}.`
-        createNotification(userId, msg, "/payment-history").catch(() => {})
+        createUniqueNotification(userId, msg, "/payment-history").catch(() => {})
       }
     })
     cleaners.push(() => {
       try { off() } catch {}
     })
   }
+
+  return () => {
+    for (const c of cleaners) {
+      try { c() } catch {}
+    }
+  }
+}
+
+/* -------- NEW: Cashier-side global bridge — works even if Transactions page is never opened -------- */
+
+/**
+ * Subscribes to Payments & Messages to keep cashier notifications up to date app-wide.
+ * Emits:
+ *  - granular: "New online payment pending: <REF>"
+ *  - aggregates:
+ *      "Pending Online Payments: N"
+ *      "Pending (All Transactions): N"
+ *      "Pending Today: N"
+ *      "Unread student messages: K"
+ * All created via createUniqueNotification → no duplicates when unchanged.
+ */
+export function startCashierRealtimeBridge(cashierId: string): () => void {
+  const { DB_ID, PAYMENTS_COL_ID, MESSAGES_COL_ID } = ids()
+  const client = getClient()
+  const cleaners: Array<() => void> = []
+
+  async function countUnreadStudentMessages(cashierId: string): Promise<number> {
+    const { DB_ID, MESSAGES_COL_ID } = ids()
+    if (!DB_ID || !MESSAGES_COL_ID) return 0
+    const db = getDatabases()
+
+    // Try common schemas: assignedCashierId, cashierId, recipientId
+    const fields = ["assignedCashierId", "cashierId", "recipientId"]
+    const statuses = [
+      ["status", "new"],
+      ["status", "unread"],
+    ] as Array<[string, string]>
+
+    const collected: Record<string, any> = {}
+
+    for (const f of fields) {
+      try {
+        const res = await db.listDocuments<any>(
+          DB_ID,
+          MESSAGES_COL_ID,
+          [Query.equal(f, cashierId), Query.limit(500), Query.orderDesc("$createdAt")]
+        )
+        for (const m of res.documents ?? []) {
+          collected[m.$id] = m
+        }
+      } catch { /* ignore */ }
+    }
+
+    const arr = Object.values(collected) as any[]
+    if (!arr.length) return 0
+
+    // Heuristic "unread": status=new|unread OR explicit isRead=false OR no response yet
+    const unread = arr.filter((m: any) => {
+      const st = String(m.status ?? "").toLowerCase()
+      const hasResponse = typeof m.responseMessage === "string" && m.responseMessage.trim().length > 0
+      const isRead = (m.isRead === true) || (String(m.read) === "true")
+      const statusUnread = statuses.some(([k, v]) => String(m[k] ?? "").toLowerCase() === v)
+      return !isRead && (!hasResponse || statusUnread || st === "open" || st === "pending")
+    })
+
+    return unread.length
+  }
+
+  async function recomputeAndEmit() {
+    try {
+      const { DB_ID, PAYMENTS_COL_ID } = ids()
+      if (!DB_ID || !PAYMENTS_COL_ID) return
+      const db = getDatabases()
+
+      // Pull pending payments (reasonable limit) and compute aggregates
+      const pendRes = await db.listDocuments<any>(
+        DB_ID,
+        PAYMENTS_COL_ID,
+        [Query.equal("status", "Pending"), Query.orderDesc("$createdAt"), Query.limit(500)]
+      )
+      const pendingDocs = (pendRes?.documents ?? []) as any[]
+
+      const onlinePending = pendingDocs.filter(
+        (p) => !["cash", "card"].includes(String(p.method || "").toLowerCase())
+      )
+      const pendingOnlineCount = onlinePending.length
+      const pendingAllCount = pendingDocs.length
+
+      const now = new Date()
+      const y = now.getFullYear()
+      const m = now.getMonth()
+      const d = now.getDate()
+      const pendingTodayCount = pendingDocs.filter((p) => {
+        const dt = new Date(p.$createdAt)
+        return dt.getFullYear() === y && dt.getMonth() === m && dt.getDate() === d
+      }).length
+
+      const unreadMsgCount = await countUnreadStudentMessages(cashierId)
+
+      const tasks: Array<Promise<any>> = []
+      if (pendingOnlineCount > 0) {
+        tasks.push(
+          createUniqueNotification(
+            cashierId,
+            `Pending Online Payments: ${pendingOnlineCount}`,
+            "/cashier/transactions?tab=all&method=online"
+          )
+        )
+      }
+      if (pendingAllCount > 0) {
+        tasks.push(
+          createUniqueNotification(
+            cashierId,
+            `Pending (All Transactions): ${pendingAllCount}`,
+            "/cashier/transactions?tab=all&status=pending"
+          )
+        )
+      }
+      if (pendingTodayCount > 0) {
+        tasks.push(
+          createUniqueNotification(
+            cashierId,
+            `Pending Today: ${pendingTodayCount}`,
+            "/cashier/transactions?tab=today&status=pending"
+          )
+        )
+      }
+      if (unreadMsgCount > 0) {
+        tasks.push(
+          createUniqueNotification(
+            cashierId,
+            `Unread student messages: ${unreadMsgCount}`,
+            "/cashier/transactions?tab=messages"
+          )
+        )
+      }
+      if (tasks.length) await Promise.allSettled(tasks)
+    } catch {
+      /* silent */
+    }
+  }
+
+  // Payments: granular + aggregates
+  if (DB_ID && PAYMENTS_COL_ID) {
+    const channel = `databases.${DB_ID}.collections.${PAYMENTS_COL_ID}.documents`
+    const off = client.subscribe(channel, (res: any) => {
+      const events: string[] = Array.isArray(res?.events) ? res.events : []
+      const isCreate = events.some((e) => e.endsWith(".create"))
+      const isUpdate = events.some((e) => e.endsWith(".update"))
+      const p = res?.payload as any
+      if (!(isCreate || isUpdate) || !p) return
+
+      const status = String(p.status || "")
+      const method = String(p.method || "").toLowerCase()
+
+      // Granular per-payment ping for new/updated ONLINE pending (dedup by ref)
+      if (status === "Pending" && !["cash", "card"].includes(method)) {
+        const ref = p.reference || p.$id
+        createUniqueNotification(
+          cashierId,
+          `New online payment pending: ${ref}`,
+          "/cashier/transactions?tab=all&method=online"
+        ).catch(() => {})
+      }
+
+      // Update aggregate counters
+      recomputeAndEmit()
+    })
+    cleaners.push(() => {
+      try { off() } catch {}
+    })
+  }
+
+  // Messages: new/updated items possibly for this cashier → recompute & granular
+  if (DB_ID && MESSAGES_COL_ID) {
+    const channel = `databases.${DB_ID}.collections.${MESSAGES_COL_ID}.documents`
+    const off = client.subscribe(channel, (res: any) => {
+      const events: string[] = Array.isArray(res?.events) ? res.events : []
+      const isCreate = events.some((e) => e.endsWith(".create"))
+      const isUpdate = events.some((e) => e.endsWith(".update"))
+      const m = res?.payload as any
+      if (!(isCreate || isUpdate) || !m) return
+
+      // Best-effort filter: recognize common assignment fields
+      const assignedFields = [m.cashierId, m.assignedCashierId, m.recipientId]
+      const isForThisCashier = assignedFields.some((v) => String(v || "") === String(cashierId))
+      if (isForThisCashier) {
+        const subject = m.subject ? `“${m.subject}”` : m.$id
+        createUniqueNotification(
+          cashierId,
+          `New / updated student message: ${subject}`,
+          "/cashier/transactions?tab=messages"
+        ).catch(() => {})
+      }
+
+      recomputeAndEmit()
+    })
+    cleaners.push(() => {
+      try { off() } catch {}
+    })
+  }
+
+  // Seed counts immediately
+  recomputeAndEmit()
 
   return () => {
     for (const c of cleaners) {
