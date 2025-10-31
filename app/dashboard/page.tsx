@@ -35,6 +35,11 @@ type UserProfileDoc = Models.Document & {
     yearId?: "1" | "2" | "3" | "4"
     feePlan?: FeePlanLegacy
     totalFees?: number
+
+    /** NEW: persisted selection set from Make Payment */
+    selectedPlanId?: string | null
+    selectedPlanProgram?: string | null
+    selectedPlanUpdatedAt?: string | null
 }
 
 type MonthPoint = { month: string; amount: number }
@@ -67,8 +72,7 @@ function normalizeYearId(input?: string | null): UserProfileDoc["yearId"] | unde
 function StatusBadge({ status }: { status: string }) {
     const s = (status || "").toLowerCase()
 
-    let classes =
-        "bg-slate-600/30 text-slate-200 border-slate-500/40"
+    let classes = "bg-slate-600/30 text-slate-200 border-slate-500/40"
     if (s.includes("success") || s.includes("complete") || s.includes("paid")) {
         classes = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
     } else if (s.includes("pend") || s.includes("process") || s.includes("await") || s.includes("incomplete")) {
@@ -91,7 +95,7 @@ export default function DashboardPage() {
     const [courseId, setCourseId] = useState<UserProfileDoc["courseId"]>()
     const [yearId, setYearId] = useState<UserProfileDoc["yearId"]>()
 
-    // Payment and plan data (source of truth = make-payment logic)
+    // Payment and plan data (now driven by persisted selection)
     const [paidTotal, setPaidTotal] = useState(0)
     const [activePlans, setActivePlans] = useState<FeePlanDoc[]>([])
     const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
@@ -102,6 +106,17 @@ export default function DashboardPage() {
     // History / charts
     const [paymentHistory, setPaymentHistory] = useState<MonthPoint[]>([])
     const [transactions, setTransactions] = useState<TxnRow[]>([])
+
+    // Keep in sync if user changes plan in another tab
+    useEffect(() => {
+        const onStorage = (e: StorageEvent) => {
+            if (e.key === "selectedPlanId") setSelectedPlanId(e.newValue || null)
+        }
+        if (typeof window !== "undefined") {
+            window.addEventListener("storage", onStorage)
+            return () => window.removeEventListener("storage", onStorage)
+        }
+    }, [])
 
     useEffect(() => {
         ; (async () => {
@@ -116,7 +131,7 @@ export default function DashboardPage() {
                     return
                 }
 
-                // --- Fetch profile for course/year (not for fees) ---
+                // --- Fetch profile for course/year and previously saved selection ---
                 const { DB_ID, USERS_COL_ID } = getEnvIds()
                 const db = getDatabases()
                 const doc = await db.getDocument<UserProfileDoc>(DB_ID, USERS_COL_ID, me.$id).catch(() => null)
@@ -148,11 +163,13 @@ export default function DashboardPage() {
                 }
                 setPaidTotal(paid)
 
-                // --- Load active fee plans and auto-pick a preferred one (by course) ---
+                // --- Load active fee plans ---
                 const allPlans = await listAllFeePlans()
                 const onlyActive = allPlans.filter((p) => p.isActive !== false)
                 setActivePlans(onlyActive)
 
+                // Determine final selected plan:
+                // 1) persisted on profile, 2) localStorage, 3) preferred by course, 4) only active if single
                 const courseCodeMap: Record<NonNullable<UserProfileDoc["courseId"]>, string> = {
                     bsed: "BSED",
                     bscs: "BSCS",
@@ -164,11 +181,18 @@ export default function DashboardPage() {
                     ? onlyActive.filter((p) => p.program?.toLowerCase().includes(courseLabel.toLowerCase()))
                     : onlyActive
 
-                if (preferred.length > 0) {
-                    setSelectedPlanId(preferred[0].$id)
+                const lsId = typeof window !== "undefined" ? window.localStorage.getItem("selectedPlanId") : null
+                const persistedId = doc.selectedPlanId || lsId
+
+                let finalId: string | null = null
+                if (persistedId && onlyActive.some((p) => p.$id === persistedId)) {
+                    finalId = persistedId
+                } else if (preferred.length > 0) {
+                    finalId = preferred[0].$id
                 } else if (onlyActive.length === 1) {
-                    setSelectedPlanId(onlyActive[0].$id)
+                    finalId = onlyActive[0].$id
                 }
+                setSelectedPlanId(finalId)
 
                 // --- Pull recent payments for charts and transactions ---
                 const paymentsResp = await db.listDocuments<PaymentDoc>(DB_ID, PAYMENTS_COL_ID, [
@@ -435,9 +459,7 @@ export default function DashboardPage() {
                             <CardHeader>
                                 <CardTitle>Fee Breakdown</CardTitle>
                                 <CardDescription className="text-gray-300">
-                                    {selectedPlan
-                                        ? `Active plan: ${selectedPlan.program}`
-                                        : "Legacy fees loaded from profile (fallback)"}
+                                    {selectedPlan ? `Active plan: ${selectedPlan.program}` : "Legacy fees loaded from profile (fallback)"}
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>

@@ -17,7 +17,7 @@ import { getCurrentUserSafe, getDatabases, getEnvIds } from "@/lib/appwrite"
 import { createPayment, getPaidTotal, type PaymentRecord } from "@/lib/appwrite-payments"
 import type { Models } from "appwrite"
 
-// NEW: fee plan imports
+// fee plan imports
 import { listAllFeePlans, computeTotals, type FeePlanDoc } from "@/lib/fee-plan"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -38,6 +38,11 @@ type UserProfileDoc = Models.Document & {
   yearId?: "1" | "2" | "3" | "4"
   feePlan?: FeePlanLegacy
   totalFees?: number
+
+  /** NEW: persisted selection */
+  selectedPlanId?: string | null
+  selectedPlanProgram?: string | null
+  selectedPlanUpdatedAt?: string | null
 }
 
 function normalizeCourseId(input?: string | null): UserProfileDoc["courseId"] | undefined {
@@ -75,9 +80,39 @@ export default function MakePaymentPage() {
   const [showPaymongoDialog, setShowPaymongoDialog] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
 
-  // NEW: Active fee plans fetched from DB + selected plan id
+  // Active fee plans fetched from DB + selected plan id
   const [activePlans, setActivePlans] = useState<FeePlanDoc[]>([])
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
+
+  /** Persist selection to Appwrite + mirror in localStorage */
+  const persistSelectedPlan = async (plan: FeePlanDoc | null) => {
+    try {
+      const me = await getCurrentUserSafe()
+      if (me) {
+        const { DB_ID, USERS_COL_ID } = getEnvIds()
+        const db = getDatabases()
+        await db.updateDocument(DB_ID, USERS_COL_ID, me.$id, {
+          selectedPlanId: plan?.$id ?? null,
+          selectedPlanProgram: plan?.program ?? null,
+          selectedPlanUpdatedAt: new Date().toISOString(),
+        } as Partial<UserProfileDoc>)
+      }
+    } catch {
+      // non-fatal; still mirror to localStorage
+    } finally {
+      if (typeof window !== "undefined") {
+        if (plan) {
+          window.localStorage.setItem("selectedPlanId", plan.$id)
+          window.localStorage.setItem("selectedPlanProgram", plan.program ?? "")
+        } else {
+          window.localStorage.removeItem("selectedPlanId")
+          window.localStorage.removeItem("selectedPlanProgram")
+        }
+        // let other tabs (dashboard) react immediately
+        window.dispatchEvent(new StorageEvent("storage", { key: "selectedPlanId", newValue: plan?.$id ?? "" }))
+      }
+    }
+  }
 
   useEffect(() => {
     ; (async () => {
@@ -132,11 +167,13 @@ export default function MakePaymentPage() {
         }
         setPaidTotal(paid)
 
-        // NEW: Load active fee plans
+        // Load active fee plans
         const allPlans = await listAllFeePlans()
         const onlyActive = allPlans.filter((p) => p.isActive !== false)
+        setActivePlans(onlyActive)
 
-        // Prefer plans matching the student's course (e.g., "BSED", "BSCS", etc.)
+        // Resolve initial selection priority:
+        // 1) profile.selectedPlanId, 2) localStorage, 3) preferred by course, 4) only active if single
         const courseCodeMap: Record<NonNullable<UserProfileDoc["courseId"]>, string> = {
           bsed: "BSED",
           bscs: "BSCS",
@@ -148,13 +185,23 @@ export default function MakePaymentPage() {
           ? onlyActive.filter((p) => p.program?.toLowerCase().includes(courseLabel.toLowerCase()))
           : onlyActive
 
-        setActivePlans(onlyActive)
+        const lsId = typeof window !== "undefined" ? window.localStorage.getItem("selectedPlanId") : null
+        const persistedId = doc.selectedPlanId || lsId
 
-        // Auto-select a plan if there’s a clear match
-        if (preferred.length > 0) {
-          setSelectedPlanId(preferred[0].$id)
+        let finalId: string | null = null
+        if (persistedId && onlyActive.some((p) => p.$id === persistedId)) {
+          finalId = persistedId
+        } else if (preferred.length > 0) {
+          finalId = preferred[0].$id
         } else if (onlyActive.length === 1) {
-          setSelectedPlanId(onlyActive[0].$id)
+          finalId = onlyActive[0].$id
+        }
+        setSelectedPlanId(finalId || null)
+
+        // If there was nothing persisted but we auto-picked, mirror that (non-blocking)
+        if (!persistedId && finalId) {
+          const picked = onlyActive.find((p) => p.$id === finalId) || null
+          if (picked) persistSelectedPlan(picked)
         }
       } catch (e: any) {
         const msg = e?.message ?? "Failed to load payment data."
@@ -223,7 +270,7 @@ export default function MakePaymentPage() {
     if (val) toast.info("Amount filled", { description: `Using selected fees total: ₱${selectedFeesTotal.toLocaleString()}` })
   }
 
-  // NEW: helpers to use plan total or balance
+  // helpers to use plan total or balance
   const usePlanTotal = () => {
     if (typeof totalFees === "number") {
       setAmount(String(totalFees))
@@ -283,7 +330,7 @@ export default function MakePaymentPage() {
         status: "Pending",
         reference: link.id,
 
-        // NEW: link the chosen plan
+        // link the chosen plan
         planId: selectedPlan?.$id ?? null,
         planRef: selectedPlan?.$id ?? null,
       }
@@ -324,7 +371,7 @@ export default function MakePaymentPage() {
             </span>
           </div>
 
-          {/* 🔔 HIGH-VISIBILITY GMAIL REMINDER (Top banner) */}
+          {/* 🔔 Gmail reminder */}
           <Alert
             role="status"
             aria-live="polite"
@@ -333,7 +380,6 @@ export default function MakePaymentPage() {
             <Mail className="h-5 w-5" />
             <AlertTitle className="text-amber-100">PayMongo Receipt</AlertTitle>
             <AlertDescription className="text-amber-100 text-[0.95rem]">
-              {/* UPDATED EXACT WORDING */}
               Please check the Gmail you use to input during your transaction in paymongo to see your PayMongo receipt
               after you made a payment with PayMongo.
             </AlertDescription>
@@ -351,7 +397,7 @@ export default function MakePaymentPage() {
         ) : (
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
             <div className="lg:col-span-2">
-              {/* NEW: Active Fee Plan chooser */}
+              {/* Active Fee Plan chooser */}
               <Card className="mb-8 bg-slate-800/60 border-slate-700 text-white">
                 <CardHeader>
                   <CardTitle>Choose Fee Plan</CardTitle>
@@ -372,7 +418,7 @@ export default function MakePaymentPage() {
                           value={selectedPlanId ?? ""}
                           onValueChange={(v) => {
                             setSelectedPlanId(v)
-                            const picked = activePlans.find((p) => p.$id === v)
+                            const picked = activePlans.find((p) => p.$id === v) || null
                             if (picked) {
                               const t = computeTotals({
                                 units: picked.units,
@@ -381,6 +427,10 @@ export default function MakePaymentPage() {
                                 feeItems: picked.feeItems,
                               })
                               toast.success("Plan selected", { description: `${picked.program} • ₱${t.total.toLocaleString()}` })
+                              // 🔐 persist to profile + localStorage so Dashboard reflects immediately
+                              persistSelectedPlan(picked)
+                            } else {
+                              persistSelectedPlan(null)
                             }
                           }}
                         >
@@ -719,12 +769,11 @@ export default function MakePaymentPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
-              {/* ✅ High-visibility Gmail reminder INSIDE dialog */}
+              {/* Gmail reminder INSIDE dialog */}
               <Alert className="bg-amber-500/20 border-amber-500/50 text-amber-100 ring-1 ring-amber-400/40">
                 <Mail className="h-4 w-4" />
                 <AlertTitle className="text-amber-100">Don’t miss your receipt</AlertTitle>
                 <AlertDescription>
-                  {/* UPDATED EXACT WORDING */}
                   Please check the Gmail you use to input during your transaction in paymongo to see your PayMongo receipt
                   after you made a payment with PayMongo.
                 </AlertDescription>
