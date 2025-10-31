@@ -40,6 +40,7 @@ import {
   deleteNotification,
   parseNotificationText,
   startCashierRealtimeBridge,
+  startAdminRealtimeBridge,
 } from "@/lib/notification"
 
 interface DashboardHeaderProps {
@@ -65,6 +66,10 @@ type RowState = { saving?: boolean; deleting?: boolean }
 export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
   const router = useRouter()
   const { user, logout } = useAuth()
+
+  // Role helpers
+  const role = (user as any)?.role as string | undefined
+  const hideNotifications = role === "business-office"
 
   // Profile menu state
   const [menuOpen, setMenuOpen] = useState(false)
@@ -133,7 +138,8 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
   const unreadCount = useMemo(() => items.filter((n) => n.status === "unread").length, [items])
 
   useEffect(() => {
-    if (!userId) {
+    // If not logged in OR role is business-office, skip notifications entirely
+    if (!userId || hideNotifications) {
       setItems([])
       setLoadingNotifs(false)
       return
@@ -143,6 +149,7 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
     let stopNotifs: null | (() => void) = null
     let stopStudentBridge: null | (() => void) = null
     let stopCashierBridge: null | (() => void) = null
+    let stopAdminBridge: null | (() => void) = null
     let mounted = true
 
       ; (async () => {
@@ -164,13 +171,19 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
             (removedId) => setItems((prev) => prev.filter((p) => p.$id !== removedId))
           )
 
-          // Student-side bridge (kept): payment status + cashier replies → student notifications
+          // Student-side bridge (kept)
           stopStudentBridge = startPaymentAndMessageBridges(userId)
 
-          // Cashier-side global bridge: ensures cashier notifications update anywhere in the app
-          const isCashier = (user as any)?.role === "cashier"
+          // Cashier-side bridge (kept)
+          const isCashier = role === "cashier"
           if (isCashier) {
             stopCashierBridge = startCashierRealtimeBridge(userId)
+          }
+
+          // Admin-side bridge (kept)
+          const isAdmin = role === "admin"
+          if (isAdmin) {
+            stopAdminBridge = startAdminRealtimeBridge(userId)
           }
         } catch (err: any) {
           toast.error("Notifications failed to load", { description: err?.message || "Please try again." })
@@ -181,11 +194,12 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
 
     return () => {
       mounted = false
-      try { stopNotifs?.() } catch { /* noop */ }
-      try { stopStudentBridge?.() } catch { /* noop */ }
-      try { stopCashierBridge?.() } catch { /* noop */ }
+      try { stopNotifs?.() } catch { }
+      try { stopStudentBridge?.() } catch { }
+      try { stopCashierBridge?.() } catch { }
+      try { stopAdminBridge?.() } catch { }
     }
-  }, [userId, user])
+  }, [userId, role, hideNotifications])
 
   const onMarkAsRead = useCallback(async (id: string) => {
     setRowState((s) => ({ ...s, [id]: { ...s[id], saving: true } }))
@@ -229,21 +243,18 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
     const t = cleanText.toLowerCase()
     if (t.includes("cashier replied") || t.includes("payment ")) return "/payment-history"
     if (t.includes("pending") || t.includes("online payment") || t.includes("student message")) return "/cashier/transactions"
+    if (t.includes("new user registered")) return "/admin/users"
     return undefined
   }
 
   const handleOpenNotification = async (doc: NotificationDoc) => {
     const { clean, href } = parseNotificationText(doc.notification)
-    // mark as read first (UX expectation)
     if (doc.status === "unread") {
-      try { await onMarkAsRead(doc.$id) } catch { /* noop */ }
+      try { await onMarkAsRead(doc.$id) } catch { }
     }
     const target = href || fallbackHref(clean)
     setNotifOpen(false)
-    if (target) {
-      // Navigate to the page where the notification came from
-      router.push(target)
-    }
+    if (target) router.push(target)
   }
   /* ============================================================================= */
 
@@ -258,147 +269,141 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* ====== NOTIFICATIONS (Appwrite, userId-based, realtime) ====== */}
-          <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}>
-            <DropdownMenuTrigger asChild>
-              <button className="relative text-gray-400 hover:text-white cursor-pointer" aria-label="Notifications">
-                <Bell className="h-6 w-6" />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 h-4 min-w-4 px-1 rounded-full bg-red-500 text-white text-[10px] leading-4 flex items-center justify-center">
-                    {unreadCount}
-                  </span>
-                )}
-              </button>
-            </DropdownMenuTrigger>
+          {/* ====== NOTIFICATIONS (hidden for business-office) ====== */}
+          {!hideNotifications && (
+            <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}>
+              <DropdownMenuTrigger asChild>
+                <button className="relative text-gray-400 hover:text-white cursor-pointer" aria-label="Notifications">
+                  <Bell className="h-6 w-6" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 h-4 min-w-4 px-1 rounded-full bg-red-500 text-white text-[10px] leading-4 flex items-center justify-center">
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+              </DropdownMenuTrigger>
 
-            <DropdownMenuContent align="end" className="w-96 bg-slate-800 border-slate-700 text-white">
-              <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-              <DropdownMenuSeparator className="bg-slate-700" />
+              <DropdownMenuContent align="end" className="w-96 bg-slate-800 border-slate-700 text-white">
+                <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+                <DropdownMenuSeparator className="bg-slate-700" />
 
-              {/* List */}
-              {loadingNotifs ? (
-                <div className="px-3 py-6 text-sm text-slate-300 flex items-center">
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Loading…
-                </div>
-              ) : items.length === 0 ? (
-                <div className="px-3 py-4 text-sm text-slate-300">No notifications.</div>
-              ) : (
-                <div className="max-h-[70vh] overflow-y-auto">
-                  {items.map((n, i) => {
-                    const st = rowState[n.$id] || {}
-                    const unread = n.status === "unread"
-                    const { clean, href } = parseNotificationText(n.notification)
-                    return (
-                      <div key={n.$id}>
-                        <DropdownMenuItem
-                          className="hover:bg-slate-700 cursor-pointer py-3"
-                          onSelect={async (e) => {
-                            e.preventDefault()
-                            await handleOpenNotification(n)
-                          }}
-                        >
-                          <div className="flex w-full items-start gap-3">
-                            {/* unread dot */}
-                            <span
-                              className={`mt-2 h-2 w-2 rounded-full ${unread ? "bg-blue-400" : "bg-slate-600"}`}
-                              aria-hidden
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm">{clean}</div>
-                              <div className="mt-1 text-xs text-slate-300">{timeAgo(n.$createdAt)}</div>
-                              {/* optional little hint on hover if href exists */}
-                              {href ? (
-                                <span className="sr-only">Opens {href}</span>
-                              ) : null}
-                            </div>
-                            {/* actions */}
-                            <div className="flex items-center gap-1">
-                              {unread ? (
-                                <button
-                                  className="text-blue-300 hover:text-blue-200"
-                                  title="Mark as read"
-                                  onClick={async (e) => {
-                                    e.stopPropagation()
-                                    e.preventDefault()
-                                    await onMarkAsRead(n.$id)
-                                  }}
-                                  disabled={!!st.saving}
-                                >
-                                  {st.saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                                </button>
-                              ) : (
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <button
-                                      className="text-red-300 hover:text-red-200"
-                                      title="Delete (only read)"
-                                      disabled={!!st.deleting}
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      {st.deleting ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                      ) : (
-                                        <Delete className="h-4 w-4" />
-                                      )}
-                                    </button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent className="bg-slate-900 border-slate-700 text-white">
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Delete notification?</AlertDialogTitle>
-                                      <AlertDialogDescription className="text-slate-300">
-                                        This action cannot be undone. Only <b>read</b> notifications can be deleted.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel className="bg-slate-800 text-white border-slate-700">
-                                        Cancel
-                                      </AlertDialogCancel>
-                                      <AlertDialogAction
-                                        className="bg-red-600 hover:bg-red-700"
-                                        onClick={async () => {
-                                          await onDelete(n.$id)
-                                        }}
+                {loadingNotifs ? (
+                  <div className="px-3 py-6 text-sm text-slate-300 flex items-center">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Loading…
+                  </div>
+                ) : items.length === 0 ? (
+                  <div className="px-3 py-4 text-sm text-slate-300">No notifications.</div>
+                ) : (
+                  <div className="max-h-[70vh] overflow-y-auto">
+                    {items.map((n, i) => {
+                      const st = rowState[n.$id] || {}
+                      const unread = n.status === "unread"
+                      const { clean, href } = parseNotificationText(n.notification)
+                      return (
+                        <div key={n.$id}>
+                          <DropdownMenuItem
+                            className="hover:bg-slate-700 cursor-pointer py-3"
+                            onSelect={async (e) => {
+                              e.preventDefault()
+                              await handleOpenNotification(n)
+                            }}
+                          >
+                            <div className="flex w-full items-start gap-3">
+                              <span
+                                className={`mt-2 h-2 w-2 rounded-full ${unread ? "bg-blue-400" : "bg-slate-600"}`}
+                                aria-hidden
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-sm">{clean}</div>
+                                <div className="mt-1 text-xs text-slate-300">{timeAgo(n.$createdAt)}</div>
+                                {href ? <span className="sr-only">Opens {href}</span> : null}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                {unread ? (
+                                  <button
+                                    className="text-blue-300 hover:text-blue-200"
+                                    title="Mark as read"
+                                    onClick={async (e) => {
+                                      e.stopPropagation()
+                                      e.preventDefault()
+                                      await onMarkAsRead(n.$id)
+                                    }}
+                                    disabled={!!st.saving}
+                                  >
+                                    {st.saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                                  </button>
+                                ) : (
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <button
+                                        className="text-red-300 hover:text-red-200"
+                                        title="Delete (only read)"
+                                        disabled={!!st.deleting}
+                                        onClick={(e) => e.stopPropagation()}
                                       >
-                                        Delete
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              )}
+                                        {st.deleting ? (
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                          <Delete className="h-4 w-4" />
+                                        )}
+                                      </button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent className="bg-slate-900 border-slate-700 text-white">
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Delete notification?</AlertDialogTitle>
+                                        <AlertDialogDescription className="text-slate-300">
+                                          This action cannot be undone. Only <b>read</b> notifications can be deleted.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel className="bg-slate-800 text-white border-slate-700">
+                                          Cancel
+                                        </AlertDialogCancel>
+                                        <AlertDialogAction
+                                          className="bg-red-600 hover:bg-red-700"
+                                          onClick={async () => {
+                                            await onDelete(n.$id)
+                                          }}
+                                        >
+                                          Delete
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        </DropdownMenuItem>
-                        {i < items.length - 1 ? (
-                          <DropdownMenuSeparator className="bg-slate-700" />
-                        ) : null}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+                          </DropdownMenuItem>
+                          {i < items.length - 1 ? (
+                            <DropdownMenuSeparator className="bg-slate-700" />
+                          ) : null}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
 
-              {/* Footer actions */}
-              {items.length > 0 ? (
-                <>
-                  <DropdownMenuSeparator className="bg-slate-700" />
-                  <DropdownMenuItem
-                    className="hover:bg-slate-700 cursor-pointer"
-                    onSelect={async (e) => {
-                      e.preventDefault()
-                      await onMarkAllRead()
-                      setNotifOpen(false)
-                    }}
-                  >
-                    Mark all as read
-                  </DropdownMenuItem>
-                </>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {/* ====== END NOTIFICATIONS ====== */}
+                {items.length > 0 ? (
+                  <>
+                    <DropdownMenuSeparator className="bg-slate-700" />
+                    <DropdownMenuItem
+                      className="hover:bg-slate-700 cursor-pointer"
+                      onSelect={async (e) => {
+                        e.preventDefault()
+                        await onMarkAllRead()
+                        setNotifOpen(false)
+                      }}
+                    >
+                      Mark all as read
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
-          {/* Profile + Menu (restored) */}
+          {/* Profile + Menu */}
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
             <DropdownMenuTrigger asChild>
               <Avatar className="h-8 w-8 cursor-pointer border border-slate-600">

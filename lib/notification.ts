@@ -19,14 +19,14 @@ export type NotificationRecord = {
 export type NotificationDoc = Models.Document & NotificationRecord
 
 function ids() {
-  const { DB_ID } = getEnvIds()
+  const { DB_ID, USERS_COL_ID } = getEnvIds() // ⬅️ include USERS_COL_ID
   const NOTIFS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_NOTIFICATION_COLLECTION_ID as string
   const PAYMENTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_PAYMENTS_COLLECTION_ID as string | undefined
   const MESSAGES_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_MESSAGES_COLLECTION_ID as string | undefined
   if (!DB_ID || !NOTIFS_COL_ID) {
     console.warn("[notification] Missing DB/Notifications collection env IDs.")
   }
-  return { DB_ID, NOTIFS_COL_ID, PAYMENTS_COL_ID, MESSAGES_COL_ID }
+  return { DB_ID, USERS_COL_ID, NOTIFS_COL_ID, PAYMENTS_COL_ID, MESSAGES_COL_ID }
 }
 
 /* ----------------------- Link encoding/decoding (no new columns) ----------------------- */
@@ -257,19 +257,8 @@ export function startPaymentAndMessageBridges(userId: string): () => void {
   }
 }
 
-/* -------- NEW: Cashier-side global bridge — works even if Transactions page is never opened -------- */
+/* -------- Cashier-side global bridge (kept) -------- */
 
-/**
- * Subscribes to Payments & Messages to keep cashier notifications up to date app-wide.
- * Emits:
- *  - granular: "New online payment pending: <REF>"
- *  - aggregates:
- *      "Pending Online Payments: N"
- *      "Pending (All Transactions): N"
- *      "Pending Today: N"
- *      "Unread student messages: K"
- * All created via createUniqueNotification → no duplicates when unchanged.
- */
 export function startCashierRealtimeBridge(cashierId: string): () => void {
   const { DB_ID, PAYMENTS_COL_ID, MESSAGES_COL_ID } = ids()
   const client = getClient()
@@ -458,5 +447,43 @@ export function startCashierRealtimeBridge(cashierId: string): () => void {
     for (const c of cleaners) {
       try { c() } catch {}
     }
+  }
+}
+
+/* -------- NEW: Admin-side bridge — new user registrations → admin notifications -------- */
+
+/**
+ * Subscribes to the Users collection and, on every document creation,
+ * creates a deep-linked notification for the current admin.
+ * Link: /admin/users
+ */
+export function startAdminRealtimeBridge(adminId: string): () => void {
+  const { DB_ID, USERS_COL_ID } = ids()
+  const client = getClient()
+
+  if (!DB_ID || !USERS_COL_ID) {
+    return () => {}
+  }
+
+  const channel = `databases.${DB_ID}.collections.${USERS_COL_ID}.documents`
+  const off = client.subscribe(channel, (res: any) => {
+    const events: string[] = Array.isArray(res?.events) ? res.events : []
+    const isCreate = events.some((e) => e.endsWith(".create"))
+    if (!isCreate) return
+
+    const u = res?.payload as any
+    if (!u) return
+
+    const name = (u.fullName || u.name || "").trim()
+    const email = (u.email || "").trim()
+    const who = name && email ? `${name} (${email})` : name || email || u.userId || u.$id
+    const msg = `New user registered: ${who}.`
+
+    // Deep-link straight to admin users page
+    createUniqueNotification(adminId, msg, "/admin/users").catch(() => {})
+  })
+
+  return () => {
+    try { off() } catch {}
   }
 }
