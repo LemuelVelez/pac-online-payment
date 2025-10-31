@@ -7,10 +7,8 @@ import {
   Users,
   BarChart4,
   DollarSign,
-  Wallet,
   Calculator,
   ClipboardCheck,
-  PieChart,
   History,
 } from "lucide-react";
 
@@ -49,22 +47,10 @@ export const navigationConfig = {
       icon: DollarSign,
     },
     {
-      name: "Budget Management",
-      href: "/business-office/budget",
-      icon: Wallet,
-    },
-    { name: "Analytics", href: "/business-office/analytics", icon: BarChart4 },
-    {
       name: "Reconciliation",
       href: "/business-office/reconciliation",
       icon: ClipboardCheck,
     },
-    {
-      name: "Forecasting",
-      href: "/business-office/forecasting",
-      icon: PieChart,
-    },
-    { name: "Expenses", href: "/business-office/expenses", icon: Calculator },
     { name: "Settings", href: "/business-office/settings", icon: Settings },
   ],
 };
