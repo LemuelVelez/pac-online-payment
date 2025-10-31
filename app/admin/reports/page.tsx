@@ -14,6 +14,7 @@ import { Download, RefreshCcw } from "lucide-react"
 import { getDatabases, getEnvIds, Query } from "@/lib/appwrite"
 import type { PaymentDoc } from "@/lib/appwrite-payments"
 import { computeStudentTotals } from "@/lib/appwrite-cashier"
+import { getBalanceRecord, parseBalanceNumber } from "@/lib/balance"
 
 /* ========================= Types ========================= */
 
@@ -186,7 +187,7 @@ export default function AdminReportsPage() {
         usersById: Record<string, UserProfileDoc>
     }>({ loading: true, error: null, payments: [], usersById: {} })
 
-    // Outstanding balances (lazy loaded to avoid N+1 on mount)
+    // Outstanding balances (lazy loaded)
     const [{ obLoading, obError, outstanding }, setOb] = useState<{
         obLoading: boolean
         obError: string | null
@@ -217,6 +218,46 @@ export default function AdminReportsPage() {
         load()
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
+
+    // Quick date presets
+    function setPreset(preset: "today" | "yesterday" | "last7" | "last30" | "thisMonth") {
+        const now = new Date()
+        const ymd = (d: Date) => d.toISOString().slice(0, 10)
+
+        if (preset === "today") {
+            setDateFrom(ymd(now))
+            setDateTo(ymd(now))
+            return
+        }
+        if (preset === "yesterday") {
+            const y = new Date(now)
+            y.setDate(now.getDate() - 1)
+            setDateFrom(ymd(y))
+            setDateTo(ymd(y))
+            return
+        }
+        if (preset === "last7") {
+            const s = new Date(now)
+            s.setDate(now.getDate() - 6)
+            setDateFrom(ymd(s))
+            setDateTo(ymd(now))
+            return
+        }
+        if (preset === "last30") {
+            const s = new Date(now)
+            s.setDate(now.getDate() - 29)
+            setDateFrom(ymd(s))
+            setDateTo(ymd(now))
+            return
+        }
+        if (preset === "thisMonth") {
+            const s = new Date(now.getFullYear(), now.getMonth(), 1)
+            const e = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+            setDateFrom(ymd(s))
+            setDateTo(ymd(e))
+            return
+        }
+    }
 
     const filtered = useMemo(() => {
         return (payments || []).filter((p) => {
@@ -262,6 +303,30 @@ export default function AdminReportsPage() {
         }
     }, [filtered])
 
+    // Breakdown cards
+    const breakdown = useMemo(() => {
+        const byStatus: Record<string, { count: number; amount: number }> = {}
+        const byMethod: Record<string, { count: number; amount: number }> = {}
+        for (const p of filtered) {
+            const amt = Number(p.amount) || 0
+            const s = p.status || "—"
+            const m = String(p.method || "—")
+            if (!byStatus[s]) byStatus[s] = { count: 0, amount: 0 }
+            if (!byMethod[m]) byMethod[m] = { count: 0, amount: 0 }
+            byStatus[s].count += 1
+            byStatus[s].amount += amt
+            byMethod[m].count += 1
+            byMethod[m].amount += amt
+        }
+        const statusRows = Object.entries(byStatus)
+            .map(([k, v]) => ({ key: k, ...v }))
+            .sort((a, b) => b.amount - a.amount)
+        const methodRows = Object.entries(byMethod)
+            .map(([k, v]) => ({ key: k, ...v }))
+            .sort((a, b) => b.amount - a.amount)
+        return { statusRows, methodRows }
+    }, [filtered])
+
     function exportPaymentsCsv() {
         const rows = filtered.map((p) => {
             const u = usersById[p.userId]
@@ -283,11 +348,15 @@ export default function AdminReportsPage() {
         downloadCsv(`payments_${dateFrom}_to_${dateTo}.csv`, csv)
     }
 
+    /** Outstanding Balances:
+     *  - paidTotal / balanceTotal from computeStudentTotals
+     *  - balance snapshot preferred from Balance collection (if any)
+     *  - Total Fees = Paid Total + Balance (per request)
+     */
     async function loadOutstandingBalances() {
         try {
             setOb((s) => ({ ...s, obLoading: true, obError: null }))
-            // Load a reasonable slice of students to keep the page snappy
-            const students = await listStudents(300) // adjust if needed
+            const students = await listStudents(300)
             const results: Array<{
                 studentId?: string
                 fullName?: string
@@ -296,27 +365,33 @@ export default function AdminReportsPage() {
                 balanceTotal: number
             }> = []
 
-            // Do in small batches to avoid flooding
             const batches = chunk(students, 12)
             for (const group of batches) {
                 const chunked = await Promise.all(
                     group.map(async (s) => {
-                        const t = await computeStudentTotals(s.$id, s.feePlan)
+                        const [totals, balDoc] = await Promise.all([
+                            computeStudentTotals(s.$id, s.feePlan),
+                            getBalanceRecord(s.$id).catch(() => null),
+                        ])
+
+                        const snap = parseBalanceNumber(balDoc)
+                        const balance = typeof snap === "number" ? snap : totals.balanceTotal
+                        const paid = totals.paidTotal || 0
+
                         return {
                             studentId: s.studentId,
                             fullName: s.fullName,
-                            totalFees: typeof s.totalFees === "number" ? s.totalFees : s.feePlan?.total,
-                            paidTotal: t.paidTotal,
-                            balanceTotal: t.balanceTotal,
+                            totalFees: (paid || 0) + (balance || 0),
+                            paidTotal: paid,
+                            balanceTotal: balance,
                         }
                     })
                 )
                 results.push(...chunked)
             }
 
-            // Only show those with a real outstanding balance (> 0.01)
             const nonZero = results
-                .filter((r) => (r.balanceTotal || 0) > 0.009)
+                .filter((r) => (r.balanceTotal || 0) > 0.009 || (r.paidTotal || 0) > 0)
                 .sort((a, b) => (b.balanceTotal || 0) - (a.balanceTotal || 0))
 
             setOb({ obLoading: false, obError: null, outstanding: nonZero })
@@ -329,7 +404,7 @@ export default function AdminReportsPage() {
         const rows = outstanding.map((r) => ({
             student_id: r.studentId || "",
             student_name: r.fullName || "",
-            total_fees: r.totalFees ?? "",
+            total_fees: (r.paidTotal || 0) + (r.balanceTotal || 0),
             paid_total: r.paidTotal,
             balance_total: r.balanceTotal,
         }))
@@ -347,7 +422,8 @@ export default function AdminReportsPage() {
                         <p className="text-gray-300">Accurate, live data from Appwrite</p>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 w-full lg:w-auto">
+                    {/* Controls wrapper: vertical on mobile */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 w-full lg:w-auto">
                         <div className="col-span-1 sm:col-span-1 lg:col-span-2">
                             <label className="block text-xs text-gray-400 mb-1">From</label>
                             <Input
@@ -366,22 +442,39 @@ export default function AdminReportsPage() {
                                 onChange={(e) => setDateTo(e.target.value)}
                             />
                         </div>
-                        <Button
-                            className="col-span-1 sm:col-span-1 lg:col-span-1 bg-primary hover:bg-primary/90"
-                            onClick={load}
-                            disabled={loading}
-                        >
-                            <RefreshCcw className="mr-2 h-4 w-4" />
-                            Reload
-                        </Button>
+
+                        {/* Presets + Reload: vertical on mobile */}
+                        <div className="col-span-1 sm:col-span-2 lg:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <Button variant="outline" className="w-full border-slate-600 text-white" onClick={() => setPreset("today")}>
+                                Today
+                            </Button>
+                            <Button variant="outline" className="w-full border-slate-600 text-white" onClick={() => setPreset("yesterday")}>
+                                Yesterday
+                            </Button>
+                            <Button variant="outline" className="w-full border-slate-600 text-white" onClick={() => setPreset("last7")}>
+                                Last 7
+                            </Button>
+                            <Button variant="outline" className="w-full border-slate-600 text-white" onClick={() => setPreset("last30")}>
+                                Last 30
+                            </Button>
+                            <Button variant="outline" className="w-full border-slate-600 text-white" onClick={() => setPreset("thisMonth")}>
+                                This month
+                            </Button>
+                            <Button className="w-full bg-primary hover:bg-primary/90" onClick={load} disabled={loading}>
+                                <RefreshCcw className="mr-2 h-4 w-4" />
+                                Reload
+                            </Button>
+                        </div>
+
+                        {/* Mobile-only Export button (full width) */}
                         <Button
                             variant="outline"
-                            className="col-span-1 sm:col-span-1 lg:col-span-1 border-slate-600 text-white"
+                            className="w-full col-span-1 sm:col-span-2 lg:col-span-2 border-slate-600 text-white lg:hidden"
                             onClick={exportPaymentsCsv}
                             disabled={loading || filtered.length === 0}
                         >
                             <Download className="mr-2 h-4 w-4" />
-                            Export CSV
+                            Export Payments CSV
                         </Button>
                     </div>
                 </div>
@@ -451,6 +544,89 @@ export default function AdminReportsPage() {
                     </Card>
                 ) : null}
 
+                {/* Breakdown */}
+                <Card className="bg-slate-800/60 border-slate-700 text-white">
+                    <CardHeader className="pb-2">
+                        <CardTitle>Breakdown</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* By Status */}
+                            <div className="rounded-lg border border-slate-700 overflow-x-auto">
+                                <table className="w-full min-w-[420px]">
+                                    <thead>
+                                        <tr className="bg-slate-900/60 border-b border-slate-700 text-left text-xs text-gray-300">
+                                            <th className="px-4 py-3">Status</th>
+                                            <th className="px-4 py-3">Txns</th>
+                                            <th className="px-4 py-3">Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-700">
+                                        {breakdown.statusRows.length === 0 ? (
+                                            <tr>
+                                                <td className="px-4 py-4 text-sm text-gray-400" colSpan={3}>
+                                                    No data for the current filters.
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            breakdown.statusRows.map((r) => (
+                                                <tr key={r.key} className="text-sm">
+                                                    <td className="px-4 py-3">{r.key}</td>
+                                                    <td className="px-4 py-3">{r.count}</td>
+                                                    <td className="px-4 py-3 whitespace-nowrap">{formatPeso(r.amount)}</td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* By Method */}
+                            <div className="rounded-lg border border-slate-700 overflow-x-auto">
+                                <table className="w-full min-w-[420px]">
+                                    <thead>
+                                        <tr className="bg-slate-900/60 border-b border-slate-700 text-left text-xs text-gray-300">
+                                            <th className="px-4 py-3">Method</th>
+                                            <th className="px-4 py-3">Txns</th>
+                                            <th className="px-4 py-3">Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-700">
+                                        {breakdown.methodRows.length === 0 ? (
+                                            <tr>
+                                                <td className="px-4 py-4 text-sm text-gray-400" colSpan={3}>
+                                                    No data for the current filters.
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            breakdown.methodRows.map((r) => (
+                                                <tr key={r.key} className="text-sm">
+                                                    <td className="px-4 py-3">{r.key}</td>
+                                                    <td className="px-4 py-3">{r.count}</td>
+                                                    <td className="px-4 py-3 whitespace-nowrap">{formatPeso(r.amount)}</td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* Desktop export */}
+                        <div className="mt-3 flex justify-end">
+                            <Button
+                                variant="outline"
+                                className="border-slate-600 text-white hidden lg:inline-flex"
+                                onClick={exportPaymentsCsv}
+                                disabled={loading || filtered.length === 0}
+                            >
+                                <Download className="mr-2 h-4 w-4" />
+                                Export Payments CSV
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+
                 {/* Payments Table */}
                 <Card className="bg-slate-800/60 border-slate-700 text-white">
                     <CardHeader className="pb-2">
@@ -507,29 +683,28 @@ export default function AdminReportsPage() {
                     </CardContent>
                 </Card>
 
-                {/* Outstanding Balances (minimal, optional) */}
+                {/* Outstanding Balances (Total Fees = Paid Total + Balance) */}
                 <Card className="bg-slate-800/60 border-slate-700 text-white">
-                    <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                    <CardHeader className="pb-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <CardTitle>Outstanding Balances</CardTitle>
-                        <div className="flex gap-2">
+                        {/* Buttons: vertical on mobile */}
+                        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                             <Button
                                 variant="outline"
-                                className="border-slate-600 text-white"
+                                className="w-full sm:w-auto border-slate-600 text-white"
                                 onClick={exportOutstandingCsv}
                                 disabled={outstanding.length === 0}
                             >
                                 <Download className="mr-2 h-4 w-4" />
                                 Export CSV
                             </Button>
-                            <Button onClick={loadOutstandingBalances} disabled={obLoading}>
+                            <Button className="w-full sm:w-auto" onClick={loadOutstandingBalances} disabled={obLoading}>
                                 {obLoading ? "Computing…" : "Compute"}
                             </Button>
                         </div>
                     </CardHeader>
                     <CardContent className="pt-0">
-                        {obError ? (
-                            <div className="mb-3 text-sm text-red-300">{obError}</div>
-                        ) : null}
+                        {obError ? <div className="mb-3 text-sm text-red-300">{obError}</div> : null}
                         <div className="rounded-lg border border-slate-700 overflow-x-auto">
                             <table className="w-full min-w-[800px]">
                                 <thead>
@@ -559,7 +734,9 @@ export default function AdminReportsPage() {
                                             <tr key={`${r.studentId}-${i}`} className="text-sm">
                                                 <td className="px-4 py-3">{r.fullName || "—"}</td>
                                                 <td className="px-4 py-3">{r.studentId || "—"}</td>
-                                                <td className="px-4 py-3 whitespace-nowrap">{typeof r.totalFees === "number" ? formatPeso(r.totalFees) : "—"}</td>
+                                                <td className="px-4 py-3 whitespace-nowrap">
+                                                    {formatPeso((r.paidTotal || 0) + (r.balanceTotal || 0))}
+                                                </td>
                                                 <td className="px-4 py-3 whitespace-nowrap">{formatPeso(r.paidTotal)}</td>
                                                 <td className="px-4 py-3 whitespace-nowrap">{formatPeso(r.balanceTotal)}</td>
                                             </tr>
