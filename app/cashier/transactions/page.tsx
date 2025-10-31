@@ -1,3 +1,4 @@
+// app/cashier/transactions/page.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
@@ -9,9 +10,19 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { PaymentReceipt } from "@/components/payment/payment-receipt"
 import { DateRangePicker } from "@/components/admin/date-range-picker"
-import { Search, RefreshCw, Filter, Eye, Loader2, Reply, Paperclip, CheckCircle, FileText } from "lucide-react"
+import { Search, RefreshCw, Filter, Eye, Loader2, Reply, Paperclip, CheckCircle, Pencil, Trash2, Save } from "lucide-react"
 import { getDatabases, getEnvIds, Query, getStorage, getCurrentUserSafe, ID } from "@/lib/appwrite"
 import type { PaymentDoc } from "@/lib/appwrite-payments"
 import type { UserProfileDoc } from "@/lib/appwrite-cashier"
@@ -93,6 +104,7 @@ const REPLY_BUCKET_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPTS_BUCKET_ID as s
 const RECEIPTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPTS_COLLECTION_ID as string | undefined
 const RECEIPT_ITEMS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_RECEIPT_ITEMS_COLLECTION_ID as string | undefined
 const PAYMENTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_PAYMENTS_COLLECTION_ID as string | undefined
+const MESSAGES_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_MESSAGES_COLLECTION_ID as string | undefined
 
 export default function CashierTransactionsPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -117,6 +129,15 @@ export default function CashierTransactionsPage() {
   const [replyFile, setReplyFile] = useState<File | null>(null)
   const [sendingReply, setSendingReply] = useState(false)
 
+  // NEW: edit/delete state (cashier can edit or delete the student's message)
+  const [editMsg, setEditMsg] = useState<MessageDoc | null>(null)
+  const [editSubject, setEditSubject] = useState("")
+  const [editBody, setEditBody] = useState("")
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  const [deleteMsg, setDeleteMsg] = useState<MessageDoc | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
   // Ref to capture the receipt as PNG
   const receiptRef = useRef<HTMLDivElement>(null)
 
@@ -130,7 +151,6 @@ export default function CashierTransactionsPage() {
   const didInitRef = useRef(false)
 
   // --- Toast helper to prevent duplicates (keyed toasts) ---
-  // Make this stable so hooks that depend on it can safely include it.
   const T = useMemo(
     () => ({
       ok: (id: string, msg: string, opts?: any) => toast.success(msg, { id, ...opts }),
@@ -220,7 +240,7 @@ export default function CashierTransactionsPage() {
 
       setStudentsById(map)
 
-      // Prefetch which payments have a receipt doc so we can hide/show the "View Receipt" button
+      // Prefetch which payments have a receipt doc
       if (RECEIPTS_COL_ID) {
         const ids = payments.map((p) => p.$id)
         const byPayment: Record<string, string> = {}
@@ -253,7 +273,7 @@ export default function CashierTransactionsPage() {
 
       const docs = await listMessagesForCashier(me.$id, 200)
 
-      // Overlay local "read" memory to prevent reverting to "new" after refresh
+      // Overlay local "read" memory
       const localRead = getLocalReadSet(me.$id)
       const normalized = docs.map((m) =>
         (m.status ?? "new").toLowerCase() === "new" && localRead.has(m.$id) ? { ...m, status: "read" as any } : m
@@ -272,7 +292,6 @@ export default function CashierTransactionsPage() {
   }, [meId, T])
 
   useEffect(() => {
-    // Guard so Strict Mode doesn't trigger our loaders twice in dev
     if (didInitRef.current) return
     didInitRef.current = true
     load()
@@ -309,7 +328,6 @@ export default function CashierTransactionsPage() {
     const planTotal = plan?.planTotal ?? 0
     const amountPaidNow = Number(payment.amount) || 0
 
-    // Previously paid = sum of Completed/Succeeded for this user (exclude this one if it's already completed)
     const previouslyPaid =
       (allPayments || [])
         .filter((p) => p.userId === payment.userId && COMPLETED.has(p.status))
@@ -329,7 +347,6 @@ export default function CashierTransactionsPage() {
     }
   }
 
-  /** Plan-based receipt items (used when no/poor stored items) */
   function buildItemsFromPlan(plan?: FeePlanDoc | null): { description: string; amount: string }[] {
     if (!plan) return []
     const totals = computeTotals({
@@ -356,7 +373,6 @@ export default function CashierTransactionsPage() {
     return items
   }
 
-  /** If stored items are empty or just a generic "Payment", prefer plan items to match Online Receipt style */
   function preferPlanItemsIfGeneric(stored: { description: string; amount: string }[], plan?: FeePlanDoc | null) {
     const generic =
       !stored?.length ||
@@ -414,7 +430,6 @@ export default function CashierTransactionsPage() {
     [filteredTransactions]
   )
 
-  // NEW: Pending Online Payments list (exclude OTC cash/card)
   const pendingOnlinePayments = useMemo(
     () =>
       (allPayments ?? []).filter(
@@ -438,14 +453,12 @@ export default function CashierTransactionsPage() {
       }
       const db = getDatabases()
 
-      // ensure student profile
       let student = studentsById[payment.userId]
       if (!student && payment.userId) {
         const userRes = await db.getDocument<UserProfileDoc>(DB_ID, USERS_COL_ID, payment.userId).catch(() => null)
         if (userRes) student = userRes as unknown as UserProfileDoc
       }
 
-      // --- Load receipt for this payment (to pick up planId from the receipt itself) ---
       let rec: any = null
       if (RECEIPTS_COL_ID) {
         const rres = await db
@@ -454,10 +467,8 @@ export default function CashierTransactionsPage() {
         rec = rres?.documents?.[0] ?? null
       }
 
-      // Determine planId (prefer receipt.planId, then payment.planId)
       const planId: string | null = rec?.planId ?? payment.planId ?? null
 
-      // Fetch fee plan (if any)
       let feePlanDoc: FeePlanDoc | null = null
       if (planId) {
         try {
@@ -467,10 +478,8 @@ export default function CashierTransactionsPage() {
         }
       }
 
-      // Build plan + summary FIRST so they're always present in the preview
       const { plan, summary } = buildSummaryAndPlan(payment, feePlanDoc)
 
-      // Try to load stored line items
       let lineItems: { description: string; amount: string }[] = []
       if (rec && RECEIPT_ITEMS_COL_ID) {
         const itemsRes = await db
@@ -487,7 +496,6 @@ export default function CashierTransactionsPage() {
           }) ?? []
       }
 
-      // If stored items are empty or just "Payment", rebuild from plan to mirror Online Receipt
       const items = preferPlanItemsIfGeneric(lineItems, feePlanDoc)
 
       if (rec) {
@@ -505,7 +513,6 @@ export default function CashierTransactionsPage() {
         return
       }
 
-      // No receipt doc found — fallback preview from payment, but still show plan & plan-based items if available
       const planItems = buildItemsFromPlan(feePlanDoc)
       setReceiptData({
         receiptNumber: payment.reference || payment.$id,
@@ -523,7 +530,6 @@ export default function CashierTransactionsPage() {
     }
   }
 
-  // NEW: Verify directly from the Pending Online list, then open the receipt
   const verifyFromList = async (payment: PaymentDoc) => {
     if (payment.status !== "Pending") return
     setVerifyingRowId(payment.$id)
@@ -531,7 +537,6 @@ export default function CashierTransactionsPage() {
       const result = await verifyPendingPaymentAndIssueReceipt(payment.$id)
       const receipt = result.receipt as any
 
-      // update table + mark receipt existence
       setAllPayments((prev) => prev.map((p) => (p.$id === payment.$id ? result.payment : p)))
       setReceiptsByPaymentId((prev) => ({ ...prev, [payment.$id]: receipt.$id }))
 
@@ -539,7 +544,6 @@ export default function CashierTransactionsPage() {
         description: result.receiptUrl ? "Receipt sent to student." : "Receipt issued.",
       })
 
-      // open/refresh receipt dialog for this payment
       await handleViewReceipt(result.payment)
     } catch (e: any) {
       T.err("verify-err", "Verification failed", { description: e?.message ?? "Please try again." })
@@ -553,13 +557,10 @@ export default function CashierTransactionsPage() {
     setVerifying(true)
     try {
       const result = await verifyPendingPaymentAndIssueReceipt(selectedPayment.$id)
-
-      // After verification, prefer planId from the newly created receipt
       const receipt = result.receipt as any
       const { DB_ID } = getEnvIds()
       let verifiedItems: { description: string; amount: string }[] = []
 
-      // Try loading stored items
       if (DB_ID && RECEIPT_ITEMS_COL_ID) {
         try {
           const db = getDatabases()
@@ -576,11 +577,10 @@ export default function CashierTransactionsPage() {
             }
           })
         } catch {
-          /* ignore; we’ll fallback to plan items below */
+          /* ignore */
         }
       }
 
-      // Fetch fee plan by receipt.planId (fallback to payment.planId)
       let feePlanDoc: FeePlanDoc | null = null
       const planId = receipt?.planId ?? selectedPayment.planId ?? null
       if (planId) {
@@ -591,21 +591,16 @@ export default function CashierTransactionsPage() {
         }
       }
 
-      // Rebuild plan + summary after verification (mark this payment as completed for summary math)
       const { plan, summary } = buildSummaryAndPlan(
         { ...selectedPayment, status: "Completed" },
         feePlanDoc
       )
 
-      // Prefer plan items if stored items are empty or generic
       const items = preferPlanItemsIfGeneric(verifiedItems, feePlanDoc)
 
-      // Update table row
       setAllPayments((prev) => prev.map((p) => (p.$id === selectedPayment.$id ? result.payment : p)))
-      // Mark that this payment now has a receipt so the “View Receipt” button can show
       setReceiptsByPaymentId((prev) => ({ ...prev, [selectedPayment.$id]: receipt.$id }))
 
-      // Refresh receipt view right away
       setReceiptData({
         receiptNumber: receipt.$id,
         date: new Date(receipt.issuedAt).toISOString().split("T")[0],
@@ -634,7 +629,6 @@ export default function CashierTransactionsPage() {
       const me = (await getCurrentUserSafe())!
       const cashierId = me.$id
 
-      // Try server mark-as-read, fall back to local flag
       let updatedFromServer: MessageDoc | null = null
       try {
         updatedFromServer = await markMessageRead(msg.$id)
@@ -652,7 +646,6 @@ export default function CashierTransactionsPage() {
         prev.map((m) => (m.$id === msg.$id ? (updatedFromServer ?? { ...m, status: "read" as any }) : m))
       )
 
-      // ensure student profile is cached
       const { DB_ID, USERS_COL_ID } = getEnvIds()
       const db = getDatabases()
       if (!studentsById[msg.userId]) {
@@ -660,7 +653,6 @@ export default function CashierTransactionsPage() {
         if (doc) setStudentsById((prev) => ({ ...prev, [doc.$id]: doc as unknown as UserProfileDoc }))
       }
 
-      // prefill reply
       const student = studentsById[msg.userId]
       const defaultReply = `Hello ${student?.fullName ?? "student"},\n\nWe received your message about ${msg.subject}.\nWe'll review your request and get back to you shortly.\n\n— Cashier`
       setReplyText(msg.responseMessage ?? defaultReply)
@@ -727,6 +719,59 @@ export default function CashierTransactionsPage() {
       T.err("reply-err", "Failed to send reply", { description: e?.message ?? "Please try again." })
     } finally {
       setSendingReply(false)
+    }
+  }
+
+  /* ====== NEW: edit/delete message handlers (cashier side) ====== */
+
+  const openEditMessage = (m: MessageDoc) => {
+    setEditMsg(m)
+    setEditSubject(m.subject || "")
+    setEditBody(m.message || "")
+  }
+
+  const saveMessageEdits = async () => {
+    if (!editMsg) return
+    if (!editSubject.trim() || !editBody.trim()) {
+      T.err("edit-empty", "Subject and message cannot be empty")
+      return
+    }
+    setSavingEdit(true)
+    try {
+      const { DB_ID } = getEnvIds()
+      if (!DB_ID || !MESSAGES_COL_ID) throw new Error("Messages collection not configured.")
+      const db = getDatabases()
+      const updated = await db.updateDocument<MessageDoc>(
+        DB_ID,
+        MESSAGES_COL_ID,
+        editMsg.$id,
+        { subject: editSubject.trim(), message: editBody.trim() }
+      )
+      setMessages((prev) => prev.map((x) => (x.$id === updated.$id ? updated : x)))
+      T.ok("edit-ok", "Message updated")
+      setEditMsg(null)
+    } catch (e: any) {
+      T.err("edit-err", "Failed to update", { description: e?.message ?? "Please try again." })
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  const confirmDeleteMessage = async () => {
+    if (!deleteMsg) return
+    setDeleting(true)
+    try {
+      const { DB_ID } = getEnvIds()
+      if (!DB_ID || !MESSAGES_COL_ID) throw new Error("Messages collection not configured.")
+      const db = getDatabases()
+      await db.deleteDocument(DB_ID, MESSAGES_COL_ID, deleteMsg.$id)
+      setMessages((prev) => prev.filter((x) => x.$id !== deleteMsg.$id))
+      T.ok("del-ok", "Message deleted")
+      setDeleteMsg(null)
+    } catch (e: any) {
+      T.err("del-err", "Failed to delete", { description: e?.message ?? "Please try again." })
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -922,7 +967,7 @@ export default function CashierTransactionsPage() {
               <CardHeader>
                 <CardTitle>Student Messages</CardTitle>
                 <CardDescription className="text-gray-300">
-                  Read and reply to student messages. {messagesLoading ? "Loading…" : `(${messages.length})`}
+                  Read, reply, edit, or delete student messages. {messagesLoading ? "Loading…" : `(${messages.length})`}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -979,9 +1024,36 @@ export default function CashierTransactionsPage() {
                                   <div className="text-xs text-gray-300">{m.paymentId ? m.paymentId : "—"}</div>
                                 </td>
                                 <td className="whitespace-nowrap px-6 py-4">
-                                  <Button size="sm" variant="outline" className="border-slate-600 text-white hover:bg-slate-700" onClick={() => openMessage(m)} title="Open and reply">
-                                    <Reply className="mr-2 h-4 w-4" /> Open
-                                  </Button>
+                                  <div className="flex flex-wrap gap-2">
+                                    {/* FIXED: merged duplicate className props */}
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="cursor-pointer border-slate-600 text-white hover:bg-slate-700"
+                                      onClick={() => openMessage(m)}
+                                      title="Open and reply"
+                                    >
+                                      <Reply className="mr-2 h-4 w-4" /> Open
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="cursor-pointer border-slate-600"
+                                      onClick={() => openEditMessage(m)}
+                                      title="Edit message"
+                                    >
+                                      <Pencil className="mr-2 h-4 w-4" /> Edit
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="destructive"
+                                      onClick={() => setDeleteMsg(m)}
+                                      title="Delete message"
+                                      className="cursor-pointer"
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                    </Button>
+                                  </div>
                                 </td>
                               </tr>
                             )
@@ -1051,7 +1123,7 @@ export default function CashierTransactionsPage() {
                     />
                   </div>
 
-                  {/* Actions: Download PNG + (optional) server file */}
+                  {/* Actions: Download PNG */}
                   <div className="mt-4 flex flex-wrap gap-3">
                     <Button
                       variant="outline"
@@ -1061,21 +1133,6 @@ export default function CashierTransactionsPage() {
                     >
                       Download PNG
                     </Button>
-
-                    {receiptData.downloadUrl ? (
-                      <a
-                        href={receiptData.downloadUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex"
-                        title="Open/download the original receipt file"
-                      >
-                        <Button variant="outline" className="border-slate-600">
-                          <FileText className="mr-2 h-4 w-4" />
-                          Open Original
-                        </Button>
-                      </a>
-                    ) : null}
                   </div>
                 </>
               )}
@@ -1083,7 +1140,7 @@ export default function CashierTransactionsPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Message View/Reply Dialog — responsive width & vertical scroll + attachment */}
+        {/* Message View/Reply Dialog */}
         <Dialog open={!!selectedMessage} onOpenChange={(o) => !o && setSelectedMessage(null)}>
           <DialogContent
             className="
@@ -1126,7 +1183,6 @@ export default function CashierTransactionsPage() {
                       </a>
                     ) : null}
 
-                    {/* If a previous reply had an attachment, show it too */}
                     {selectedMessage.responseBucketId && selectedMessage.responseFileId ? (
                       <div className="mt-2">
                         <a
@@ -1192,7 +1248,7 @@ export default function CashierTransactionsPage() {
             </div>
 
             {/* Sticky footer */}
-            <div className="px-5 py-4 border-t border-slate-700 bg-slate-800 flex justify-end gap-2">
+            <div className="px-5 py-4 border-t border-slate-700 bg-slate-800 flex flex-wrap justify-end gap-2">
               <Button variant="outline" className="border-slate-600" onClick={() => setSelectedMessage(null)}>
                 Close
               </Button>
@@ -1210,6 +1266,76 @@ export default function CashierTransactionsPage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* NEW: Edit Message dialog (cashier edits student's original message) */}
+        <Dialog open={!!editMsg} onOpenChange={(o) => !o && setEditMsg(null)}>
+          <DialogContent className="bg-slate-800 border-slate-700 text-white">
+            <DialogHeader>
+              <DialogTitle>Edit student message</DialogTitle>
+              <DialogDescription className="text-gray-300">
+                Update the subject and message (use with care).
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-sm text-gray-200">Subject</label>
+                <input
+                  className="w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm text-gray-100 outline-none focus:ring-2 focus:ring-primary/60"
+                  value={editSubject}
+                  onChange={(e) => setEditSubject(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm text-gray-200">Message</label>
+                <textarea
+                  className="min-h-[140px] w-full rounded-md border border-slate-700 bg-slate-900 p-3 text-sm text-gray-100 outline-none focus:ring-2 focus:ring-primary/60"
+                  value={editBody}
+                  onChange={(e) => setEditBody(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" className="border-slate-600" onClick={() => setEditMsg(null)}>
+                Cancel
+              </Button>
+              <Button onClick={saveMessageEdits} disabled={savingEdit || !editSubject.trim() || !editBody.trim()}>
+                {savingEdit ? (
+                  <span className="flex items-center">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving…
+                  </span>
+                ) : (
+                  <span className="flex items-center">
+                    <Save className="mr-2 h-4 w-4" /> Save
+                  </span>
+                )}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* NEW: Delete confirmation (cashier) */}
+        <AlertDialog open={!!deleteMsg} onOpenChange={(o) => !o && setDeleteMsg(null)}>
+          <AlertDialogContent className="bg-slate-800 border-slate-700 text-white">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this message?</AlertDialogTitle>
+              <AlertDialogDescription className="text-gray-300">
+                This will permanently remove <b>{deleteMsg?.subject}</b> from the inbox.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="border-slate-600">Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-600 hover:bg-red-700"
+                onClick={confirmDeleteMessage}
+                disabled={deleting}
+              >
+                {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </DashboardLayout>
   )
@@ -1296,7 +1422,6 @@ export default function CashierTransactionsPage() {
                             View Receipt
                           </Button>
                         ) : t.status === "Pending" && !["cash", "card"].includes((t.method || "").toLowerCase()) ? (
-                          // Offer inline verify for pending online items even in table
                           <Button
                             size="sm"
                             onClick={() => verifyFromList(t)}

@@ -14,6 +14,9 @@ import {
   AlertCircle,
   Mail,
   Eye,
+  Pencil,
+  Trash2,
+  Save,
 } from "lucide-react"
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
@@ -23,13 +26,30 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Label } from "@/components/ui/label"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 
-import { getCurrentUserSafe, getDatabases, getEnvIds, getStorage, ID, Query } from "@/lib/appwrite"
+import {
+  getCurrentUserSafe,
+  getDatabases,
+  getEnvIds,
+  getStorage,
+  ID,
+  Query,
+} from "@/lib/appwrite"
 import { listRecentPayments, type PaymentDoc } from "@/lib/appwrite-payments"
 import type { Models } from "appwrite"
 import { toast } from "sonner"
 import { createMessage, listMessagesForUser, type MessageDoc } from "@/lib/appwrite-messages"
 import { PaymentReceipt } from "@/components/payment/payment-receipt"
 import { getFeePlan, type FeePlanDoc, computeTotals } from "@/lib/fee-plan"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 type PaymentWithExtras = PaymentDoc & {
   receiptUrl?: string | null
@@ -125,10 +145,18 @@ export default function PaymentHistoryPage() {
   const [msgsLoading, setMsgsLoading] = useState(true)
   const [myMessages, setMyMessages] = useState<MessageDoc[]>([])
 
+  // NEW: edit/delete state for student's own messages
+  const [editMsg, setEditMsg] = useState<MessageDoc | null>(null)
+  const [editSubject, setEditSubject] = useState("")
+  const [editBody, setEditBody] = useState("")
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  const [deleteMsg, setDeleteMsg] = useState<MessageDoc | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
   // Receipt dialog (student view)
   const [isReceiptDialogOpen, setIsReceiptDialogOpen] = useState(false)
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null)
-  const [selectedPayment, setSelectedPayment] = useState<PaymentWithExtras | null>(null)
   const receiptRef = useRef<HTMLDivElement>(null)
 
   // Prefetched receipts mapping (paymentId -> receiptId)
@@ -333,6 +361,59 @@ Thank you!`
     }
   }
 
+  /* ====== NEW: edit/delete message handlers (student side) ====== */
+
+  const openEditMyMessage = (m: MessageDoc) => {
+    setEditMsg(m)
+    setEditSubject(m.subject || "")
+    setEditBody(m.message || "")
+  }
+
+  const saveMyMessage = async () => {
+    if (!editMsg) return
+    if (!editSubject.trim() || !editBody.trim()) {
+      toast.error("Subject and message are required")
+      return
+    }
+    setSavingEdit(true)
+    try {
+      const { DB_ID } = getEnvIds()
+      if (!DB_ID || !MESSAGES_COL_ID) throw new Error("Messages collection not configured.")
+      const db = getDatabases()
+      const updated = await db.updateDocument<MessageDoc>(
+        DB_ID,
+        MESSAGES_COL_ID,
+        editMsg.$id,
+        { subject: editSubject.trim(), message: editBody.trim() }
+      )
+      setMyMessages((prev) => prev.map((x) => (x.$id === editMsg.$id ? updated : x)))
+      toast.success("Message updated")
+      setEditMsg(null)
+    } catch (e: any) {
+      toast.error("Failed to update", { description: e?.message ?? "Please try again." })
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  const confirmDeleteMyMessage = async () => {
+    if (!deleteMsg) return
+    setDeleting(true)
+    try {
+      const { DB_ID } = getEnvIds()
+      if (!DB_ID || !MESSAGES_COL_ID) throw new Error("Messages collection not configured.")
+      const db = getDatabases()
+      await db.deleteDocument(DB_ID, MESSAGES_COL_ID, deleteMsg.$id)
+      setMyMessages((prev) => prev.filter((x) => x.$id !== deleteMsg.$id))
+      toast.success("Message deleted")
+      setDeleteMsg(null)
+    } catch (e: any) {
+      toast.error("Failed to delete", { description: e?.message ?? "Please try again." })
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   /* ============== Receipt dialog (student) ============== */
 
   const buildSummaryAndPlan = (payment: PaymentWithExtras, feePlan?: FeePlanDoc | null) => {
@@ -375,7 +456,6 @@ Thank you!`
   const handleViewReceipt = async (payment: PaymentWithExtras) => {
     setIsReceiptDialogOpen(true)
     setReceiptData(null)
-    setSelectedPayment(payment)
 
     try {
       const { DB_ID } = getEnvIds()
@@ -538,7 +618,7 @@ Thank you!`
                           : "Payment"
 
                     return (
-                      <tr key={p.$id} className="text-sm text-gray-200">
+                      <tr key={p.$id} className="text-sm text-gray-2 00">
                         <td className="whitespace-nowrap px-6 py-4 font-medium">{p.reference || p.$id}</td>
                         <td className="whitespace-nowrap px-6 py-4">
                           <div className="flex items-center">
@@ -549,9 +629,7 @@ Thank you!`
                         <td className="px-6 py-4">
                           <div className="flex flex-col">
                             <span>{desc}</span>
-                            <span className="text-xs text-gray-400">
-                              Method: {methodLabel(p.method)}
-                            </span>
+                            <span className="text-xs text-gray-400">Method: {methodLabel(p.method)}</span>
                           </div>
                         </td>
                         <td className="whitespace-nowrap px-6 py-4 text-right font-semibold">{peso(p.amount)}</td>
@@ -644,7 +722,7 @@ Thank you!`
           </div>
         </div>
 
-        {/* NEW: Replies & receipts from cashier */}
+        {/* NEW: Replies & receipts from cashier + student controls */}
         <div className="mt-10">
           <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-white">
             <Mail className="h-5 w-5" /> Messages from Cashier
@@ -668,10 +746,35 @@ Thank you!`
                       : null
                   return (
                     <div key={m.$id} className="px-6 py-4">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                        <div className="font-medium">{m.subject}</div>
-                        <div className="text-xs text-gray-400">{formatDate(m.$createdAt)}</div>
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3">
+                            <div className="font-medium">{m.subject}</div>
+                            <div className="text-xs text-gray-400">{formatDate(m.$createdAt)}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-slate-600 cursor-pointer"
+                            onClick={() => openEditMyMessage(m)}
+                            title="Edit your message"
+                          >
+                            <Pencil className="mr-1 h-4 w-4" /> Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => setDeleteMsg(m)}
+                            title="Delete this message"
+                            className="cursor-pointer"
+                          >
+                            <Trash2 className="mr-1 h-4 w-4" /> Delete
+                          </Button>
+                        </div>
                       </div>
+
                       <div className="mt-2 text-sm text-gray-200 whitespace-pre-wrap">{m.message}</div>
 
                       {replied ? (
@@ -808,6 +911,76 @@ Thank you!`
           </DialogContent>
         </Dialog>
 
+        {/* NEW: Edit My Message dialog */}
+        <Dialog open={!!editMsg} onOpenChange={(o) => !o && setEditMsg(null)}>
+          <DialogContent className="bg-slate-800 border-slate-700 text-white">
+            <DialogHeader>
+              <DialogTitle>Edit your message</DialogTitle>
+              <DialogDescription className="text-gray-300">
+                Update the subject and contents of your message to the cashier.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label className="text-gray-200">Subject</Label>
+                <input
+                  className="w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm text-gray-100 outline-none focus:ring-2 focus:ring-primary/60"
+                  value={editSubject}
+                  onChange={(e) => setEditSubject(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-gray-200">Message</Label>
+                <textarea
+                  className="min-h-[140px] w-full rounded-md border border-slate-700 bg-slate-900 p-3 text-sm text-gray-100 outline-none focus:ring-2 focus:ring-primary/60"
+                  value={editBody}
+                  onChange={(e) => setEditBody(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" className="border-slate-600" onClick={() => setEditMsg(null)}>
+                Cancel
+              </Button>
+              <Button onClick={saveMyMessage} disabled={savingEdit || !editSubject.trim() || !editBody.trim()}>
+                {savingEdit ? (
+                  <span className="flex items-center">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving…
+                  </span>
+                ) : (
+                  <span className="flex items-center">
+                    <Save className="mr-2 h-4 w-4" /> Save
+                  </span>
+                )}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* NEW: Delete confirmation */}
+        <AlertDialog open={!!deleteMsg} onOpenChange={(o) => !o && setDeleteMsg(null)}>
+          <AlertDialogContent className="bg-slate-800 border-slate-700 text-white">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this message?</AlertDialogTitle>
+              <AlertDialogDescription className="text-gray-300">
+                This action cannot be undone. The message <b>{deleteMsg?.subject}</b> will be permanently removed.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="border-slate-600">Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-600 hover:bg-red-700"
+                onClick={confirmDeleteMyMessage}
+                disabled={deleting}
+              >
+                {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         {/* View Receipt dialog (with plan & summary) */}
         <Dialog open={isReceiptDialogOpen} onOpenChange={setIsReceiptDialogOpen}>
           <DialogContent
@@ -858,21 +1031,6 @@ Thank you!`
                     >
                       Download PNG
                     </Button>
-
-                    {selectedPayment?.receiptUrl || selectedPayment?.receiptLink ? (
-                      <a
-                        href={(selectedPayment.receiptUrl || selectedPayment.receiptLink) ?? undefined}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex"
-                        title="Open the original file (if provided)"
-                      >
-                        <Button variant="outline" className="border-slate-600">
-                          <FileText className="mr-2 h-4 w-4" />
-                          Open Original
-                        </Button>
-                      </a>
-                    ) : null}
                   </div>
                 </>
               )}
