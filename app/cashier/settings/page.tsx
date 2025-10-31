@@ -192,7 +192,7 @@ export default function CashierSettingsPage() {
                                     <button
                                         type="button"
                                         onClick={onPickFile}
-                                        className="absolute -bottom-2 -right-2 rounded-full bg-primary p-2 text-white shadow cursor-pointer"
+                                        className="absolute -bottom-2 -right-2 rounded-full bg-primary p-2 text-black shadow cursor-pointer"
                                         title="Change photo"
                                     >
                                         {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
