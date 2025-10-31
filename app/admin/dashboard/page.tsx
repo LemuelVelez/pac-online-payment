@@ -1,212 +1,263 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
+import { useEffect, useState } from "react"
+
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { StatCard, ProgressFooter } from "@/components/dashboard/stat-card"
-import { Users, FileText, Shield, TrendingUp, DollarSign } from "lucide-react"
-import { PaymentChart } from "@/components/dashboard/payment-chart"
-import { DataTable } from "@/components/ui/data-table"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { getDatabases, getEnvIds, Query } from "@/lib/appwrite"
+import type { PaymentDoc } from "@/lib/appwrite-payments"
+
+/* ========================= Env & IDs ========================= */
+
+function ids() {
+    const { DB_ID, USERS_COL_ID } = getEnvIds()
+    const PAYMENTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_PAYMENTS_COLLECTION_ID as string
+    if (!DB_ID || !USERS_COL_ID || !PAYMENTS_COL_ID) {
+        console.warn("[admin-dashboard] Missing Appwrite env IDs.")
+    }
+    return { DB_ID, USERS_COL_ID, PAYMENTS_COL_ID }
+}
+
+/* ========================= Time Helpers ========================= */
+
+function startOfDayISO(d: Date) {
+    const x = new Date(d)
+    x.setHours(0, 0, 0, 0)
+    return x.toISOString()
+}
+function endOfDayISO(d: Date) {
+    const x = new Date(d)
+    x.setHours(23, 59, 59, 999)
+    return x.toISOString()
+}
+function startOfMonthISO(d: Date) {
+    const x = new Date(d.getFullYear(), d.getMonth(), 1)
+    x.setHours(0, 0, 0, 0)
+    return x.toISOString()
+}
+function endOfMonthISO(d: Date) {
+    const x = new Date(d.getFullYear(), d.getMonth() + 1, 0)
+    x.setHours(23, 59, 59, 999)
+    return x.toISOString()
+}
+
+function formatPeso(n: number) {
+    try {
+        return n.toLocaleString("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2 })
+    } catch {
+        return `₱${(n || 0).toLocaleString()}`
+    }
+}
+
+/* ========================= Backend Loaders ========================= */
+
+async function countAllUsers(): Promise<number> {
+    const db = getDatabases()
+    const { DB_ID, USERS_COL_ID } = ids()
+
+    let total = 0
+    let cursor: string | undefined
+    for (; ;) {
+        const queries: string[] = [Query.orderDesc("$createdAt"), Query.limit(100)]
+        if (cursor) queries.push(Query.cursorAfter(cursor))
+        const res = await db.listDocuments(DB_ID, USERS_COL_ID, queries)
+        const docs = res.documents ?? []
+        total += docs.length
+        if (docs.length < 100) break
+        cursor = docs[docs.length - 1].$id
+    }
+    return total
+}
+
+async function countPendingPayments(): Promise<number> {
+    const db = getDatabases()
+    const { DB_ID, PAYMENTS_COL_ID } = ids()
+
+    let total = 0
+    let cursor: string | undefined
+    for (; ;) {
+        const queries: string[] = [Query.equal("status", "Pending"), Query.orderDesc("$createdAt"), Query.limit(100)]
+        if (cursor) queries.push(Query.cursorAfter(cursor))
+        const res = await db.listDocuments<PaymentDoc>(DB_ID, PAYMENTS_COL_ID, queries)
+        const docs = res.documents ?? []
+        total += docs.length
+        if (docs.length < 100) break
+        cursor = docs[docs.length - 1].$id
+    }
+    return total
+}
+
+async function sumCompletedBetween(startIso: string, endIso: string): Promise<number> {
+    const db = getDatabases()
+    const { DB_ID, PAYMENTS_COL_ID } = ids()
+
+    let sum = 0
+    let cursor: string | undefined
+    for (; ;) {
+        const queries: string[] = [
+            Query.greaterThanEqual("$createdAt", startIso),
+            Query.lessThan("$createdAt", endIso),
+            Query.equal("status", ["Completed", "Succeeded"]),
+            Query.orderDesc("$createdAt"),
+            Query.limit(100),
+        ]
+        if (cursor) queries.push(Query.cursorAfter(cursor))
+        const res = await db.listDocuments<PaymentDoc>(DB_ID, PAYMENTS_COL_ID, queries)
+        const docs = res.documents ?? []
+        for (const p of docs) sum += Number(p.amount) || 0
+        if (docs.length < 100) break
+        cursor = docs[docs.length - 1].$id
+    }
+    return sum
+}
+
+/* ========================= Page ========================= */
 
 export default function AdminDashboardPage() {
-    // Mock data for charts
-    const monthlyRevenue = [
-        { month: "Jan", amount: 125000 },
-        { month: "Feb", amount: 135000 },
-        { month: "Mar", amount: 142000 },
-        { month: "Apr", amount: 138000 },
-        { month: "May", amount: 155000 },
-        { month: "Jun", amount: 162000 },
-        { month: "Jul", amount: 168000 },
-        { month: "Aug", amount: 0 },
-        { month: "Sep", amount: 0 },
-        { month: "Oct", amount: 0 },
-        { month: "Nov", amount: 0 },
-        { month: "Dec", amount: 0 },
-    ]
+    const [{ loading, error, stats }, setState] = useState<{
+        loading: boolean
+        error: string | null
+        stats: {
+            totalUsers: number
+            revenueToday: number
+            revenueThisMonth: number
+            pendingPayments: number
+            refreshedAt?: string
+        }
+    }>({
+        loading: true,
+        error: null,
+        stats: { totalUsers: 0, revenueToday: 0, revenueThisMonth: 0, pendingPayments: 0, refreshedAt: "" },
+    })
 
-    // Mock data for recent activities
-    const recentActivities = [
-        {
-            id: "1",
-            user: "John Smith",
-            action: "Payment Received",
-            amount: "₱1,500",
-            timestamp: "2 minutes ago",
-            status: "success",
-        },
-        {
-            id: "2",
-            user: "Maria Garcia",
-            action: "User Registration",
-            amount: "-",
-            timestamp: "15 minutes ago",
-            status: "info",
-        },
-        {
-            id: "3",
-            user: "Admin User",
-            action: "Report Generated",
-            amount: "-",
-            timestamp: "1 hour ago",
-            status: "info",
-        },
-        {
-            id: "4",
-            user: "System",
-            action: "Security Alert",
-            amount: "-",
-            timestamp: "2 hours ago",
-            status: "warning",
-        },
-    ]
+    async function load() {
+        try {
+            setState((s) => ({ ...s, loading: true, error: null }))
+            const now = new Date()
 
-    const columns = [
-        {
-            accessorKey: "user",
-            header: "User",
-        },
-        {
-            accessorKey: "action",
-            header: "Action",
-        },
-        {
-            accessorKey: "amount",
-            header: "Amount",
-        },
-        {
-            accessorKey: "timestamp",
-            header: "Time",
-        },
-        {
-            accessorKey: "status",
-            header: "Status",
-            cell: ({ row }: any) => {
-                const status = row.getValue("status")
-                const variant = status === "success" ? "default" : status === "warning" ? "destructive" : "secondary"
-                return <Badge variant={variant}>{status}</Badge>
-            },
-        },
-    ]
+            const [users, pending, todaySum, monthSum] = await Promise.all([
+                countAllUsers(),
+                countPendingPayments(),
+                sumCompletedBetween(startOfDayISO(now), endOfDayISO(now)),
+                sumCompletedBetween(startOfMonthISO(now), endOfMonthISO(now)),
+            ])
+
+            setState({
+                loading: false,
+                error: null,
+                stats: {
+                    totalUsers: users,
+                    pendingPayments: pending,
+                    revenueToday: todaySum,
+                    revenueThisMonth: monthSum,
+                    refreshedAt: new Date().toLocaleString(),
+                },
+            })
+        } catch (e: any) {
+            setState((s) => ({ ...s, loading: false, error: e?.message || "Failed to load dashboard data." }))
+        }
+    }
+
+    useEffect(() => {
+        load()
+    }, [])
 
     return (
         <DashboardLayout allowedRoles={["admin"]}>
-            <div className="container mx-auto px-4 py-8">
-                <div className="mb-8">
+            <div className="container mx-auto px-4 py-8 space-y-8">
+                <div className="flex flex-col gap-1">
                     <h1 className="text-2xl font-bold text-white">Admin Dashboard</h1>
-                    <p className="text-gray-300">System overview and management</p>
+                    <p className="text-gray-300">Live KPIs from Appwrite</p>
                 </div>
 
-                {/* Stats Grid */}
-                <div className="grid grid-cols-1 gap-6 mb-8 md:grid-cols-2 lg:grid-cols-4">
-                    <StatCard
-                        title="Total Users"
-                        value="1,234"
-                        icon={Users}
-                        iconColor="text-blue-500"
-                        iconBgColor="bg-blue-500/20"
-                        footer={<ProgressFooter value={85} label="85% active users" />}
-                    />
-                    <StatCard
-                        title="Total Revenue"
-                        value="₱925,000"
-                        icon={DollarSign}
-                        iconColor="text-green-500"
-                        iconBgColor="bg-green-500/20"
-                        footer={
-                            <div className="flex items-center text-green-500 text-sm">
-                                <TrendingUp className="h-4 w-4 mr-1" />
-                                <span>12% from last month</span>
-                            </div>
-                        }
-                    />
-                    <StatCard
-                        title="Pending Reports"
-                        value="23"
-                        icon={FileText}
-                        iconColor="text-yellow-500"
-                        iconBgColor="bg-yellow-500/20"
-                        footer={<p className="text-gray-400 text-sm">5 urgent</p>}
-                    />
-                    <StatCard
-                        title="Security Alerts"
-                        value="3"
-                        icon={Shield}
-                        iconColor="text-red-500"
-                        iconBgColor="bg-red-500/20"
-                        footer={<p className="text-gray-400 text-sm">2 critical</p>}
-                    />
-                </div>
+                {/* Errors */}
+                {error ? (
+                    <Card className="bg-red-950/40 border-red-800 text-red-200">
+                        <CardContent className="py-3 text-sm">{error}</CardContent>
+                    </Card>
+                ) : null}
 
-                {/* Charts and Tables */}
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                {/* KPI Grid (minimal UI) */}
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
-                        <CardHeader>
-                            <CardTitle>Monthly Revenue</CardTitle>
-                            <CardDescription className="text-gray-300">Revenue trends for the current year</CardDescription>
+                        <CardHeader className="pb-2">
+                            <CardTitle>Total Users</CardTitle>
+                            <CardDescription className="text-gray-400">All roles</CardDescription>
                         </CardHeader>
-                        <CardContent>
-                            <div className="h-80">
-                                <PaymentChart data={monthlyRevenue} />
-                            </div>
+                        <CardContent className="pt-0">
+                            <div className="text-3xl font-semibold">{loading ? "…" : stats.totalUsers}</div>
                         </CardContent>
                     </Card>
 
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
-                        <CardHeader>
-                            <CardTitle>System Status</CardTitle>
-                            <CardDescription className="text-gray-300">Current system health and performance</CardDescription>
+                        <CardHeader className="pb-2">
+                            <CardTitle>Revenue Today</CardTitle>
+                            <CardDescription className="text-gray-400">Completed / Succeeded</CardDescription>
                         </CardHeader>
-                        <CardContent>
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between p-4 bg-slate-700/30 rounded-lg">
-                                    <div className="flex items-center gap-3">
-                                        <div className="h-3 w-3 bg-green-500 rounded-full animate-pulse"></div>
-                                        <span>Database Status</span>
-                                    </div>
-                                    <span className="text-green-500">Operational</span>
-                                </div>
-                                <div className="flex items-center justify-between p-4 bg-slate-700/30 rounded-lg">
-                                    <div className="flex items-center gap-3">
-                                        <div className="h-3 w-3 bg-green-500 rounded-full animate-pulse"></div>
-                                        <span>Payment Gateway</span>
-                                    </div>
-                                    <span className="text-green-500">Connected</span>
-                                </div>
-                                <div className="flex items-center justify-between p-4 bg-slate-700/30 rounded-lg">
-                                    <div className="flex items-center gap-3">
-                                        <div className="h-3 w-3 bg-yellow-500 rounded-full animate-pulse"></div>
-                                        <span>Email Service</span>
-                                    </div>
-                                    <span className="text-yellow-500">Degraded</span>
-                                </div>
-                                <div className="flex items-center justify-between p-4 bg-slate-700/30 rounded-lg">
-                                    <div className="flex items-center gap-3">
-                                        <div className="h-3 w-3 bg-green-500 rounded-full animate-pulse"></div>
-                                        <span>API Services</span>
-                                    </div>
-                                    <span className="text-green-500">Operational</span>
-                                </div>
-                            </div>
+                        <CardContent className="pt-0">
+                            <div className="text-3xl font-semibold">{loading ? "…" : formatPeso(stats.revenueToday)}</div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-slate-800/60 border-slate-700 text-white">
+                        <CardHeader className="pb-2">
+                            <CardTitle>Revenue This Month</CardTitle>
+                            <CardDescription className="text-gray-400">Completed / Succeeded</CardDescription>
+                        </CardHeader>
+                        <CardContent className="pt-0">
+                            <div className="text-3xl font-semibold">{loading ? "…" : formatPeso(stats.revenueThisMonth)}</div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-slate-800/60 border-slate-700 text-white">
+                        <CardHeader className="pb-2">
+                            <CardTitle>Pending Payments</CardTitle>
+                            <CardDescription className="text-gray-400">Awaiting action</CardDescription>
+                        </CardHeader>
+                        <CardContent className="pt-0">
+                            <div className="text-3xl font-semibold">{loading ? "…" : stats.pendingPayments}</div>
                         </CardContent>
                     </Card>
                 </div>
 
-                {/* Recent Activities */}
-                <Card className="mt-6 bg-slate-800/60 border-slate-700 text-white">
-                    <CardHeader className="flex flex-row items-center justify-between">
-                        <div>
-                            <CardTitle>Recent Activities</CardTitle>
-                            <CardDescription className="text-gray-300">Latest system activities and events</CardDescription>
-                        </div>
-                        <Button variant="outline" size="sm" className="border-slate-600 text-white hover:bg-slate-700">
-                            View All
-                        </Button>
+                {/* Quick Actions */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <Button className="w-full sm:w-auto" onClick={load} disabled={loading}>
+                        {loading ? "Refreshing…" : "Refresh"}
+                    </Button>
+                    <Button
+                        variant="outline"
+                        className="w-full sm:w-auto border-slate-600 text-white"
+                        asChild
+                    >
+                        <a href="/admin/reports">Open Reports</a>
+                    </Button>
+                </div>
+
+                {/* System Status (source of truth is Appwrite Status page) */}
+                <Card className="bg-slate-800/60 border-slate-700 text-white">
+                    <CardHeader className="pb-2 flex flex-col gap-1">
+                        <CardTitle>System Status</CardTitle>
+                        <CardDescription className="text-gray-300">
+                            Current system health and performance are tracked on the official Appwrite status page.
+                        </CardDescription>
                     </CardHeader>
-                    <CardContent>
-                        <DataTable columns={columns} data={recentActivities} />
+                    <CardContent className="pt-0">
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <Button
+                                className="w-full sm:w-auto"
+                                asChild
+                            >
+                                <a href="https://status.appwrite.online/" target="_blank" rel="noreferrer">
+                                    View Live Appwrite Status
+                                </a>
+                            </Button>
+                            <div className="text-xs text-gray-400 self-center sm:self-auto">
+                                {stats.refreshedAt ? `Data refreshed: ${stats.refreshedAt}` : null}
+                            </div>
+                        </div>
                     </CardContent>
                 </Card>
             </div>
