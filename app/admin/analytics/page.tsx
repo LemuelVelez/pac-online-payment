@@ -1,552 +1,349 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import type { Models } from "appwrite"
+
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { PaymentChart } from "@/components/dashboard/payment-chart"
 import { PaymentPieChart } from "@/components/dashboard/payment-pie-chart"
-import { DateRangePicker } from "@/components/admin/date-range-picker"
-import { Download, TrendingUp, Users, CreditCard, Clock } from 'lucide-react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-// Mock data for analytics
-const monthlyUsers = [
-    { name: "Jan", value: 120 },
-    { name: "Feb", value: 145 },
-    { name: "Mar", value: 158 },
-    { name: "Apr", value: 175 },
-    { name: "May", value: 210 },
-    { name: "Jun", value: 235 },
-    { name: "Jul", value: 245 },
-    { name: "Aug", value: 260 },
-]
+import { getDatabases, getEnvIds, Query } from "@/lib/appwrite"
+import type { PaymentDoc } from "@/lib/appwrite-payments"
+import { listTodayPayments, paymentsToHourlySeries } from "@/lib/appwrite-cashier"
 
-const userTypeDistribution = [
-    { name: "Students", value: 65 },
-    { name: "Cashiers", value: 15 },
-    { name: "Business Office", value: 10 },
-    { name: "Admins", value: 10 },
-]
+/* ========================= Types & Env ========================= */
 
-const paymentMethodDistribution = [
-    { name: "Credit Card", value: 45 },
-    { name: "Cash", value: 25 },
-    { name: "E-Wallet", value: 20 },
-    { name: "Bank Transfer", value: 10 },
-]
-
-const monthlyTransactions = [
-    { name: "Jan", value: 320 },
-    { name: "Feb", value: 345 },
-    { name: "Mar", value: 358 },
-    { name: "Apr", value: 375 },
-    { name: "May", value: 410 },
-    { name: "Jun", value: 435 },
-    { name: "Jul", value: 445 },
-    { name: "Aug", value: 460 },
-]
-
-// Tab configuration for mobile dropdown
-const tabOptions = [
-    { value: "users", label: "User Analytics" },
-    { value: "transactions", label: "Transaction Analytics" },
-    { value: "performance", label: "System Performance" },
-]
-
-// Helper function to transform data for PaymentChart
-const transformDataForChart = (data: { name: string; value: number }[]) => {
-    return data.map(item => ({
-        month: item.name,
-        amount: item.value
-    }))
+type UserDoc = Models.Document & {
+    role?: "student" | "cashier" | "business-office" | "admin" | string
+    status?: "active" | "inactive" | string
 }
 
+function getIds() {
+    const { DB_ID, USERS_COL_ID } = getEnvIds()
+    const PAYMENTS_COL_ID = process.env.NEXT_PUBLIC_APPWRITE_PAYMENTS_COLLECTION_ID as string | undefined
+    return { DB_ID, USERS_COL_ID, PAYMENTS_COL_ID }
+}
+
+/* ========================= Helpers ========================= */
+
+const PAGE_LIMIT = 100
+
+async function listAllUsers(): Promise<UserDoc[]> {
+    const db = getDatabases()
+    const { DB_ID, USERS_COL_ID } = getIds()
+    const out: UserDoc[] = []
+    let cursor: string | undefined
+
+    for (; ;) {
+        const queries: string[] = [Query.orderDesc("$createdAt"), Query.limit(PAGE_LIMIT)]
+        if (cursor) queries.push(Query.cursorAfter(cursor))
+        const res = await db.listDocuments<UserDoc>(DB_ID, USERS_COL_ID, queries)
+        const docs = res.documents ?? []
+        out.push(...docs)
+        if (docs.length < PAGE_LIMIT) break
+        cursor = docs[docs.length - 1].$id
+    }
+    return out
+}
+
+/** List payments since a given ISO date (inclusive). */
+async function listPaymentsSince(startIso?: string): Promise<PaymentDoc[]> {
+    const db = getDatabases()
+    const { DB_ID, PAYMENTS_COL_ID } = getIds()
+    const out: PaymentDoc[] = []
+    let cursor: string | undefined
+
+    for (; ;) {
+        const queries: string[] = [Query.orderDesc("$createdAt"), Query.limit(PAGE_LIMIT)]
+        if (startIso) queries.unshift(Query.greaterThanEqual("$createdAt", startIso))
+        if (cursor) queries.push(Query.cursorAfter(cursor))
+
+        const res = await db.listDocuments<PaymentDoc>(DB_ID!, PAYMENTS_COL_ID!, queries)
+        const docs = res.documents ?? []
+        out.push(...docs)
+        if (docs.length < PAGE_LIMIT) break
+        cursor = docs[docs.length - 1].$id
+    }
+    return out
+}
+
+function daysAgoISO(n: number) {
+    const x = new Date()
+    x.setDate(x.getDate() - n)
+    x.setHours(0, 0, 0, 0)
+    return x.toISOString()
+}
+
+function peso(n: number) {
+    try {
+        return n.toLocaleString("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2 })
+    } catch {
+        return `₱${(n || 0).toLocaleString()}`
+    }
+}
+
+function sumCompletedAmount(payments: PaymentDoc[]) {
+    return payments.reduce((s, p) => {
+        const ok = p.status === "Completed" || p.status === "Succeeded"
+        return s + (ok ? Number(p.amount) || 0 : 0)
+    }, 0)
+}
+
+function groupCount<T>(list: T[], by: (x: T) => string) {
+    const m = new Map<string, number>()
+    for (const it of list) {
+        const k = by(it) || ""
+        m.set(k, (m.get(k) || 0) + 1)
+    }
+    return Array.from(m.entries()).map(([name, value]) => ({ name, value }))
+}
+
+/** Compress the last N days into a day-by-day series for PaymentChart. Amounts include only Completed/Succeeded. */
+function paymentsToDailyAmountSeries(payments: PaymentDoc[], days = 30) {
+    // Build day buckets (local timezone)
+    const buckets = new Map<string, number>() // key = YYYY-MM-DD, value = sum amount
+    const labels: string[] = []
+
+    for (let i = days - 1; i >= 0; i--) {
+        const dt = new Date()
+        dt.setDate(dt.getDate() - i)
+        dt.setHours(0, 0, 0, 0)
+        const key = dt.toISOString().slice(0, 10) // YYYY-MM-DD
+        labels.push(key)
+        buckets.set(key, 0)
+    }
+
+    for (const p of payments) {
+        if (!(p.status === "Completed" || p.status === "Succeeded")) continue
+        const dt = new Date(p.$createdAt)
+        dt.setHours(0, 0, 0, 0)
+        const key = dt.toISOString().slice(0, 10)
+        if (buckets.has(key)) {
+            buckets.set(key, (buckets.get(key) || 0) + (Number(p.amount) || 0))
+        }
+    }
+
+    // PaymentChart expects items like { month: string, amount: number }
+    return labels.map((key) => {
+        const d = new Date(key)
+        const label = d.toLocaleDateString(undefined, { month: "short", day: "2-digit" }) // e.g., "Oct 05"
+        return { month: label, amount: Math.round((buckets.get(key) || 0) * 100) / 100 }
+    })
+}
+
+/* ========================= Component ========================= */
+
 export default function AdminAnalyticsPage() {
-    const [activeTab, setActiveTab] = useState("users")
+    const [{ loading, error, kpis, series30d, pieByMethod, pieByRole, todaySeries }, setState] = useState<{
+        loading: boolean
+        error: string | null
+        kpis: {
+            totalUsers: number
+            activeUsers: number
+            totalPayments: number
+            revenue: number
+            pending: number
+        }
+        series30d: Array<{ month: string; amount: number }>
+        pieByMethod: Array<{ name: string; value: number }>
+        pieByRole: Array<{ name: string; value: number }>
+        todaySeries: Array<{ month: string; amount: number }>
+    }>({
+        loading: true,
+        error: null,
+        kpis: { totalUsers: 0, activeUsers: 0, totalPayments: 0, revenue: 0, pending: 0 },
+        series30d: [],
+        pieByMethod: [],
+        pieByRole: [],
+        todaySeries: [],
+    })
+
+    useEffect(() => {
+        let alive = true
+
+        async function load() {
+            try {
+                const { DB_ID, USERS_COL_ID, PAYMENTS_COL_ID } = getIds()
+                if (!DB_ID || !USERS_COL_ID || !PAYMENTS_COL_ID) {
+                    throw new Error("Missing Appwrite env IDs. Please set DB / USERS / PAYMENTS collection IDs.")
+                }
+
+                // Users
+                const users = await listAllUsers()
+                const totalUsers = users.length
+                const activeUsers = users.filter((u) => String(u.status || "").toLowerCase() === "active").length
+
+                const rolePie = groupCount(users, (u) => {
+                    const r = String(u.role || "student")
+                    if (r === "business_office" || r === "businessoffice") return "business-office"
+                    return r
+                }).map((x) => ({
+                    name: x.name === "business-office" ? "Business Office" : x.name.charAt(0).toUpperCase() + x.name.slice(1),
+                    value: x.value,
+                }))
+
+                // Payments (last 30d for charts + KPI totals from all returned)
+                const since30 = daysAgoISO(29)
+                const last30 = await listPaymentsSince(since30)
+
+                // Today hourly series
+                const today = await listTodayPayments()
+                const hourly = paymentsToHourlySeries(today).map((h) => ({ month: h.label, amount: h.amount }))
+
+                // KPI revenue & counts
+                const revenue = sumCompletedAmount(last30) // last 30 days revenue
+                const totalPayments = last30.length
+                const pending = last30.filter((p) => p.status === "Pending").length
+
+                // 30d daily amount series
+                const series = paymentsToDailyAmountSeries(last30, 30)
+
+                // Payment method distribution (counts in last 30d)
+                const byMethod = groupCount(last30, (p) => {
+                    const v = String(p.method || "").toLowerCase()
+                    if (v.includes("gcash") || v.includes("maya") || v.includes("grab")) return "e-wallet"
+                    if (v.includes("bank")) return "online-banking"
+                    if (v.includes("credit") || v.includes("debit")) return "credit-card"
+                    if (v.includes("card")) return "card"
+                    if (v.includes("cash")) return "cash"
+                    return v || "other"
+                }).map(({ name, value }) => ({
+                    name: name === "online-banking" ? "Online Banking" : name.replace(/\b\w/g, (m) => m.toUpperCase()),
+                    value,
+                }))
+
+                if (!alive) return
+                setState({
+                    loading: false,
+                    error: null,
+                    kpis: { totalUsers, activeUsers, totalPayments, revenue, pending },
+                    series30d: series,
+                    pieByMethod: byMethod,
+                    pieByRole: rolePie,
+                    todaySeries: hourly,
+                })
+            } catch (e: any) {
+                if (!alive) return
+                setState((s) => ({ ...s, loading: false, error: e?.message || "Failed to load analytics." }))
+            }
+        }
+
+        load()
+        return () => {
+            alive = false
+        }
+    }, [])
+
+    const kpiCards = useMemo(
+        () => [
+            { label: "Total Users", value: `${kpis.totalUsers}` },
+            { label: "Active Users", value: `${kpis.activeUsers}` },
+            { label: "Payments (30d)", value: `${kpis.totalPayments}` },
+            { label: "Revenue (30d)", value: `${peso(kpis.revenue)}` },
+        ],
+        [kpis]
+    )
 
     return (
         <DashboardLayout allowedRoles={["admin"]}>
             <div className="container mx-auto px-4 py-8">
-                <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
-                    <div>
-                        <h1 className="text-2xl font-bold text-white">Analytics Dashboard</h1>
-                        <p className="text-gray-300">Insights and performance metrics</p>
-                    </div>
-                    <div className="mt-4 flex flex-col overflow-x-auto space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3 md:mt-0">
-                        <DateRangePicker />
-                        <Button className="bg-primary hover:bg-primary/90">
-                            <Download className="mr-2 h-4 w-4" />
-                            Export Report
-                        </Button>
-                    </div>
+                <div className="mb-6">
+                    <h1 className="text-2xl font-bold text-white">Analytics</h1>
+                    <p className="text-gray-300">Live metrics from Users & Payments</p>
                 </div>
 
-                <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                    <Card className="bg-slate-800/60 border-slate-700 text-white">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">1,234</div>
-                            <p className="text-xs text-gray-400 mt-1">
-                                <TrendingUp className="inline h-3 w-3 text-green-500 mr-1" />
-                                +15% from last month
-                            </p>
-                        </CardContent>
+                {/* Errors / Loading */}
+                {error ? (
+                    <Card className="bg-red-950/40 border-red-800 text-red-200 mb-6">
+                        <CardContent className="py-4 text-sm">{error}</CardContent>
                     </Card>
+                ) : null}
 
-                    <Card className="bg-slate-800/60 border-slate-700 text-white">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium">Active Students</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">985</div>
-                            <p className="text-xs text-gray-400 mt-1">
-                                <Users className="inline h-3 w-3 text-blue-500 mr-1" />
-                                80% of total users
-                            </p>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="bg-slate-800/60 border-slate-700 text-white">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium">Total Transactions</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">2,345</div>
-                            <p className="text-xs text-gray-400 mt-1">
-                                <CreditCard className="inline h-3 w-3 text-purple-500 mr-1" />
-                                Current academic year
-                            </p>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="bg-slate-800/60 border-slate-700 text-white">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium">Avg. Session Time</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">12m 45s</div>
-                            <p className="text-xs text-gray-400 mt-1">
-                                <Clock className="inline h-3 w-3 text-amber-500 mr-1" />
-                                +2m from last month
-                            </p>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                    {/* Mobile Dropdown - visible on extra small screens */}
-                    <div className="mb-6 sm:hidden">
-                        <Select value={activeTab} onValueChange={setActiveTab}>
-                            <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
-                                <div className="flex items-center">
-                                    <SelectValue placeholder="Select Analytics" />
-                                </div>
-                            </SelectTrigger>
-                            <SelectContent className="bg-slate-800 border-slate-700 text-white">
-                                {tabOptions.map((tab) => (
-                                    <SelectItem key={tab.value} value={tab.value} className="focus:bg-slate-700">
-                                        {tab.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    {/* Horizontal Scrolling Tabs - visible on small screens and up */}
-                    <div className="hidden sm:block mb-8">
-                        <div className="relative">
-                            <TabsList className="bg-slate-800 border-slate-700 flex h-auto p-1 w-full overflow-x-auto scrollbar-hide">
-                                <TabsTrigger
-                                    value="users"
-                                    className="whitespace-nowrap px-4 py-2 text-sm data-[state=active]:bg-slate-700 data-[state=active]:text-white"
-                                >
-                                    User Analytics
-                                </TabsTrigger>
-                                <TabsTrigger
-                                    value="transactions"
-                                    className="whitespace-nowrap px-4 py-2 text-sm data-[state=active]:bg-slate-700 data-[state=active]:text-white"
-                                >
-                                    Transaction Analytics
-                                </TabsTrigger>
-                                <TabsTrigger
-                                    value="performance"
-                                    className="whitespace-nowrap px-4 py-2 text-sm data-[state=active]:bg-slate-700 data-[state=active]:text-white"
-                                >
-                                    System Performance
-                                </TabsTrigger>
-                            </TabsList>
-                        </div>
-                    </div>
-
-                    <TabsContent value="users">
-                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>User Growth</CardTitle>
-                                    <CardDescription className="text-gray-300">Monthly user registrations</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="h-80">
-                                        <PaymentChart data={transformDataForChart(monthlyUsers)} />
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>User Distribution</CardTitle>
-                                    <CardDescription className="text-gray-300">Breakdown by user type</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="h-80">
-                                        <PaymentPieChart data={userTypeDistribution} />
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>User Engagement</CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <span className="text-sm text-gray-400">Daily Active Users</span>
-                                            <span className="text-sm font-medium">425</span>
-                                        </div>
-                                        <div className="h-2 w-full rounded-full bg-slate-600">
-                                            <div className="h-2 rounded-full bg-green-500" style={{ width: "65%" }}></div>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <span className="text-sm text-gray-400">Weekly Active Users</span>
-                                            <span className="text-sm font-medium">780</span>
-                                        </div>
-                                        <div className="h-2 w-full rounded-full bg-slate-600">
-                                            <div className="h-2 rounded-full bg-blue-500" style={{ width: "78%" }}></div>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <span className="text-sm text-gray-400">Monthly Active Users</span>
-                                            <span className="text-sm font-medium">985</span>
-                                        </div>
-                                        <div className="h-2 w-full rounded-full bg-slate-600">
-                                            <div className="h-2 rounded-full bg-purple-500" style={{ width: "95%" }}></div>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>User Retention</CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm">1-month retention</span>
-                                        <span className="text-sm font-medium text-green-500">85%</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm">3-month retention</span>
-                                        <span className="text-sm font-medium text-green-500">72%</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm">6-month retention</span>
-                                        <span className="text-sm font-medium text-amber-500">58%</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm">12-month retention</span>
-                                        <span className="text-sm font-medium text-amber-500">45%</span>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>User Demographics</CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="space-y-2">
-                                        <p className="text-sm text-gray-400">Age Distribution</p>
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-2 w-full rounded-full bg-slate-600">
-                                                <div className="h-2 rounded-full bg-blue-500" style={{ width: "35%" }}></div>
-                                            </div>
-                                            <span className="text-xs whitespace-nowrap">18-24</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-2 w-full rounded-full bg-slate-600">
-                                                <div className="h-2 rounded-full bg-green-500" style={{ width: "45%" }}></div>
-                                            </div>
-                                            <span className="text-xs whitespace-nowrap">25-34</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-2 w-full rounded-full bg-slate-600">
-                                                <div className="h-2 rounded-full bg-amber-500" style={{ width: "15%" }}></div>
-                                            </div>
-                                            <span className="text-xs whitespace-nowrap">35-44</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-2 w-full rounded-full bg-slate-600">
-                                                <div className="h-2 rounded-full bg-red-500" style={{ width: "5%" }}></div>
-                                            </div>
-                                            <span className="text-xs whitespace-nowrap">45+</span>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-                    </TabsContent>
-
-                    <TabsContent value="transactions">
-                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>Transaction Volume</CardTitle>
-                                    <CardDescription className="text-gray-300">Monthly transaction count</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="h-80">
-                                        <PaymentChart data={transformDataForChart(monthlyTransactions)} />
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>Payment Methods</CardTitle>
-                                    <CardDescription className="text-gray-300">Distribution by payment type</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="h-80">
-                                        <PaymentPieChart data={paymentMethodDistribution} />
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>Transaction Metrics</CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="flex justify-between">
-                                        <span className="text-sm text-gray-400">Avg. Transaction Value</span>
-                                        <span className="font-medium">₱4,478</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-sm text-gray-400">Success Rate</span>
-                                        <span className="font-medium text-green-500">98.5%</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-sm text-gray-400">Failure Rate</span>
-                                        <span className="font-medium text-red-500">1.5%</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-sm text-gray-400">Avg. Processing Time</span>
-                                        <span className="font-medium">2.3s</span>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>Peak Transaction Hours</CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-2">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm">8:00 AM - 10:00 AM</span>
-                                        <span className="text-sm font-medium text-amber-500">25%</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm">10:00 AM - 12:00 PM</span>
-                                        <span className="text-sm font-medium text-green-500">35%</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm">12:00 PM - 2:00 PM</span>
-                                        <span className="text-sm font-medium text-amber-500">15%</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm">2:00 PM - 4:00 PM</span>
-                                        <span className="text-sm font-medium text-blue-500">20%</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm">4:00 PM - 6:00 PM</span>
-                                        <span className="text-sm font-medium">5%</span>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>Transaction Types</CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-2">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm">Tuition Payments</span>
-                                        <span className="text-sm font-medium text-green-500">65%</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm">Laboratory Fees</span>
-                                        <span className="text-sm font-medium text-blue-500">15%</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm">Library Fees</span>
-                                        <span className="text-sm font-medium text-amber-500">10%</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm">Miscellaneous Fees</span>
-                                        <span className="text-sm font-medium text-purple-500">10%</span>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-                    </TabsContent>
-
-                    <TabsContent value="performance">
-                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>System Performance</CardTitle>
-                                    <CardDescription className="text-gray-300">Key performance indicators</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-6">
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <span className="text-sm text-gray-400">Server Uptime</span>
-                                            <span className="text-sm font-medium text-green-500">99.98%</span>
-                                        </div>
-                                        <div className="h-2 w-full rounded-full bg-slate-600">
-                                            <div className="h-2 rounded-full bg-green-500" style={{ width: "99.98%" }}></div>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <span className="text-sm text-gray-400">Average Response Time</span>
-                                            <span className="text-sm font-medium">245ms</span>
-                                        </div>
-                                        <div className="h-2 w-full rounded-full bg-slate-600">
-                                            <div className="h-2 rounded-full bg-blue-500" style={{ width: "75%" }}></div>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <span className="text-sm text-gray-400">Database Performance</span>
-                                            <span className="text-sm font-medium">Excellent</span>
-                                        </div>
-                                        <div className="h-2 w-full rounded-full bg-slate-600">
-                                            <div className="h-2 rounded-full bg-green-500" style={{ width: "90%" }}></div>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <span className="text-sm text-gray-400">API Success Rate</span>
-                                            <span className="text-sm font-medium text-green-500">99.5%</span>
-                                        </div>
-                                        <div className="h-2 w-full rounded-full bg-slate-600">
-                                            <div className="h-2 rounded-full bg-green-500" style={{ width: "99.5%" }}></div>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="bg-slate-800/60 border-slate-700 text-white">
-                                <CardHeader>
-                                    <CardTitle>Error Rates</CardTitle>
-                                    <CardDescription className="text-gray-300">System errors and exceptions</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="rounded-lg bg-slate-700/50 p-4">
-                                        <div className="flex justify-between mb-2">
-                                            <span className="font-medium">Payment Processing Errors</span>
-                                            <span className="text-green-500">0.5%</span>
-                                        </div>
-                                        <p className="text-sm text-gray-400">12 errors in the last 30 days</p>
-                                    </div>
-
-                                    <div className="rounded-lg bg-slate-700/50 p-4">
-                                        <div className="flex justify-between mb-2">
-                                            <span className="font-medium">Authentication Failures</span>
-                                            <span className="text-amber-500">1.2%</span>
-                                        </div>
-                                        <p className="text-sm text-gray-400">28 failures in the last 30 days</p>
-                                    </div>
-
-                                    <div className="rounded-lg bg-slate-700/50 p-4">
-                                        <div className="flex justify-between mb-2">
-                                            <span className="font-medium">Database Timeouts</span>
-                                            <span className="text-green-500">0.1%</span>
-                                        </div>
-                                        <p className="text-sm text-gray-400">3 timeouts in the last 30 days</p>
-                                    </div>
-
-                                    <div className="rounded-lg bg-slate-700/50 p-4">
-                                        <div className="flex justify-between mb-2">
-                                            <span className="font-medium">API Errors</span>
-                                            <span className="text-green-500">0.3%</span>
-                                        </div>
-                                        <p className="text-sm text-gray-400">7 errors in the last 30 days</p>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        <Card className="bg-slate-800/60 border-slate-700 text-white mt-6">
-                            <CardHeader>
-                                <CardTitle>Resource Utilization</CardTitle>
-                                <CardDescription className="text-gray-300">System resource usage</CardDescription>
+                {/* KPIs */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+                    {kpiCards.map((k) => (
+                        <Card key={k.label} className="bg-slate-800/60 border-slate-700 text-white">
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm font-medium">{k.label}</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
-                                    <div className="space-y-2">
-                                        <p className="text-sm text-gray-400">CPU Usage</p>
-                                        <div className="flex items-center justify-between">
-                                            <div className="h-2 w-full rounded-full bg-slate-600">
-                                                <div className="h-2 rounded-full bg-green-500" style={{ width: "45%" }}></div>
-                                            </div>
-                                            <span className="ml-2 text-sm">45%</span>
-                                        </div>
-                                        <p className="text-xs text-gray-400">Average over 24 hours</p>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <p className="text-sm text-gray-400">Memory Usage</p>
-                                        <div className="flex items-center justify-between">
-                                            <div className="h-2 w-full rounded-full bg-slate-600">
-                                                <div className="h-2 rounded-full bg-blue-500" style={{ width: "62%" }}></div>
-                                            </div>
-                                            <span className="ml-2 text-sm">62%</span>
-                                        </div>
-                                        <p className="text-xs text-gray-400">Average over 24 hours</p>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <p className="text-sm text-gray-400">Disk Usage</p>
-                                        <div className="flex items-center justify-between">
-                                            <div className="h-2 w-full rounded-full bg-slate-600">
-                                                <div className="h-2 rounded-full bg-amber-500" style={{ width: "78%" }}></div>
-                                            </div>
-                                            <span className="ml-2 text-sm">78%</span>
-                                        </div>
-                                        <p className="text-xs text-gray-400">Total storage capacity</p>
-                                    </div>
-                                </div>
+                                <div className="text-2xl font-bold">{loading ? "…" : k.value}</div>
                             </CardContent>
                         </Card>
-                    </TabsContent>
-                </Tabs>
+                    ))}
+                </div>
+
+                {/* Charts Row 1 */}
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-6">
+                    <Card className="bg-slate-800/60 border-slate-700 text-white">
+                        <CardHeader>
+                            <CardTitle>Payments — Last 30 Days</CardTitle>
+                            <CardDescription className="text-gray-300">Sum of Completed/Succeeded per day</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="h-72">
+                                {loading ? (
+                                    <div className="text-gray-400 text-sm">Loading…</div>
+                                ) : (
+                                    <PaymentChart data={series30d} />
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-slate-800/60 border-slate-700 text-white">
+                        <CardHeader>
+                            <CardTitle>Payment Methods (30d)</CardTitle>
+                            <CardDescription className="text-gray-300">Count by method</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="h-72">
+                                {loading ? (
+                                    <div className="text-gray-400 text-sm">Loading…</div>
+                                ) : (
+                                    <PaymentPieChart data={pieByMethod} />
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* Charts Row 2 */}
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    <Card className="bg-slate-800/60 border-slate-700 text-white">
+                        <CardHeader>
+                            <CardTitle>Users by Role</CardTitle>
+                            <CardDescription className="text-gray-300">Distribution across roles</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="h-72">
+                                {loading ? (
+                                    <div className="text-gray-400 text-sm">Loading…</div>
+                                ) : (
+                                    <PaymentPieChart data={pieByRole} />
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-slate-800/60 border-slate-700 text-white">
+                        <CardHeader>
+                            <CardTitle>Today — Hourly Amount</CardTitle>
+                            <CardDescription className="text-gray-300">Completed/Succeeded totals per hour</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="h-72">
+                                {loading ? (
+                                    <div className="text-gray-400 text-sm">Loading…</div>
+                                ) : (
+                                    <PaymentChart data={todaySeries} />
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
         </DashboardLayout>
     )
