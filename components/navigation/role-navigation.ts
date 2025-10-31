@@ -8,7 +8,6 @@ import {
   BarChart4,
   DollarSign,
   Calculator,
-  ClipboardCheck,
   History,
 } from "lucide-react";
 
@@ -45,11 +44,6 @@ export const navigationConfig = {
       name: "Collections",
       href: "/business-office/collections",
       icon: DollarSign,
-    },
-    {
-      name: "Reconciliation",
-      href: "/business-office/reconciliation",
-      icon: ClipboardCheck,
     },
     { name: "Settings", href: "/business-office/settings", icon: Settings },
   ],
