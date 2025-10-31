@@ -2,6 +2,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import Image from "next/image"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DataTable } from "@/components/ui/data-table"
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Plus, Search, Download, Edit, Trash2 } from "lucide-react"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Spinner } from "@/components/ui/spinner"
@@ -40,6 +42,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
+import { getPhotoUrl } from "@/lib/profile"
 
 type UserVM = {
   id: string
@@ -49,6 +52,7 @@ type UserVM = {
   status: UserRecord["status"]
   createdAt: string
   studentId?: string
+  photoUrl?: string | null
   _doc: UserDoc
 }
 
@@ -80,21 +84,33 @@ export default function AdminUsersPage() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
+  // photo preview dialog
+  const [previewPhoto, setPreviewPhoto] = useState<{ url: string; name: string } | null>(null)
+
   const load = async () => {
     setLoading(true)
     try {
       const docs = await listAllUsers()
       setUsers(
-        docs.map((d) => ({
-          id: d.$id,
-          name: d.fullName ?? "",
-          email: d.email ?? "",
-          role: d.role ?? "student",
-          status: d.status ?? "active",
-          createdAt: d.createdAt ?? d.$createdAt,
-          studentId: d.studentId,
-          _doc: d,
-        }))
+        docs.map((d) => {
+          const photoUrl = getPhotoUrl({
+            directUrl: (d as any).photoUrl ?? null,
+            bucketId: (d as any).photoBucketId ?? null,
+            fileId: (d as any).photoFileId ?? null,
+          })
+
+          return {
+            id: d.$id,
+            name: d.fullName ?? "",
+            email: d.email ?? "",
+            role: d.role ?? "student",
+            status: d.status ?? "active",
+            createdAt: d.createdAt ?? d.$createdAt,
+            studentId: d.studentId,
+            photoUrl,
+            _doc: d,
+          }
+        })
       )
     } finally {
       setLoading(false)
@@ -107,6 +123,40 @@ export default function AdminUsersPage() {
 
   const columns: ColumnDef<UserVM>[] = useMemo(
     () => [
+      {
+        id: "photo",
+        header: "Photo",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const u = row.original
+          const initials =
+            (u.name || u.email || "U")
+              .trim()
+              .split(/\s+/)
+              .slice(0, 2)
+              .map((s) => s[0]?.toUpperCase())
+              .join("") || "U"
+
+          const clickable = !!u.photoUrl
+          return (
+            <button
+              type="button"
+              className={`rounded-full ${clickable ? "cursor-zoom-in" : "cursor-default"}`}
+              onClick={() => (u.photoUrl ? setPreviewPhoto({ url: u.photoUrl, name: u.name || u.email }) : undefined)}
+              title={u.photoUrl ? "Click to view full photo" : "No photo"}
+            >
+              <Avatar className="h-10 w-10 border border-slate-600">
+                {u.photoUrl ? (
+                  <AvatarImage src={u.photoUrl} alt={u.name || u.email} />
+                ) : (
+                  <AvatarImage src="" alt={u.name || u.email} />
+                )}
+                <AvatarFallback className="bg-slate-700 text-white">{initials}</AvatarFallback>
+              </Avatar>
+            </button>
+          )
+        },
+      },
       { accessorKey: "name", header: "Name" },
       { accessorKey: "email", header: "Email" },
       {
@@ -115,7 +165,13 @@ export default function AdminUsersPage() {
         cell: ({ row }) => {
           const r = row.getValue("role") as UserRecord["role"]
           const variant =
-            r === "admin" ? "destructive" : r === "cashier" ? "default" : r === "business-office" ? "secondary" : "outline"
+            r === "admin"
+              ? "destructive"
+              : r === "cashier"
+                ? "default"
+                : r === "business-office"
+                  ? "secondary"
+                  : "outline"
           return <Badge variant={variant}>{roleLabel(r)}</Badge>
         },
       },
@@ -221,6 +277,11 @@ export default function AdminUsersPage() {
           status: (profile.status as UserRecord["status"]) ?? payload.status,
           createdAt: profile.$createdAt ?? new Date().toISOString(),
           studentId: profile.studentId ?? payload.studentId,
+          photoUrl: getPhotoUrl({
+            directUrl: profile.photoUrl ?? null,
+            bucketId: profile.photoBucketId ?? null,
+            fileId: profile.photoFileId ?? null,
+          }),
           _doc: profile as UserDoc,
         }
 
@@ -231,14 +292,11 @@ export default function AdminUsersPage() {
         const id = working.id!
         const original = users.find((u) => u.id === id)
 
-        // Decide if account needs an update (name/email changes)
         const wantsNameChange = payload.fullName !== (original?.name ?? "")
         const wantsEmailChange =
           payload.email.toLowerCase() !== (original?.email ?? "").toLowerCase()
 
-        // 1) Update Appwrite Account FIRST to avoid divergence
         if (wantsNameChange || wantsEmailChange) {
-          // Basic email sanity check to avoid 400 from Appwrite
           if (wantsEmailChange) {
             const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)
             if (!emailOk) {
@@ -256,21 +314,20 @@ export default function AdminUsersPage() {
           })
         }
 
-        // 2) Update the profile document AFTER account success
         const updated = await updateUserProfile(id, payload)
 
         setUsers((prev) =>
           prev.map((x) =>
             x.id === id
               ? {
-                  ...x,
-                  name: updated.fullName,
-                  email: updated.email,
-                  role: updated.role,
-                  status: updated.status,
-                  studentId: updated.studentId,
-                  _doc: updated,
-                }
+                ...x,
+                name: updated.fullName,
+                email: updated.email,
+                role: updated.role,
+                status: updated.status,
+                studentId: updated.studentId,
+                _doc: updated,
+              }
               : x
           )
         )
@@ -426,6 +483,7 @@ export default function AdminUsersPage() {
         </Card>
       </div>
 
+      {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="bg-slate-800 border-slate-700 text-white">
           <DialogHeader>
@@ -532,6 +590,7 @@ export default function AdminUsersPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Delete confirmation */}
       <AlertDialog open={!!confirmUser} onOpenChange={(o) => (!o && !deleting ? setConfirmUser(null) : null)}>
         <AlertDialogContent className="bg-slate-800 border-slate-700 text-white">
           <AlertDialogHeader>
@@ -557,6 +616,33 @@ export default function AdminUsersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Full-size photo preview — uses next/image to satisfy no-img-element */}
+      <Dialog open={!!previewPhoto} onOpenChange={(o) => (!o ? setPreviewPhoto(null) : null)}>
+        <DialogContent className="max-w-3xl bg-slate-900 border-slate-700 p-0">
+          <DialogHeader className="px-6 pt-6">
+            <DialogTitle className="text-white">Profile Photo</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              {previewPhoto?.name || ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="p-6">
+            {previewPhoto?.url ? (
+              <div className="relative mx-auto h-[70vh] w-full">
+                <Image
+                  src={previewPhoto.url}
+                  alt={previewPhoto.name || "Profile photo"}
+                  fill
+                  sizes="100vw"
+                  className="rounded-lg object-contain"
+                  priority
+                  unoptimized
+                />
+              </div>
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   )
 }
