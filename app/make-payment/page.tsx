@@ -22,6 +22,7 @@ import { listAllFeePlans, computeTotals, type FeePlanDoc } from "@/lib/fee-plan"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { toast } from "sonner"
+import { upsertUserBalance } from "@/lib/balance"
 
 type FeeKey = "tuition" | "laboratory" | "library" | "miscellaneous"
 type FeePlanLegacy = Partial<Record<FeeKey | "total", number>>
@@ -173,7 +174,6 @@ export default function MakePaymentPage() {
         setActivePlans(onlyActive)
 
         // Resolve initial selection priority:
-        // 1) profile.selectedPlanId, 2) localStorage, 3) preferred by course, 4) only active if single
         const courseCodeMap: Record<NonNullable<UserProfileDoc["courseId"]>, string> = {
           bsed: "BSED",
           bscs: "BSCS",
@@ -416,7 +416,7 @@ export default function MakePaymentPage() {
                         <Label className="mb-1 block">Active plans</Label>
                         <Select
                           value={selectedPlanId ?? ""}
-                          onValueChange={(v) => {
+                          onValueChange={async (v) => {
                             setSelectedPlanId(v)
                             const picked = activePlans.find((p) => p.$id === v) || null
                             if (picked) {
@@ -429,6 +429,17 @@ export default function MakePaymentPage() {
                               toast.success("Plan selected", { description: `${picked.program} • ₱${t.total.toLocaleString()}` })
                               // 🔐 persist to profile + localStorage so Dashboard reflects immediately
                               persistSelectedPlan(picked)
+
+                              // 🧾 NEW: also upsert balance (plan + current balance) to the Balance collection
+                              try {
+                                const me = await getCurrentUserSafe()
+                                if (me) {
+                                  const balance = Math.max(0, t.total - (Number(paidTotal) || 0))
+                                  await upsertUserBalance(me.$id, picked.program ?? picked.$id, balance)
+                                }
+                              } catch (err: any) {
+                                console.warn("[balance] upsert failed:", err?.message ?? err)
+                              }
                             } else {
                               persistSelectedPlan(null)
                             }

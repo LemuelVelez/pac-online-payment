@@ -42,6 +42,7 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import { Checkbox } from "@/components/ui/checkbox"
+import { upsertUserBalance } from "@/lib/balance"
 
 type FeeKey = "tuition" | "laboratory" | "library" | "miscellaneous"
 type FeePlanLegacy = Partial<Record<FeeKey | "total", number>>
@@ -448,7 +449,19 @@ export default function CashierPaymentsPage() {
                 summary,
             })
             setShowReceipt(true)
+
+            // 🔄 refresh paid totals & pending list
             await loadStudent(studentId)
+
+            // 🧾 NEW: Upsert Balance when a plan is selected and payment has been made
+            try {
+                if (student && selectedPlan && typeof summary?.balanceAfter === "number") {
+                    await upsertUserBalance(student.$id, selectedPlan.program ?? selectedPlan.$id, summary.balanceAfter)
+                }
+            } catch (err: any) {
+                console.warn("[balance] upsert after verify failed:", err?.message ?? err)
+            }
+
             toast.success("Payment verified", {
                 description: res.receiptUrl ? "Receipt sent to student." : "Receipt issued.",
             })
@@ -478,7 +491,7 @@ export default function CashierPaymentsPage() {
             // method is strictly "cash" or "credit-card" to satisfy Appwrite enum
             const methodToPersist = method
 
-            // 🔴 IMPORTANT CHANGE: When a plan is selected, persist planId & planRef (parity with make-payment)
+            // 🔴 IMPORTANT: persist plan linkage if present
             const payload: any = {
                 userId: student.$id,
                 courseId: cId,
@@ -516,8 +529,20 @@ export default function CashierPaymentsPage() {
                 summary,
             })
             setShowReceipt(true)
+
+            // 🔄 refresh student (paid totals, pending list, etc.)
             await loadStudent(studentId)
             setAmount("")
+
+            // 🧾 NEW: Upsert Balance when a plan is selected and payment has been made
+            try {
+                if (student && selectedPlan && typeof summary?.balanceAfter === "number") {
+                    await upsertUserBalance(student.$id, selectedPlan.program ?? selectedPlan.$id, summary.balanceAfter)
+                }
+            } catch (err: any) {
+                console.warn("[balance] upsert after OTC failed:", err?.message ?? err)
+            }
+
             toast.success("Counter payment recorded", {
                 description: res.receiptUrl ? "Receipt sent to student." : "Receipt issued.",
             })

@@ -19,6 +19,7 @@ import { getCurrentUserSafe, getDatabases, getEnvIds, Query } from "@/lib/appwri
 import { getPaidTotal, type PaymentDoc } from "@/lib/appwrite-payments"
 import { listAllFeePlans, computeTotals, type FeePlanDoc } from "@/lib/fee-plan"
 import type { Models } from "appwrite"
+import { upsertBalanceRecord, getBalanceRecord, parseBalanceNumber, type BalanceDoc } from "@/lib/balance"
 
 type FeeKey = "tuition" | "laboratory" | "library" | "miscellaneous"
 type FeePlanLegacy = Partial<Record<FeeKey | "total", number>>
@@ -35,8 +36,6 @@ type UserProfileDoc = Models.Document & {
     yearId?: "1" | "2" | "3" | "4"
     feePlan?: FeePlanLegacy
     totalFees?: number
-
-    /** NEW: persisted selection set from Make Payment */
     selectedPlanId?: string | null
     selectedPlanProgram?: string | null
     selectedPlanUpdatedAt?: string | null
@@ -91,6 +90,9 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string>("")
 
+    // who am I (for balance upsert/read)
+    const [userId, setUserId] = useState<string | null>(null)
+
     // Profile-derived info
     const [courseId, setCourseId] = useState<UserProfileDoc["courseId"]>()
     const [yearId, setYearId] = useState<UserProfileDoc["yearId"]>()
@@ -106,6 +108,10 @@ export default function DashboardPage() {
     // History / charts
     const [paymentHistory, setPaymentHistory] = useState<MonthPoint[]>([])
     const [transactions, setTransactions] = useState<TxnRow[]>([])
+
+    // Saved balance (from Balance collection)
+    const [savedBalDoc, setSavedBalDoc] = useState<BalanceDoc | null>(null)
+    const savedBalNumber = useMemo(() => parseBalanceNumber(savedBalDoc), [savedBalDoc])
 
     // Keep in sync if user changes plan in another tab
     useEffect(() => {
@@ -130,6 +136,7 @@ export default function DashboardPage() {
                     setLoading(false)
                     return
                 }
+                setUserId(me.$id)
 
                 // --- Fetch profile for course/year and previously saved selection ---
                 const { DB_ID, USERS_COL_ID } = getEnvIds()
@@ -169,7 +176,6 @@ export default function DashboardPage() {
                 setActivePlans(onlyActive)
 
                 // Determine final selected plan:
-                // 1) persisted on profile, 2) localStorage, 3) preferred by course, 4) only active if single
                 const courseCodeMap: Record<NonNullable<UserProfileDoc["courseId"]>, string> = {
                     bsed: "BSED",
                     bscs: "BSCS",
@@ -228,6 +234,10 @@ export default function DashboardPage() {
                     }
                 }
                 setPaymentHistory(MONTH_LABELS.map((m, i) => ({ month: m, amount: monthly[i] })))
+
+                // --- Load saved balance snapshot (if any) ---
+                const saved = await getBalanceRecord(me.$id)
+                setSavedBalDoc(saved)
             } catch (e: any) {
                 setError(e?.message ?? "Failed to load dashboard data.")
             } finally {
@@ -275,12 +285,41 @@ export default function DashboardPage() {
                 ? feePlanLegacy.total!
                 : undefined
 
-    const balance =
+    // Computed balance (total - paid)
+    const computedBalance =
         typeof totalFees === "number" ? Math.max(0, totalFees - (isFinite(paidTotal) ? paidTotal : 0)) : undefined
+
+    // Prefer the saved balance if present; otherwise computed
+    const displayBalance: number | undefined =
+        (savedBalNumber ?? null) !== null ? savedBalNumber ?? undefined : computedBalance
+
     const progressPct =
         typeof totalFees === "number" && totalFees > 0
             ? Math.min(100, Math.round(((isFinite(paidTotal) ? paidTotal : 0) / totalFees) * 100))
             : undefined
+
+    // Snapshot to Balance table whenever we can — but skip if the saved snapshot already matches (to 2 decimals)
+    useEffect(() => {
+        ; (async () => {
+            if (!userId) return
+            if (!(selectedPlan || feePlanLegacy)) return
+            if (typeof computedBalance !== "number") return
+
+            const savedRounded = typeof savedBalNumber === "number" ? savedBalNumber.toFixed(2) : null
+            const computedRounded = computedBalance.toFixed(2)
+            if (savedRounded === computedRounded) return // no-op; already synced
+
+            const feePlanLabel = selectedPlan?.program ?? (feePlanLegacy ? "Legacy/Custom" : "—")
+            const updated = await upsertBalanceRecord({
+                userId,
+                feePlanLabel,
+                balance: computedBalance,
+            })
+            // Refresh the local snapshot so the UI shows "as of" immediately
+            if (updated) setSavedBalDoc(updated)
+        })()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [userId, selectedPlan?.$id, totalFees, paidTotal])
 
     // Pie data (plan-first, then legacy)
     const pieChartData = useMemo(() => {
@@ -360,16 +399,14 @@ export default function DashboardPage() {
                                 <div className="mr-4 rounded-lg bg-emerald-500/20 p-3">
                                     <Wallet className="size-6 text-emerald-500" />
                                 </div>
-                                {/* Allow the text column to actually shrink so the inner scroller can work */}
                                 <div className="min-w-0">
-                                    {/* H-scroll for long currency */}
                                     <div className="overflow-x-auto max-w-full">
                                         <div className="whitespace-nowrap text-3xl font-bold">
                                             {typeof totalFees === "number" ? `₱${totalFees.toLocaleString()}` : "—"}
                                         </div>
                                     </div>
                                     <p className="text-sm text-gray-300">
-                                        Selected plan total {selectedPlan ? `(${selectedPlan.program})` : ""}
+                                        {selectedPlan ? `Selected plan total (${selectedPlan.program})` : "—"}
                                     </p>
                                 </div>
                             </div>
@@ -386,7 +423,6 @@ export default function DashboardPage() {
                                 <div className="mr-4 rounded-lg bg-blue-500/20 p-3">
                                     <BookOpen className="size-6 text-blue-400" />
                                 </div>
-                                {/* Allow shrink so scroller appears on small widths */}
                                 <div className="min-w-0">
                                     <div className="overflow-x-auto max-w-full">
                                         <div className="whitespace-nowrap text-3xl font-bold">₱{paidTotal.toLocaleString()}</div>
@@ -402,22 +438,23 @@ export default function DashboardPage() {
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
                         <CardHeader>
                             <CardTitle className="text-lg">Balance Due</CardTitle>
-                            <CardDescription className="text-gray-300">Total minus paid</CardDescription>
+                            <CardDescription className="text-gray-300">Total minus paid (prefers saved)</CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="flex items-center">
                                 <div className="mr-4 rounded-lg bg-red-500/20 p-3">
                                     <CreditCard className="size-6 text-red-500" />
                                 </div>
-                                {/* Fix: min-w-0 enables the inner overflow-x container to take effect */}
                                 <div className="min-w-0">
                                     <div className="overflow-x-auto max-w-full">
                                         <div className="whitespace-nowrap text-3xl font-bold">
-                                            {typeof balance === "number" ? `₱${balance.toLocaleString()}` : "—"}
+                                            {typeof displayBalance === "number" ? `₱${displayBalance.toLocaleString()}` : "—"}
                                         </div>
                                     </div>
-                                    <p className="text-sm text-gray-300">
-                                        {typeof progressPct === "number" ? `${Math.max(0, 100 - progressPct)}% remaining` : "—"}
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        {savedBalDoc
+                                            ? <>Saved snapshot (as of {new Date(savedBalDoc.$updatedAt).toLocaleString()})</>
+                                            : "Computed from plan total minus paid"}
                                     </p>
                                 </div>
                             </div>
@@ -460,10 +497,10 @@ export default function DashboardPage() {
                                 </span>
                             </div>
                             <Progress value={progressPct ?? 0} className="h-2 bg-slate-700" />
-                            {typeof balance === "number" && balance > 0 && (
+                            {typeof displayBalance === "number" && displayBalance > 0 && (
                                 <Alert className="mt-4 bg-amber-500/20 border-amber-500/50 text-amber-200">
                                     <AlertDescription>
-                                        You have a remaining balance of ₱{balance.toLocaleString()}. Please settle your
+                                        You have a remaining balance of ₱{displayBalance.toLocaleString()}. Please settle your
                                         payments before the deadline.
                                     </AlertDescription>
                                 </Alert>
@@ -474,37 +511,40 @@ export default function DashboardPage() {
 
                 <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
                     {/* Fee Breakdown */}
-                    {pieChartData.length > 0 ? (
-                        <Card className="bg-slate-800/60 border-slate-700 text-white">
-                            <CardHeader>
-                                <CardTitle>Fee Breakdown</CardTitle>
-                                <CardDescription className="text-gray-300">
-                                    {selectedPlan ? `Active plan: ${selectedPlan.program}` : "Legacy fees loaded from profile (fallback)"}
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="h-80">
-                                    <PaymentPieChart data={pieChartData} />
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ) : (
-                        <Card className="bg-slate-800/60 border-slate-700 text-white">
-                            <CardHeader>
-                                <CardTitle>Fee Breakdown</CardTitle>
-                                <CardDescription className="text-gray-300">
-                                    No active fee plan yet. Go to <span className="font-medium text-white">Make Payment</span> to choose one.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="h-80 flex items-center justify-center text-gray-400">
-                                    <Button asChild className="cursor-pointer">
-                                        <Link href="/make-payment">Choose a Fee Plan</Link>
-                                    </Button>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    )}
+                    {(() => {
+                        const pieData = pieChartData
+                        return pieData.length > 0 ? (
+                            <Card className="bg-slate-800/60 border-slate-700 text-white">
+                                <CardHeader>
+                                    <CardTitle>Fee Breakdown</CardTitle>
+                                    <CardDescription className="text-gray-300">
+                                        {selectedPlan ? `Active plan: ${selectedPlan.program}` : "Legacy fees loaded from profile (fallback)"}
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="h-80">
+                                        <PaymentPieChart data={pieData} />
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ) : (
+                            <Card className="bg-slate-800/60 border-slate-700 text-white">
+                                <CardHeader>
+                                    <CardTitle>Fee Breakdown</CardTitle>
+                                    <CardDescription className="text-gray-300">
+                                        No active fee plan yet. Go to <span className="font-medium text-white">Make Payment</span> to choose one.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="h-80 flex items-center justify-center text-gray-400">
+                                        <Button asChild className="cursor-pointer">
+                                            <Link href="/make-payment">Choose a Fee Plan</Link>
+                                        </Button>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )
+                    })()}
 
                     {/* Payment History */}
                     <Card className="bg-slate-800/60 border-slate-700 text-white">
