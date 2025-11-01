@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { PaymentReceipt } from "@/components/payment/payment-receipt"
 import { DateRangePicker } from "@/components/admin/date-range-picker"
-import { Search, RefreshCw, Filter, Eye, Loader2, Reply, Paperclip, CheckCircle, Pencil, Trash2, Save } from "lucide-react"
+import { Search, RefreshCw, Filter, Eye, Loader2, Reply, Paperclip, CheckCircle, Pencil, Trash2, Save, XCircle, Ban } from "lucide-react"
 import { getDatabases, getEnvIds, Query, getStorage, getCurrentUserSafe, ID } from "@/lib/appwrite"
 import type { PaymentDoc } from "@/lib/appwrite-payments"
 import type { UserProfileDoc } from "@/lib/appwrite-cashier"
@@ -34,7 +34,8 @@ import {
 } from "@/lib/appwrite-messages"
 import { verifyPendingPaymentAndIssueReceipt } from "@/lib/appwrite-cashier"
 import { getFeePlan, type FeePlanDoc, computeTotals } from "@/lib/fee-plan"
-import { createUniqueNotification } from "@/lib/notification" // <-- NEW
+import { createUniqueNotification } from "@/lib/notification" // <-- existing notif helper
+import { updatePayment } from "@/lib/appwrite-payments"       // <-- NEW import
 
 type ReceiptData = {
   receiptNumber: string
@@ -120,6 +121,12 @@ export default function CashierTransactionsPage() {
   const [selectedPayment, setSelectedPayment] = useState<PaymentDoc | null>(null)
   const [verifying, setVerifying] = useState(false)
 
+  // NEW: cancel/fail confirmations
+  const [cancelTarget, setCancelTarget] = useState<PaymentDoc | null>(null)
+  const [cancelling, setCancelling] = useState(false)
+  const [failTarget, setFailTarget] = useState<PaymentDoc | null>(null)
+  const [failing, setFailing] = useState(false)
+
   // messages state
   const [meId, setMeId] = useState<string>("")
   const [messagesLoading, setMessagesLoading] = useState(false)
@@ -146,6 +153,8 @@ export default function CashierTransactionsPage() {
 
   // For inline “Pending Online Payments” list verification
   const [verifyingRowId, setVerifyingRowId] = useState<string | null>(null)
+  const [failingRowId, setFailingRowId] = useState<string | null>(null)   // NEW
+  const [cancellingRowId, setCancellingRowId] = useState<string | null>(null) // NEW
 
   // Prevent duplicate side effects in React Strict Mode (dev)
   const didInitRef = useRef(false)
@@ -692,6 +701,73 @@ export default function CashierTransactionsPage() {
     }
   }
 
+  /* ================= NEW: Cancel / Fail handlers ================= */
+
+  const openCancel = (p: PaymentDoc) => {
+    if (p.status !== "Pending") {
+      T.warn?.("cancel-na", "Only pending payments can be cancelled.")
+      return
+    }
+    setCancelTarget(p)
+  }
+
+  const openFail = (p: PaymentDoc) => {
+    if (p.status !== "Pending") {
+      T.warn?.("fail-na", "Only pending payments can be marked as failed.")
+      return
+    }
+    setFailTarget(p)
+  }
+
+  const doCancel = async () => {
+    if (!cancelTarget) return
+    setCancelling(true)
+    try {
+      const updated = await updatePayment(cancelTarget.$id, { status: "Cancelled" })
+      setAllPayments((prev) => prev.map((x) => (x.$id === updated.$id ? updated : x)))
+      if (selectedPayment?.$id === updated.$id) setSelectedPayment(updated)
+      T.ok("cancel-ok", "Payment cancelled")
+    } catch (e: any) {
+      T.err("cancel-err", "Failed to cancel", { description: e?.message ?? "Please try again." })
+    } finally {
+      setCancelling(false)
+      setCancelTarget(null)
+    }
+  }
+
+  const doFail = async () => {
+    if (!failTarget) return
+    setFailing(true)
+    try {
+      const updated = await updatePayment(failTarget.$id, { status: "Failed" })
+      setAllPayments((prev) => prev.map((x) => (x.$id === updated.$id ? updated : x)))
+      if (selectedPayment?.$id === updated.$id) setSelectedPayment(updated)
+      T.ok("fail-ok", "Payment marked as Failed")
+    } catch (e: any) {
+      T.err("fail-err", "Failed to mark as Failed", { description: e?.message ?? "Please try again." })
+    } finally {
+      setFailing(false)
+      setFailTarget(null)
+    }
+  }
+
+  // Row-level quick actions (open confirm + show loading on that row)
+  const cancelFromList = (p: PaymentDoc) => {
+    setCancellingRowId(p.$id)
+    openCancel(p)
+  }
+  const failFromList = (p: PaymentDoc) => {
+    setFailingRowId(p.$id)
+    openFail(p)
+  }
+  // Reset per-row loaders when dialogs close
+  useEffect(() => {
+    if (!cancelTarget) setCancellingRowId(null)
+  }, [cancelTarget])
+  useEffect(() => {
+    if (!failTarget) setFailingRowId(null)
+  }, [failTarget])
+
   /* ================= Messages ================= */
 
   const openMessage = async (msg: MessageDoc) => {
@@ -894,7 +970,7 @@ export default function CashierTransactionsPage() {
                 />
               </div>
               <div className="flex space-x-4">
-                <div className="w-[150px]">
+                <div className="w=[150px] md:w-[150px]">
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
                     <SelectTrigger className="bg-slate-700 border-slate-600">
                       <div className="flex items-center">
@@ -906,11 +982,11 @@ export default function CashierTransactionsPage() {
                       <SelectItem value="all">All Status</SelectItem>
                       <SelectItem value="pending">Pending</SelectItem>
                       <SelectItem value="completed">Completed</SelectItem>
-                      <SelectItem value="failed">Failed</SelectItem>
+                      <SelectItem value="failed">Failed / Cancelled</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="w-[180px]">
+                <div className="w=[180px] md:w-[180px]">
                   <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
                     <SelectTrigger className="bg-slate-700 border-slate-600">
                       <div className="flex items-center">
@@ -938,14 +1014,14 @@ export default function CashierTransactionsPage() {
           <Card className="bg-slate-800/60 border-slate-700 text-white mb-8">
             <CardHeader>
               <CardTitle>Pending Online Payments</CardTitle>
-              <CardDescription className="text-gray-300">Verify and issue receipts</CardDescription>
+              <CardDescription className="text-gray-300">Verify, fail, or cancel requests</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
                 {pendingOnlinePayments.map((p) => (
                   <div
                     key={p.$id}
-                    className="flex items-center justify-between rounded-lg border border-slate-700 p-3"
+                    className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between rounded-lg border border-slate-700 p-3"
                   >
                     <div>
                       <div className="font-medium">
@@ -959,7 +1035,7 @@ export default function CashierTransactionsPage() {
                         <div className="text-xs text-gray-400 mt-1">Plan: {p.planId}</div>
                       ) : null}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button
                         variant="outline"
                         className="border-slate-600"
@@ -974,6 +1050,7 @@ export default function CashierTransactionsPage() {
                         onClick={() => verifyFromList(p)}
                         disabled={verifyingRowId === p.$id}
                         title="Verify payment and issue receipt"
+                        size="sm"
                       >
                         {verifyingRowId === p.$id ? (
                           <span className="flex items-center">
@@ -981,8 +1058,38 @@ export default function CashierTransactionsPage() {
                             Verifying…
                           </span>
                         ) : (
-                          "Verify & Issue Receipt"
+                          "Verify & Issue"
                         )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="cursor-pointer"
+                        onClick={() => failFromList(p)}
+                        disabled={failingRowId === p.$id}
+                        title="Mark as Failed"
+                      >
+                        {failingRowId === p.$id ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <XCircle className="mr-2 h-4 w-4" />
+                        )}
+                        Fail
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-red-600 text-red-400 hover:bg-red-600/10"
+                        onClick={() => cancelFromList(p)}
+                        disabled={cancellingRowId === p.$id}
+                        title="Cancel payment"
+                      >
+                        {cancellingRowId === p.$id ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Ban className="mr-2 h-4 w-4" />
+                        )}
+                        Cancel
                       </Button>
                     </div>
                   </div>
@@ -1095,7 +1202,6 @@ export default function CashierTransactionsPage() {
                                 </td>
                                 <td className="whitespace-nowrap px-6 py-4">
                                   <div className="flex flex-wrap gap-2">
-                                    {/* FIXED: merged duplicate className props */}
                                     <Button
                                       size="sm"
                                       variant="outline"
@@ -1138,7 +1244,7 @@ export default function CashierTransactionsPage() {
           </TabsContent>
         </Tabs>
 
-        {/* Receipt Dialog (view & verify) — medium height & scrollable */}
+        {/* Receipt Dialog (view, verify, fail, cancel) */}
         <Dialog open={isReceiptDialogOpen} onOpenChange={setIsReceiptDialogOpen}>
           <DialogContent
             className="
@@ -1165,15 +1271,33 @@ export default function CashierTransactionsPage() {
                 <>
                   {selectedPayment?.status === "Pending" && (
                     <div className="mb-3 rounded-md bg-amber-500/15 border border-amber-400/40 p-3 text-sm text-amber-100">
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <div className="flex items-center gap-2">
                           <CheckCircle className="h-4 w-4" />
-                          This payment is still <b>Pending</b>. Verify to mark as Completed and send the receipt to the student.
+                          This payment is still <b>Pending</b>. Choose an action:
                         </div>
-                        <Button onClick={verifyFromDialog} disabled={verifying}>
-                          {verifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                          Verify & Issue Receipt
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                          <Button onClick={verifyFromDialog} disabled={verifying}>
+                            {verifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Verify & Issue Receipt
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            onClick={() => selectedPayment && openFail(selectedPayment)}
+                            className="cursor-pointer"
+                          >
+                            <XCircle className="mr-2 h-4 w-4" />
+                            Mark Failed
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="border-red-600 text-red-400 hover:bg-red-600/10"
+                            onClick={() => selectedPayment && openCancel(selectedPayment)}
+                          >
+                            <Ban className="mr-2 h-4 w-4" />
+                            Cancel
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1406,6 +1530,44 @@ export default function CashierTransactionsPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* NEW: Confirm Cancel */}
+        <AlertDialog open={!!cancelTarget} onOpenChange={(o) => !o && setCancelTarget(null)}>
+          <AlertDialogContent className="bg-slate-800 border-slate-700 text-white">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Cancel this payment?</AlertDialogTitle>
+              <AlertDialogDescription className="text-gray-300">
+                The status will change to <b>Cancelled</b>. This cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="border-slate-600">No</AlertDialogCancel>
+              <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={doCancel} disabled={cancelling}>
+                {cancelling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ban className="mr-2 h-4 w-4" />}
+                Yes, Cancel
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* NEW: Confirm Fail */}
+        <AlertDialog open={!!failTarget} onOpenChange={(o) => !o && setFailTarget(null)}>
+          <AlertDialogContent className="bg-slate-800 border-slate-700 text-white">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Mark this payment as Failed?</AlertDialogTitle>
+              <AlertDialogDescription className="text-gray-300">
+                The status will change to <b>Failed</b>. This cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="border-slate-600">No</AlertDialogCancel>
+              <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={doFail} disabled={failing}>
+                {failing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
+                Yes, Mark Failed
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </DashboardLayout>
   )
@@ -1449,6 +1611,8 @@ export default function CashierTransactionsPage() {
                         ? "Fee Plan Payment"
                         : "Payment"
                   const hasReceipt = !!receiptsByPaymentId[t.$id]
+                  const isPending = t.status === "Pending"
+                  const isOnline = !["cash", "card"].includes((t.method || "").toLowerCase())
                   return (
                     <tr key={t.$id} className="text-sm">
                       <td className="whitespace-nowrap px-6 py-4 font-medium">{t.reference || t.$id}</td>
@@ -1463,12 +1627,12 @@ export default function CashierTransactionsPage() {
                       <td className="whitespace-nowrap px-6 py-4 text-right">{peso(t.amount)}</td>
                       <td className="px-6 py-4">{methodLabel(t.method)}</td>
                       <td className="whitespace-nowrap px-6 py-4">
-                        {t.status === "Pending" && (
+                        {isPending && (
                           <span className="inline-flex rounded-full bg-yellow-500/20 px-2 py-1 text-xs font-medium text-yellow-300">
                             Pending
                           </span>
                         )}
-                        {(t.status === "Completed" || t.status === "Succeeded") && (
+                        {COMPLETED.has(t.status) && (
                           <span className="inline-flex rounded-full bg-green-500/20 px-2 py-1 text-xs font-medium text-green-300">
                             Completed
                           </span>
@@ -1491,22 +1655,54 @@ export default function CashierTransactionsPage() {
                             <Eye className="mr-2 h-4 w-4" />
                             View Receipt
                           </Button>
-                        ) : t.status === "Pending" && !["cash", "card"].includes((t.method || "").toLowerCase()) ? (
-                          <Button
-                            size="sm"
-                            onClick={() => verifyFromList(t)}
-                            disabled={verifyingRowId === t.$id}
-                            title="Verify payment and issue receipt"
-                          >
-                            {verifyingRowId === t.$id ? (
-                              <span className="flex items-center">
+                        ) : isPending && isOnline ? (
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => verifyFromList(t)}
+                              disabled={verifyingRowId === t.$id}
+                              title="Verify payment and issue receipt"
+                            >
+                              {verifyingRowId === t.$id ? (
+                                <span className="flex items-center">
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  Verifying…
+                                </span>
+                              ) : (
+                                "Verify & Issue"
+                              )}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              className="cursor-pointer"
+                              onClick={() => failFromList(t)}
+                              disabled={failingRowId === t.$id}
+                              title="Mark as Failed"
+                            >
+                              {failingRowId === t.$id ? (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Verifying…
-                              </span>
-                            ) : (
-                              "Verify & Issue"
-                            )}
-                          </Button>
+                              ) : (
+                                <XCircle className="mr-2 h-4 w-4" />
+                              )}
+                              Fail
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-red-600 text-red-400 hover:bg-red-600/10"
+                              onClick={() => cancelFromList(t)}
+                              disabled={cancellingRowId === t.$id}
+                              title="Cancel payment"
+                            >
+                              {cancellingRowId === t.$id ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Ban className="mr-2 h-4 w-4" />
+                              )}
+                              Cancel
+                            </Button>
+                          </div>
                         ) : (
                           <span className="text-xs text-gray-400">No receipt yet</span>
                         )}

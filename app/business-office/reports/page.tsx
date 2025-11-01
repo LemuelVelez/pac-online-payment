@@ -155,7 +155,6 @@ export default function BusinessOfficeReportsPage() {
         totalTx,
         pendingTx,
         completedTx,
-        succeededTx,
         failedTx,
         collectedAmount,
         pendingAmount,
@@ -402,10 +401,6 @@ export default function BusinessOfficeReportsPage() {
                             <div className="rounded-lg border border-slate-700 p-3">
                                 <div className="text-slate-400">Completed</div>
                                 <div className="text-lg font-semibold">{completedTx}</div>
-                            </div>
-                            <div className="rounded-lg border border-slate-700 p-3">
-                                <div className="text-slate-400">Succeeded</div>
-                                <div className="text-lg font-semibold">{succeededTx}</div>
                             </div>
                             <div className="rounded-lg border border-slate-700 p-3">
                                 <div className="text-slate-400">Failed</div>
