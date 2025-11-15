@@ -43,7 +43,7 @@ export default function ForgotPasswordPage() {
     return (
         <div className="max-h-screen overflow-y-auto bg-slate-800 flex flex-col min-h-screen">
             <header className="container mx-auto py-6 px-4">
-                <Link href="/auth" className="flex items-center gap-2 text-white hover:text-purple-300 transition-colors">
+                <Link href="/auth" className="flex items-center gap-2 text-white hover:text-sky-300 transition-colors">
                     <ArrowLeft className="h-5 w-5" />
                     <span>Back to Login</span>
                 </Link>
@@ -53,7 +53,7 @@ export default function ForgotPasswordPage() {
                 <div className="w-full max-w-md">
                     <div className="text-center mb-8">
                         <Image
-                            src="/images/logo.png"
+                            src="/images/logo.jpg"
                             alt="PAC Salug Campus logo"
                             width={64}
                             height={64}
@@ -64,7 +64,7 @@ export default function ForgotPasswordPage() {
                         <p className="text-gray-300">Online Payment System</p>
                     </div>
 
-                    <Card className="border-purple-500/20 bg-slate-800/50 backdrop-blur-sm">
+                    <Card className="border-sky-500/20 bg-slate-800/50 backdrop-blur-sm">
                         <CardHeader>
                             <CardTitle className="text-white">Reset Password</CardTitle>
                             <CardDescription>
@@ -105,7 +105,7 @@ export default function ForgotPasswordPage() {
                                     </div>
                                     <Button
                                         type="submit"
-                                        className="w-full cursor-pointer bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                                        className="w-full cursor-pointer bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-600 hover:to-blue-600"
                                         disabled={isLoading}
                                     >
                                         {isLoading ? "Sending..." : "Send Reset Link"}
@@ -116,7 +116,7 @@ export default function ForgotPasswordPage() {
                         <CardFooter className="flex justify-center border-t border-slate-700 pt-6">
                             <p className="text-sm text-gray-400">
                                 Remember your password?{" "}
-                                <Link href="/auth" className="text-purple-400 hover:text-purple-300">
+                                <Link href="/auth" className="text-sky-400 hover:text-sky-300">
                                     Back to login
                                 </Link>
                             </p>

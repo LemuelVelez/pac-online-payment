@@ -59,7 +59,7 @@ export function PaymentForm({ amount, description, onSuccess, onCancel }: Paymen
                   <RadioGroupItem value="card" id="card" className="peer sr-only" />
                   <Label
                     htmlFor="card"
-                    className="flex flex-col items-center justify-between rounded-md border-2 border-slate-700 bg-slate-800 p-4 hover:bg-slate-700/50 hover:text-white peer-data-[state=checked]:border-purple-500 peer-data-[state=checked]:text-white cursor-pointer"
+                    className="flex flex-col items-center justify-between rounded-md border-2 border-slate-700 bg-slate-800 p-4 hover:bg-slate-700/50 hover:text-white peer-data-[state=checked]:border-sky-500 peer-data-[state=checked]:text-white cursor-pointer"
                   >
                     <CreditCard className="mb-2 h-6 w-6" />
                     <span className="text-sm font-medium">Card</span>
@@ -69,7 +69,7 @@ export function PaymentForm({ amount, description, onSuccess, onCancel }: Paymen
                   <RadioGroupItem value="ewallet" id="ewallet" className="peer sr-only" />
                   <Label
                     htmlFor="ewallet"
-                    className="flex flex-col items-center justify-between rounded-md border-2 border-slate-700 bg-slate-800 p-4 hover:bg-slate-700/50 hover:text-white peer-data-[state=checked]:border-purple-500 peer-data-[state=checked]:text-white cursor-pointer"
+                    className="flex flex-col items-center justify-between rounded-md border-2 border-slate-700 bg-slate-800 p-4 hover:bg-slate-700/50 hover:text-white peer-data-[state=checked]:border-sky-500 peer-data-[state=checked]:text-white cursor-pointer"
                   >
                     <svg className="mb-2 h-6 w-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <path
@@ -101,7 +101,7 @@ export function PaymentForm({ amount, description, onSuccess, onCancel }: Paymen
                   <RadioGroupItem value="bank" id="bank" className="peer sr-only" />
                   <Label
                     htmlFor="bank"
-                    className="flex flex-col items-center justify-between rounded-md border-2 border-slate-700 bg-slate-800 p-4 hover:bg-slate-700/50 hover:text-white peer-data-[state=checked]:border-purple-500 peer-data-[state=checked]:text-white cursor-pointer"
+                    className="flex flex-col items-center justify-between rounded-md border-2 border-slate-700 bg-slate-800 p-4 hover:bg-slate-700/50 hover:text-white peer-data-[state=checked]:border-sky-500 peer-data-[state=checked]:text-white cursor-pointer"
                   >
                     <svg className="mb-2 h-6 w-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <path
@@ -284,7 +284,7 @@ export function PaymentForm({ amount, description, onSuccess, onCancel }: Paymen
       <CardFooter className="flex flex-col gap-4 border-t border-slate-700 pt-4">
         <Button
           type="submit"
-          className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+          className="w-full bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-600 hover:to-blue-600"
           disabled={isProcessing}
           onClick={handleSubmit}
         >

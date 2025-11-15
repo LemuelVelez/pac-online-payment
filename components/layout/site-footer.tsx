@@ -22,7 +22,7 @@ export function SiteFooter({ fullFooter = true }: SiteFooterProps) {
         "relative inline-flex items-center rounded-md px-1.5 py-0.5 text-sm " +
         "text-gray-400 hover:text-white transition-colors " +
         "after:absolute after:left-0 after:-bottom-1 after:h-0.5 after:w-0 " +
-        "after:bg-gradient-to-r after:from-purple-400 after:to-pink-400 " +
+        "after:bg-gradient-to-r after:from-sky-400 after:to-blue-400" +
         "data-[active=true]:after:w-full data-[active=true]:bg-white/5"
 
     if (!fullFooter) {

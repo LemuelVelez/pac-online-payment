@@ -48,7 +48,7 @@ export default function VerifyEmailCallbackPage() {
     return (
         <div className="min-h-screen max-h-screen overflow-y-auto bg-slate-800 flex flex-col">
             <header className="container mx-auto py-6 px-4">
-                <Link href="/auth" className="flex items-center gap-2 text-white hover:text-purple-300 transition-colors">
+                <Link href="/auth" className="flex items-center gap-2 text-white hover:text-sky-300 transition-colors">
                     <ArrowLeft className="h-5 w-5" />
                     <span>Back to Login</span>
                 </Link>
@@ -58,7 +58,7 @@ export default function VerifyEmailCallbackPage() {
                 <div className="w-full max-w-md">
                     <div className="text-center mb-8">
                         <Image
-                            src="/images/logo.png"
+                            src="/images/logo.jpg"
                             alt="PAC Salug Campus logo"
                             width={64}
                             height={64}
@@ -69,7 +69,7 @@ export default function VerifyEmailCallbackPage() {
                         <p className="text-gray-300">Online Payment System</p>
                     </div>
 
-                    <Card className="border-purple-500/20 bg-slate-800/50 backdrop-blur-sm">
+                    <Card className="border-sky-500/20 bg-slate-800/50 backdrop-blur-sm">
                         <CardHeader>
                             <CardTitle className="text-white">Verify Email</CardTitle>
                             <CardDescription>Finalizing verification…</CardDescription>
@@ -103,7 +103,7 @@ export default function VerifyEmailCallbackPage() {
 
                         <CardFooter className="flex justify-center border-t border-slate-700 pt-6">
                             <Link href="/auth">
-                                <Button className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600">
+                                <Button className="bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-600 hover:to-blue-600">
                                     Go to Login
                                 </Button>
                             </Link>

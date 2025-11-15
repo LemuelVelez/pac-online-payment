@@ -210,7 +210,7 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
     } catch (e: any) {
       toast.error("Failed to mark as read", { description: e?.message || "Please try again." })
     } finally {
-      setRowState((s) => ({ ...s, [id]: { ...s[id], saving: false } }))
+      setRowState((s) => ({ ...s, [id]: { ...s[id], saving: false } } ))
     }
   }, [])
 
@@ -223,7 +223,7 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
     } catch (e: any) {
       toast.error("Delete failed", { description: e?.message || "Please mark it as read first." })
     } finally {
-      setRowState((s) => ({ ...s, [id]: { ...s[id], deleting: false } }))
+      setRowState((s) => ({ ...s, [id]: { ...s[id], deleting: false } } ))
     }
   }, [])
 
@@ -283,7 +283,9 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
                 </button>
               </DropdownMenuTrigger>
 
-              <DropdownMenuContent align="end" className="w-96 bg-slate-800 border-slate-700 text-white">
+              {/* Modified this line to make the notifications dropdown responsive on small screens.
+                  It now uses an arbitrary width that is the minimum of 24rem (desktop) and 92vw (mobile). */}
+              <DropdownMenuContent align="end" className="w-[min(24rem,92vw)] bg-slate-800 border-slate-700 text-white">
                 <DropdownMenuLabel>Notifications</DropdownMenuLabel>
                 <DropdownMenuSeparator className="bg-slate-700" />
 

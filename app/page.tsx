@@ -26,7 +26,7 @@ export default function Home() {
           <div className="flex-1">
             <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
               Pay Your Fees{" "}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-400">
                 Online
               </span>
             </h2>
@@ -35,12 +35,12 @@ export default function Home() {
             </p>
             <div className="flex">
               {!isAuthed && (
-                <Button className="text-white bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8 py-6 text-lg">
+                <Button className="text-white bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-600 hover:to-blue-600 px-8 py-6 text-lg">
                   <Link href="/auth">Get Started</Link>
                 </Button>
               )}
               {isAuthed && (
-                <Button className="text-white bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8 py-6 text-lg">
+                <Button className="text-white bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-600 hover:to-blue-600 px-8 py-6 text-lg">
                   <Link href={dashboardHref}>Go to Dashboard</Link>
                 </Button>
               )}
@@ -48,7 +48,7 @@ export default function Home() {
           </div>
           <div className="flex-1">
             <div className="relative">
-              <div className="absolute -inset-1 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 opacity-75 blur"></div>
+              <div className="absolute -inset-1 rounded-lg bg-gradient-to-r from-sky-400 to-blue-500 opacity-75 blur"></div>
               <div className="relative bg-slate-800 p-6 rounded-lg">
                 <img
                   src="/images/students-online-payment.png"
@@ -82,7 +82,7 @@ export default function Home() {
         </section>
 
         <section className="mb-20">
-          <div className="bg-gradient-to-r from-purple-900/50 to-pink-900/50 p-8 rounded-lg">
+          <div className="bg-gradient-to-r from-sky-500/50 to-blue-500/50 p-8 rounded-lg">
             <SectionHeading title="How It Works" className="mb-6" />
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
               <StepItem number={1} title="Login" description="Sign in with your student credentials" />
@@ -99,7 +99,7 @@ export default function Home() {
               title="Ready to Get Started?"
               description="Join hundreds of students who are already enjoying the convenience of our online payment system."
             />
-            <Button className="text-white bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8 py-6 text-lg">
+            <Button className="text-white bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-600 hover:to-blue-600 px-8 py-6 text-lg">
               <Link href={isAuthed ? dashboardHref : "/auth"}>
                 {isAuthed ? "Go to Dashboard" : "Login Now"}
               </Link>

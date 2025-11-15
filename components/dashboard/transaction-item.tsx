@@ -21,20 +21,26 @@ export function TransactionItem({
     status,
     statusColor,
 }: TransactionItemProps) {
+    // outer wrapper enables horizontal scrolling on small screens (mobile)
+    // sm:overflow-x-visible ensures larger screens keep the normal behavior
     return (
-        <div className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg">
-            <div className="flex items-center gap-3">
-                <div className={`h-10 w-10 rounded-full ${iconBgColor} flex items-center justify-center`}>
-                    <Icon className={`h-5 w-5 ${iconColor}`} />
+        <div className="sm:overflow-x-visible overflow-x-auto">
+            {/* inner container uses min-w-max on small screens so contents can overflow horizontally
+                and be scrolled; on sm+ screens it behaves normally (min-w-0). */}
+            <div className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg min-w-max sm:min-w-0">
+                <div className="flex items-center gap-3">
+                    <div className={`h-10 w-10 rounded-full ${iconBgColor} flex items-center justify-center`}>
+                        <Icon className={`h-5 w-5 ${iconColor}`} />
+                    </div>
+                    <div>
+                        <p className="text-white font-medium">{title}</p>
+                        <p className="text-gray-400 text-sm">{date}</p>
+                    </div>
                 </div>
-                <div>
-                    <p className="text-white font-medium">{title}</p>
-                    <p className="text-gray-400 text-sm">{date}</p>
+                <div className="text-right">
+                    <p className="text-white font-medium">{amount}</p>
+                    <p className={statusColor}>{status}</p>
                 </div>
-            </div>
-            <div className="text-right">
-                <p className="text-white font-medium">{amount}</p>
-                <p className={statusColor}>{status}</p>
             </div>
         </div>
     )

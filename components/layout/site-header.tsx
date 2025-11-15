@@ -20,7 +20,7 @@ export function SiteHeader() {
 
     const navBtnBase =
         "relative text-white hover:text-white transition-colors hover:bg-white/10 data-[active=true]:bg-white/10 " +
-        "after:absolute after:left-0 after:-bottom-2 after:h-0.5 after:w-0 after:bg-gradient-to-r after:from-purple-400 after:to-pink-400 " +
+        "after:absolute after:left-0 after:-bottom-2 after:h-0.5 after:w-0 after:bg-gradient-to-r after:from-sky-400 after:to-blue-400" +
         "data-[active=true]:after:w-full"
 
     const isAuthed = !!user
@@ -31,7 +31,7 @@ export function SiteHeader() {
                 <div className="flex justify-between items-center">
                     <Link href="/" className="flex items-center gap-2 text-white" onClick={closeMenu}>
                         <Image
-                            src="/images/logo.png"
+                            src="/images/logo.jpg"
                             alt="PAC Salug Campus logo"
                             width={48}
                             height={48}
@@ -69,7 +69,7 @@ export function SiteHeader() {
                         <Button
                             asChild
                             className={cn(
-                                "bg-gradient-to-r text-white from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600",
+                                "bg-gradient-to-r text-white from-sky-500 to-blue-500 hover:from-sky-600 hover:to-blue-600",
                                 isActive("/auth") && !isAuthed && "ring-2 ring-white/30"
                             )}
                         >
@@ -134,7 +134,7 @@ export function SiteHeader() {
                         </Button>
 
                         <Button
-                            className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 w-full"
+                            className="bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-600 hover:to-blue-600 w-full"
                             asChild
                         >
                             <Link href={isAuthed ? dashboardHref : "/auth"} onClick={closeMenu} className="w-full text-center">

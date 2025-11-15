@@ -118,8 +118,8 @@ export default function CashierDashboardPage() {
             title="Students Served"
             value={String(totals.students)}
             icon={Users}
-            iconColor="text-purple-500"
-            iconBgColor="bg-purple-500/20"
+            iconColor="text-sky-500"
+            iconBgColor="bg-sky-500/20"
             footer={<p className="text-gray-400 text-sm">unique payers</p>}
           />
           <StatCard

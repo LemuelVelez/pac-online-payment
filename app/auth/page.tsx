@@ -323,7 +323,7 @@ export default function LoginPage() {
     return (
         <div className="max-h-screen overflow-y-auto bg-slate-800 flex flex-col">
             <header className="container mx-auto py-6 px-4">
-                <Link href="/" className="flex items-center gap-2 text-white hover:text-purple-300 transition-colors">
+                <Link href="/" className="flex items-center gap-2 text-white hover:text-sky-300 transition-colors">
                     <ArrowLeft className="h-5 w-5" />
                     <span>Back to Home</span>
                 </Link>
@@ -333,7 +333,7 @@ export default function LoginPage() {
                 <div className="w-full max-w-md">
                     <div className="text-center mb-8">
                         <Image
-                            src="/images/logo.png"
+                            src="/images/logo.jpg"
                             alt="PAC Salug Campus logo"
                             width={64}
                             height={64}
@@ -347,13 +347,25 @@ export default function LoginPage() {
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                         <TabsList className="grid w-full grid-cols-2 mb-8">
                             <TabsTrigger
-                                className="cursor-pointer hover:bg-slate-800/60 transition-colors data-[state=active]:text-white data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-pink-500 data-[state=active]:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                                className="cursor-pointer hover:bg-slate-800/60 transition-colors data-[state=active]:text-white data-[state=active]:bg-gradient-to-r data-[state=active]:from-sky-500
+data-[state=active]:to-blue-500
+data-[state=active]:shadow-sm
+focus-visible:outline-none
+focus-visible:ring-2
+focus-visible:ring-sky-500
+"
                                 value="login"
                             >
                                 Login
                             </TabsTrigger>
                             <TabsTrigger
-                                className="cursor-pointer hover:bg-slate-800/60 transition-colors data-[state=active]:text-white data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-pink-500 data-[state=active]:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                                className="cursor-pointer hover:bg-slate-800/60 transition-colors data-[state=active]:text-white data-[state=active]:bg-gradient-to-r data-[state=active]:from-sky-500
+data-[state=active]:to-blue-500
+data-[state=active]:shadow-sm
+focus-visible:outline-none
+focus-visible:ring-2
+focus-visible:ring-sky-500
+"
                                 value="register"
                             >
                                 Register
@@ -362,7 +374,7 @@ export default function LoginPage() {
 
                         {/* LOGIN */}
                         <TabsContent value="login">
-                            <Card className="border-purple-500/20 bg-slate-800/50 backdrop-blur-sm">
+                            <Card className="border-sky-500/20 bg-slate-800/50 backdrop-blur-sm">
                                 <CardHeader>
                                     <CardTitle className="text-white">Login to your account</CardTitle>
                                     <CardDescription>Enter your credentials to access the payment system</CardDescription>
@@ -429,7 +441,7 @@ export default function LoginPage() {
                                                     type="checkbox"
                                                     id="remember"
                                                     name="remember"
-                                                    className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                                    className="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500"
                                                     checked={rememberMe}
                                                     onChange={handleRememberToggle}
                                                     title="Stores your email on this device for faster sign-in."
@@ -438,13 +450,13 @@ export default function LoginPage() {
                                                     Remember me
                                                 </Label>
                                             </div>
-                                            <Link href="/auth/forgot-password" className="text-sm text-purple-400 hover:text-purple-300">
+                                            <Link href="/auth/forgot-password" className="text-sm text-sky-400 hover:text-sky-300">
                                                 Forgot password?
                                             </Link>
                                         </div>
                                         <Button
                                             type="submit"
-                                            className="w-full cursor-pointer text-white bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                                            className="w-full cursor-pointer text-white bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-600 hover:to-blue-600"
                                             disabled={isLoading}
                                         >
                                             {isLoading ? "Logging in..." : "Login"}
@@ -454,7 +466,7 @@ export default function LoginPage() {
                                 <CardFooter className="flex justify-center border-slate-700 pt-6">
                                     <p className="text-sm text-gray-400">
                                         Need help?{" "}
-                                        <Link href="/contact#support" className="text-purple-400 hover:text-purple-300">
+                                        <Link href="/contact#support" className="text-sky-400 hover:text-sky-300">
                                             Contact support
                                         </Link>
                                     </p>
@@ -464,7 +476,7 @@ export default function LoginPage() {
 
                         {/* REGISTER */}
                         <TabsContent value="register">
-                            <Card className="border-purple-500/20 bg-slate-800/50 backdrop-blur-sm">
+                            <Card className="border-sky-500/20 bg-slate-800/50 backdrop-blur-sm">
                                 <CardHeader>
                                     <CardTitle className="text-white">Create an account</CardTitle>
                                     <CardDescription>Register to use the online payment system</CardDescription>
@@ -659,7 +671,7 @@ export default function LoginPage() {
 
                                         <Button
                                             type="submit"
-                                            className="w-full text-white bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                                            className="w-full text-white bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-600 hover:to-blue-600"
                                             disabled={isRegistering}
                                         >
                                             {isRegistering ? "Creating account..." : "Register"}
@@ -671,7 +683,7 @@ export default function LoginPage() {
                                         Already have an account?{" "}
                                         <button
                                             onClick={switchToLoginTab}
-                                            className="text-purple-400 hover:text-purple-300 underline bg-transparent border-none cursor-pointer"
+                                            className="text-sky-400 hover:text-sky-300 underline bg-transparent border-none cursor-pointer"
                                         >
                                             Login
                                         </button>
