@@ -71,6 +71,9 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
   const role = (user as any)?.role as string | undefined
   const hideNotifications = role === "business-office"
 
+  // 🚧 Toggle this to re-enable real notifications later
+  const notificationsDisabled = true
+
   // Profile menu state
   const [menuOpen, setMenuOpen] = useState(false)
   const [confirmLogoutOpen, setConfirmLogoutOpen] = useState(false)
@@ -100,14 +103,28 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
 
   const handleLogout = async () => {
     setIsLoggingOut(true)
-    try { await logout() } finally { setIsLoggingOut(false) }
+    try {
+      await logout()
+    } finally {
+      setIsLoggingOut(false)
+    }
   }
   const handleLogoutAll = async () => {
     setIsLoggingOutAll(true)
-    try { await logout(true) } finally { setIsLoggingOutAll(false) }
+    try {
+      await logout(true)
+    } finally {
+      setIsLoggingOutAll(false)
+    }
   }
-  const openConfirmLogout = () => { setMenuOpen(false); setConfirmLogoutOpen(true) }
-  const openConfirmLogoutAll = () => { setMenuOpen(false); setConfirmLogoutAllOpen(true) }
+  const openConfirmLogout = () => {
+    setMenuOpen(false)
+    setConfirmLogoutOpen(true)
+  }
+  const openConfirmLogoutAll = () => {
+    setMenuOpen(false)
+    setConfirmLogoutAllOpen(true)
+  }
 
   const handleProfileClick = () => {
     const rolePrefix = user?.role === "student" ? "" : `/${user?.role}`
@@ -135,9 +152,19 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
   const userId: string | undefined =
     (user as any)?.$id || (user as any)?.id || (user as any)?.userId || undefined
 
-  const unreadCount = useMemo(() => items.filter((n) => n.status === "unread").length, [items])
+  const unreadCount = useMemo(
+    () => (notificationsDisabled ? 0 : items.filter((n) => n.status === "unread").length),
+    [items, notificationsDisabled]
+  )
 
   useEffect(() => {
+    // 🔒 Temporarily disable notifications completely
+    if (notificationsDisabled) {
+      setItems([])
+      setLoadingNotifs(false)
+      return
+    }
+
     // If not logged in OR role is business-office, skip notifications entirely
     if (!userId || hideNotifications) {
       setItems([])
@@ -194,12 +221,20 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
 
     return () => {
       mounted = false
-      try { stopNotifs?.() } catch { }
-      try { stopStudentBridge?.() } catch { }
-      try { stopCashierBridge?.() } catch { }
-      try { stopAdminBridge?.() } catch { }
+      try {
+        stopNotifs?.()
+      } catch { }
+      try {
+        stopStudentBridge?.()
+      } catch { }
+      try {
+        stopCashierBridge?.()
+      } catch { }
+      try {
+        stopAdminBridge?.()
+      } catch { }
     }
-  }, [userId, role, hideNotifications])
+  }, [userId, role, hideNotifications, notificationsDisabled])
 
   const onMarkAsRead = useCallback(async (id: string) => {
     setRowState((s) => ({ ...s, [id]: { ...s[id], saving: true } }))
@@ -210,7 +245,7 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
     } catch (e: any) {
       toast.error("Failed to mark as read", { description: e?.message || "Please try again." })
     } finally {
-      setRowState((s) => ({ ...s, [id]: { ...s[id], saving: false } } ))
+      setRowState((s) => ({ ...s, [id]: { ...s[id], saving: false } }))
     }
   }, [])
 
@@ -223,7 +258,7 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
     } catch (e: any) {
       toast.error("Delete failed", { description: e?.message || "Please mark it as read first." })
     } finally {
-      setRowState((s) => ({ ...s, [id]: { ...s[id], deleting: false } } ))
+      setRowState((s) => ({ ...s, [id]: { ...s[id], deleting: false } }))
     }
   }, [])
 
@@ -250,7 +285,9 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
   const handleOpenNotification = async (doc: NotificationDoc) => {
     const { clean, href } = parseNotificationText(doc.notification)
     if (doc.status === "unread") {
-      try { await onMarkAsRead(doc.$id) } catch { }
+      try {
+        await onMarkAsRead(doc.$id)
+      } catch { }
     }
     const target = href || fallbackHref(clean)
     setNotifOpen(false)
@@ -273,9 +310,13 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
           {!hideNotifications && (
             <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}>
               <DropdownMenuTrigger asChild>
-                <button className="relative text-gray-400 hover:text-white cursor-pointer" aria-label="Notifications">
+                <button
+                  className="relative text-gray-400 hover:text-white cursor-pointer"
+                  aria-label="Notifications (coming soon)"
+                >
                   <Bell className="h-6 w-6" />
-                  {unreadCount > 0 && (
+                  {/* No badge while disabled */}
+                  {!notificationsDisabled && unreadCount > 0 && (
                     <span className="absolute -top-1 -right-1 h-4 min-w-4 px-1 rounded-full bg-red-500 text-white text-[10px] leading-4 flex items-center justify-center">
                       {unreadCount}
                     </span>
@@ -283,124 +324,153 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
                 </button>
               </DropdownMenuTrigger>
 
-              {/* Modified this line to make the notifications dropdown responsive on small screens.
-                  It now uses an arbitrary width that is the minimum of 24rem (desktop) and 92vw (mobile). */}
-              <DropdownMenuContent align="end" className="w-[min(24rem,92vw)] bg-slate-800 border-slate-700 text-white">
-                <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+              {/* Responsive dropdown width */}
+              <DropdownMenuContent
+                align="end"
+                className="w-[min(24rem,92vw)] bg-slate-800 border-slate-700 text-white"
+              >
+                <DropdownMenuLabel>
+                  Notifications
+                  {notificationsDisabled && (
+                    <span className="ml-1 text-xs text-slate-300">(coming soon)</span>
+                  )}
+                </DropdownMenuLabel>
                 <DropdownMenuSeparator className="bg-slate-700" />
 
-                {loadingNotifs ? (
-                  <div className="px-3 py-6 text-sm text-slate-300 flex items-center">
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Loading…
+                {notificationsDisabled ? (
+                  <div className="px-3 py-4 text-sm text-slate-300">
+                    This feature is currently under development due to some issues found.
+                    <br />
+                    <span className="text-xs text-slate-400">
+                      Notifications will be available again soon.
+                    </span>
                   </div>
-                ) : items.length === 0 ? (
-                  <div className="px-3 py-4 text-sm text-slate-300">No notifications.</div>
                 ) : (
-                  <div className="max-h-[70vh] overflow-y-auto">
-                    {items.map((n, i) => {
-                      const st = rowState[n.$id] || {}
-                      const unread = n.status === "unread"
-                      const { clean, href } = parseNotificationText(n.notification)
-                      return (
-                        <div key={n.$id}>
-                          <DropdownMenuItem
-                            className="hover:bg-slate-700 cursor-pointer py-3"
-                            onSelect={async (e) => {
-                              e.preventDefault()
-                              await handleOpenNotification(n)
-                            }}
-                          >
-                            <div className="flex w-full items-start gap-3">
-                              <span
-                                className={`mt-2 h-2 w-2 rounded-full ${unread ? "bg-blue-400" : "bg-slate-600"}`}
-                                aria-hidden
-                              />
-                              <div className="min-w-0 flex-1">
-                                <div className="truncate text-sm">{clean}</div>
-                                <div className="mt-1 text-xs text-slate-300">{timeAgo(n.$createdAt)}</div>
-                                {href ? <span className="sr-only">Opens {href}</span> : null}
-                              </div>
-                              <div className="flex items-center gap-1">
-                                {unread ? (
-                                  <button
-                                    className="text-blue-300 hover:text-blue-200"
-                                    title="Mark as read"
-                                    onClick={async (e) => {
-                                      e.stopPropagation()
-                                      e.preventDefault()
-                                      await onMarkAsRead(n.$id)
-                                    }}
-                                    disabled={!!st.saving}
-                                  >
-                                    {st.saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                                  </button>
-                                ) : (
-                                  <AlertDialog>
-                                    <AlertDialogTrigger asChild>
+                  <>
+                    {loadingNotifs ? (
+                      <div className="px-3 py-6 text-sm text-slate-300 flex items-center">
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Loading…
+                      </div>
+                    ) : items.length === 0 ? (
+                      <div className="px-3 py-4 text-sm text-slate-300">No notifications.</div>
+                    ) : (
+                      <div className="max-h-[70vh] overflow-y-auto">
+                        {items.map((n, i) => {
+                          const st = rowState[n.$id] || {}
+                          const unread = n.status === "unread"
+                          const { clean, href } = parseNotificationText(n.notification)
+                          return (
+                            <div key={n.$id}>
+                              <DropdownMenuItem
+                                className="hover:bg-slate-700 cursor-pointer py-3"
+                                onSelect={async (e) => {
+                                  e.preventDefault()
+                                  await handleOpenNotification(n)
+                                }}
+                              >
+                                <div className="flex w-full items-start gap-3">
+                                  <span
+                                    className={`mt-2 h-2 w-2 rounded-full ${unread ? "bg-blue-400" : "bg-slate-600"
+                                      }`}
+                                    aria-hidden
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="truncate text-sm">{clean}</div>
+                                    <div className="mt-1 text-xs text-slate-300">
+                                      {timeAgo(n.$createdAt)}
+                                    </div>
+                                    {href ? <span className="sr-only">Opens {href}</span> : null}
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    {unread ? (
                                       <button
-                                        className="text-red-300 hover:text-red-200"
-                                        title="Delete (only read)"
-                                        disabled={!!st.deleting}
-                                        onClick={(e) => e.stopPropagation()}
+                                        className="text-blue-300 hover:text-blue-200"
+                                        title="Mark as read"
+                                        onClick={async (e) => {
+                                          e.stopPropagation()
+                                          e.preventDefault()
+                                          await onMarkAsRead(n.$id)
+                                        }}
+                                        disabled={!!st.saving}
                                       >
-                                        {st.deleting ? (
+                                        {st.saving ? (
                                           <Loader2 className="h-4 w-4 animate-spin" />
                                         ) : (
-                                          <Delete className="h-4 w-4" />
+                                          <Check className="h-4 w-4" />
                                         )}
                                       </button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent className="bg-slate-900 border-slate-700 text-white">
-                                      <AlertDialogHeader>
-                                        <AlertDialogTitle>Delete notification?</AlertDialogTitle>
-                                        <AlertDialogDescription className="text-slate-300">
-                                          This action cannot be undone. Only <b>read</b> notifications can be deleted.
-                                        </AlertDialogDescription>
-                                      </AlertDialogHeader>
-                                      <AlertDialogFooter>
-                                        <AlertDialogCancel className="bg-slate-800 text-white border-slate-700">
-                                          Cancel
-                                        </AlertDialogCancel>
-                                        <AlertDialogAction
-                                          className="bg-red-600 hover:bg-red-700"
-                                          onClick={async () => {
-                                            await onDelete(n.$id)
-                                          }}
-                                        >
-                                          Delete
-                                        </AlertDialogAction>
-                                      </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                  </AlertDialog>
-                                )}
-                              </div>
+                                    ) : (
+                                      <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                          <button
+                                            className="text-red-300 hover:text-red-200"
+                                            title="Delete (only read)"
+                                            disabled={!!st.deleting}
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            {st.deleting ? (
+                                              <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                              <Delete className="h-4 w-4" />
+                                            )}
+                                          </button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent className="bg-slate-900 border-slate-700 text-white">
+                                          <AlertDialogHeader>
+                                            <AlertDialogTitle>
+                                              Delete notification?
+                                            </AlertDialogTitle>
+                                            <AlertDialogDescription className="text-slate-300">
+                                              This action cannot be undone. Only <b>read</b> notifications
+                                              can be deleted.
+                                            </AlertDialogDescription>
+                                          </AlertDialogHeader>
+                                          <AlertDialogFooter>
+                                            <AlertDialogCancel className="bg-slate-800 text-white border-slate-700">
+                                              Cancel
+                                            </AlertDialogCancel>
+                                            <AlertDialogAction
+                                              className="bg-red-600 hover:bg-red-700"
+                                              onClick={async () => {
+                                                await onDelete(n.$id)
+                                              }}
+                                            >
+                                              Delete
+                                            </AlertDialogAction>
+                                          </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                      </AlertDialog>
+                                    )}
+                                  </div>
+                                </div>
+                              </DropdownMenuItem>
+                              {i < items.length - 1 ? (
+                                <DropdownMenuSeparator className="bg-slate-700" />
+                              ) : null}
                             </div>
-                          </DropdownMenuItem>
-                          {i < items.length - 1 ? (
-                            <DropdownMenuSeparator className="bg-slate-700" />
-                          ) : null}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
+                          )
+                        })}
+                      </div>
+                    )}
 
-                {items.length > 0 ? (
-                  <>
-                    <DropdownMenuSeparator className="bg-slate-700" />
-                    <DropdownMenuItem
-                      className="hover:bg-slate-700 cursor-pointer"
-                      onSelect={async (e) => {
-                        e.preventDefault()
-                        await onMarkAllRead()
-                        setNotifOpen(false)
-                      }}
-                    >
-                      Mark all as read
-                    </DropdownMenuItem>
+                    {items.length > 0 ? (
+                      <>
+                        <DropdownMenuSeparator className="bg-slate-700" />
+                        <DropdownMenuItem
+                          className="hover:bg-slate-700 cursor-pointer"
+                          onSelect={async (e) => {
+                            e.preventDefault()
+                            await onMarkAllRead()
+                            setNotifOpen(false)
+                          }}
+                        >
+                          Mark all as read
+                        </DropdownMenuItem>
+                      </>
+                    ) : null}
                   </>
-                ) : null}
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -472,7 +542,10 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel className="bg-slate-800 text-white border-slate-700 cursor-pointer" disabled={isLoggingOutAll}>
+                <AlertDialogCancel
+                  className="bg-slate-800 text-white border-slate-700 cursor-pointer"
+                  disabled={isLoggingOutAll}
+                >
                   Cancel
                 </AlertDialogCancel>
                 <AlertDialogAction
@@ -512,7 +585,10 @@ export function DashboardHeader({ onOpenSidebar }: DashboardHeaderProps) {
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel className="bg-slate-800 text-white border-slate-700 cursor-pointer" disabled={isLoggingOut}>
+                <AlertDialogCancel
+                  className="bg-slate-800 text-white border-slate-700 cursor-pointer"
+                  disabled={isLoggingOut}
+                >
                   Cancel
                 </AlertDialogCancel>
                 <AlertDialogAction
