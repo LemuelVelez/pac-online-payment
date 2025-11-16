@@ -105,7 +105,7 @@ export default function ForgotPasswordPage() {
                                     </div>
                                     <Button
                                         type="submit"
-                                        className="w-full cursor-pointer bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-600 hover:to-blue-600"
+                                        className="w-full text-white cursor-pointer bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-600 hover:to-blue-600"
                                         disabled={isLoading}
                                     >
                                         {isLoading ? "Sending..." : "Send Reset Link"}

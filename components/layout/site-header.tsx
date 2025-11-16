@@ -134,7 +134,7 @@ export function SiteHeader() {
                         </Button>
 
                         <Button
-                            className="bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-600 hover:to-blue-600 w-full"
+                            className="text-white bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-600 hover:to-blue-600 w-full"
                             asChild
                         >
                             <Link href={isAuthed ? dashboardHref : "/auth"} onClick={closeMenu} className="w-full text-center">

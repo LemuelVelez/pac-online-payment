@@ -41,7 +41,7 @@ export function PaymentPieChart({ data }: PaymentPieChartProps) {
                                         </div>
                                         <div className="flex flex-col">
                                             <span className="text-[0.70rem] uppercase text-slate-400">Amount</span>
-                                            <span className="font-bold text-slate-100">₱{payload[0].value}</span>
+                                            <span className="font-bold text-slate-100">{payload[0].value}</span>
                                         </div>
                                     </div>
                                 </div>
